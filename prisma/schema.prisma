@@ -1,0 +1,530 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  country               String
+  region                String
+  hltvReferenceUrl      String?
+  liquipediaReferenceUrl String?
+  pandaScoreId          String?
+  gridId                String?
+  valveRank             Int?
+  hltvRank              Int?
+  internalElo           Float
+  topRankCategory       String
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  players               Player[]
+  teamFormSnapshots     TeamFormSnapshot[]
+  teamMapStats          TeamMapStat[]
+  vetoPatterns          VetoPattern[] @relation("VetoTeam")
+  opponentVetoPatterns  VetoPattern[] @relation("VetoOpponent")
+  newsItems             NewsItem[]
+  rosterVersions        TeamRosterVersion[]
+  chemistrySnapshots    TeamChemistrySnapshot[]
+  rosterEvents          RosterEvent[]
+  matchesAsTeamA        Match[] @relation("MatchTeamA")
+  matchesAsTeamB        Match[] @relation("MatchTeamB")
+  matchesWon            Match[] @relation("MatchWinner")
+}
+
+model Player {
+  id                    String   @id @default(cuid())
+  nickname              String
+  realName              String?
+  teamId                String?
+  role                  String
+  country               String
+  age                   Int?
+  isActive              Boolean  @default(true)
+  joinedAt              DateTime?
+  leftAt                DateTime?
+  hltvReferenceUrl      String?
+  liquipediaReferenceUrl String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  team                  Team? @relation(fields: [teamId], references: [id])
+  statSnapshots         PlayerStatSnapshot[]
+  newsItems             NewsItem[]
+  teamHistory           PlayerTeamHistory[]
+  roleSnapshots         PlayerRoleSnapshot[]
+  rosterEvents          RosterEvent[]
+}
+
+model Match {
+  id               String   @id @default(cuid())
+  source           String
+  sourceMatchId    String?
+  eventName        String
+  eventTier        String
+  stage            String
+  startTime        DateTime
+  status           String
+  format           String
+  isOfficial       Boolean  @default(true)
+  isLan            Boolean  @default(false)
+  teamAId          String
+  teamBId          String
+  winnerTeamId     String?
+  matchUrl         String?
+  dataQualityScore Float    @default(70)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  teamA            Team @relation("MatchTeamA", fields: [teamAId], references: [id])
+  teamB            Team @relation("MatchTeamB", fields: [teamBId], references: [id])
+  winnerTeam       Team? @relation("MatchWinner", fields: [winnerTeamId], references: [id])
+  maps             MatchMap[]
+  predictions      Prediction[]
+  h2hEntries       HeadToHead[]
+  audits           PredictionAudit[]
+
+  @@index([status, startTime])
+  @@index([teamAId])
+  @@index([teamBId])
+}
+
+model MatchMap {
+  id                 String   @id @default(cuid())
+  matchId            String
+  mapName            String
+  mapOrder           Int
+  pickedByTeamId     String?
+  bannedByTeamId     String?
+  teamAScore         Int?
+  teamBScore         Int?
+  winnerTeamId       String?
+  wentOvertime       Boolean  @default(false)
+  overtimeCount      Int      @default(0)
+  regulationScore    String?
+  teamACTRoundsWon   Int?
+  teamATRoundsWon    Int?
+  teamBCTRoundsWon   Int?
+  teamBTRoundsWon    Int?
+
+  match              Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+}
+
+model PlayerStatSnapshot {
+  id                    String   @id @default(cuid())
+  playerId              String
+  teamId                String
+  period                String
+  maps                  Int
+  rounds                Int
+  kd                    Float
+  kdDiff                Int
+  rating                Float
+  adr                   Float
+  kast                  Float
+  impact                Float
+  openingKillRating     Float
+  clutchScore           Float
+  volatilityScore       Float
+  pressureScore         Float
+  trendScore            Float
+  ratingTrend           Float
+  kdTrend               Float
+  adrTrend              Float
+  openingDuelTrend      Float
+  clutchTrend           Float
+  pressurePerformance   Float
+  mapSpecificPerformance Float
+  roleImpact            Float
+  starDependency        Float
+  worstPlayerLiability  Float
+  lanRating             Float
+  onlineRating          Float
+  source                String
+  sourceUrl             String?
+  createdAt             DateTime @default(now())
+
+  player                Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([teamId])
+}
+
+model TeamFormSnapshot {
+  id                           String   @id @default(cuid())
+  teamId                       String
+  period                       String
+  matchesPlayed                Int
+  mapsPlayed                   Int
+  matchWinRate                 Float
+  mapWinRate                   Float
+  roundWinRate                 Float
+  vsTop10WinRate               Float
+  vsTop20WinRate               Float
+  vsTop50WinRate               Float
+  vsTop100WinRate              Float
+  winVsTop10                   Float
+  winVsTop20                   Float
+  winVsTop50                   Float
+  winVsTop100                  Float
+  lossVsLowerRanked            Float
+  opponentStrengthAdjustedForm Float
+  currentStreak                Int
+  formScore                    Float
+  volatilityScore              Float
+  matchesLast7Days             Int
+  mapsLast7Days                Int
+  travelRiskScore              Float
+  timezoneShiftHours           Float
+  fatigueScore                 Float
+  lanWinRate                   Float
+  onlineWinRate                Float
+  motivationScore              Float
+  rosterStabilityScore         Float
+  closeOutRate                 Float
+  mapPointConversion           Float
+  leadProtectionScore          Float
+  lostFromWinningPositionRate  Float
+  deciderCollapseRate          Float
+  seriesCloseOutRate           Float
+  comebackFrom3RoundDeficit    Float
+  comebackFrom5RoundDeficit    Float
+  badHalfRecovery              Float
+  lostPistolRecovery           Float
+  lostOwnPickRecovery          Float
+  createdAt                    DateTime @default(now())
+
+  team                         Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+model TeamMapStat {
+  id                        String   @id @default(cuid())
+  teamId                    String
+  mapName                   String
+  period                    String
+  mapsPlayed                Int
+  winRate                   Float
+  pickRate                  Float
+  banRate                   Float
+  firstPickRate             Float
+  deciderRate               Float
+  ctRoundWinRate            Float
+  tRoundWinRate             Float
+  pistolWinRate             Float
+  conversionAfterPistolWin  Float
+  forceBuyWinRate           Float
+  antiEcoLossRate           Float
+  overtimeWinRate           Float
+  multipleOvertimeWinRate   Float
+  overtimeFrequency         Float
+  pressureRoundWinRate      Float
+  clutchInOvertimeScore     Float
+  closingScore              Float
+  comebackScore             Float
+  ecoRecoveryScore          Float
+  resetResistanceScore      Float
+  recentTrend               Float
+  openingRoundPerformance   Float
+  sampleQuality             Float
+  source                    String
+  sourceUrl                 String?
+  createdAt                 DateTime @default(now())
+
+  team                      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, mapName])
+}
+
+model VetoPattern {
+  id              String   @id @default(cuid())
+  teamId          String
+  opponentTeamId  String?
+  format          String
+  period          String
+  mapName         String
+  pickProbability Float
+  banProbability  Float
+  punishProbability Float
+  weaknessScore   Float
+  comfortScore    Float
+  confidenceScore Float
+  createdAt       DateTime @default(now())
+
+  team            Team @relation("VetoTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  opponentTeam    Team? @relation("VetoOpponent", fields: [opponentTeamId], references: [id])
+
+  @@index([teamId, mapName])
+}
+
+model HeadToHead {
+  id                    String   @id @default(cuid())
+  teamAId               String
+  teamBId               String
+  matchId               String
+  date                  DateTime
+  format                String
+  winnerTeamId          String?
+  teamARosterSimilarity Float
+  teamBRosterSimilarity Float
+  relevanceScore        Float
+  notes                 String?
+
+  match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([teamAId, teamBId])
+}
+
+model NewsItem {
+  id                 String   @id @default(cuid())
+  teamId             String?
+  playerId           String?
+  title              String
+  summary            String
+  source             String
+  url                String?
+  publishedAt        DateTime
+  reliability        String
+  eventType          String
+  sentiment          String
+  impactScore        Float
+  maxAllowedImpact   Float
+  isRumor            Boolean  @default(false)
+  isOfficial         Boolean  @default(false)
+  createdAt          DateTime @default(now())
+
+  team               Team? @relation(fields: [teamId], references: [id])
+  player             Player? @relation(fields: [playerId], references: [id])
+
+  @@index([teamId])
+  @@index([playerId])
+}
+
+model Prediction {
+  id                  String   @id @default(cuid())
+  matchId             String
+  modelVersion        String
+  teamAProbability    Float
+  teamBProbability    Float
+  predictedWinnerId   String?
+  confidenceScore     Float
+  riskLevel           String
+  dataQualityScore    Float
+  explanation         String
+  warningsJson        String
+  createdAt           DateTime @default(now())
+
+  match               Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  factors             PredictionFactor[]
+  audits              PredictionAudit[]
+
+  @@index([matchId])
+}
+
+model PredictionFactor {
+  id                    String @id @default(cuid())
+  predictionId          String
+  factorName            String
+  factorGroup           String
+  teamAValue            Float
+  teamBValue            Float
+  rawDifference         Float
+  normalizedDifference  Float
+  weight                Float
+  impact                Float
+  confidence            Float
+  explanation           String
+
+  prediction            Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@index([predictionId])
+}
+
+model ModelWeightPreset {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  weightsJson String
+  isDefault   Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SourceSyncLog {
+  id              String   @id @default(cuid())
+  source          String
+  status          String
+  startedAt       DateTime
+  finishedAt      DateTime?
+  recordsImported Int      @default(0)
+  errorsJson      String
+  notes           String?
+}
+
+model GameMetaVersion {
+  id            String   @id @default(cuid())
+  patchDate     DateTime
+  patchName     String
+  patchType     String
+  affectedAreas String
+  impactScore   Float
+  description   String
+  sourceUrl     String?
+  createdAt     DateTime @default(now())
+}
+
+model TeamRosterVersion {
+  id                    String   @id @default(cuid())
+  teamId                String
+  startedAt             DateTime
+  endedAt               DateTime?
+  playerIdsJson         String
+  coachId               String?
+  iglPlayerId           String?
+  mainLanguage          String
+  coreStabilityScore    Float
+  mapsPlayedTogether    Int
+  matchesPlayedTogether Int
+  createdAt             DateTime @default(now())
+
+  team                  Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  chemistrySnapshots    TeamChemistrySnapshot[]
+
+  @@index([teamId])
+}
+
+model PlayerTeamHistory {
+  id                String   @id @default(cuid())
+  playerId          String
+  teamId            String
+  joinedAt          DateTime
+  leftAt            DateTime?
+  role              String
+  mainPositionsJson String
+  mapsPlayed        Int
+  rating            Float
+  kd                Float
+  notes             String?
+
+  player            Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([teamId])
+}
+
+model PlayerRoleSnapshot {
+  id              String   @id @default(cuid())
+  playerId        String
+  teamId          String
+  date            DateTime
+  role            String
+  mapName         String
+  positionsJson   String
+  openingDuelRate Float
+  clutchRate      Float
+  adr             Float
+  rating          Float
+  kd              Float
+  source          String
+  sourceUrl       String?
+
+  player          Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, mapName])
+}
+
+model TeamChemistrySnapshot {
+  id                         String   @id @default(cuid())
+  teamId                     String
+  date                       DateTime
+  rosterVersionId            String
+  sharedExperienceScore      Float
+  languageCompatibilityScore Float
+  roleFitScore               Float
+  coreStabilityScore         Float
+  adaptationScore            Float
+  volatilityScore            Float
+  notes                      String?
+
+  team                       Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  rosterVersion              TeamRosterVersion @relation(fields: [rosterVersionId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+model RosterEvent {
+  id               String   @id @default(cuid())
+  teamId           String
+  playerId         String?
+  eventType        String
+  eventDate        DateTime
+  oldTeamId        String?
+  newTeamId        String?
+  oldRole          String?
+  newRole          String?
+  oldPositionsJson String?
+  newPositionsJson String?
+  expectedImpact   Float
+  confidence       Float
+  sourceUrl        String?
+  createdAt        DateTime @default(now())
+
+  team             Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player           Player? @relation(fields: [playerId], references: [id])
+
+  @@index([teamId])
+  @@index([playerId])
+}
+
+model MapVersion {
+  id          String   @id @default(cuid())
+  mapName     String
+  versionName String
+  startedAt   DateTime
+  endedAt     DateTime?
+  changeType  String
+  impactScore Float
+  description String
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  @@index([mapName])
+}
+
+model ActiveMapPoolVersion {
+  id        String   @id @default(cuid())
+  name      String
+  startedAt DateTime
+  endedAt   DateTime?
+  mapsJson  String
+  notes     String?
+  sourceUrl String?
+  createdAt DateTime @default(now())
+}
+
+model PredictionAudit {
+  id                    String   @id @default(cuid())
+  predictionId          String?
+  matchId               String
+  modelVersion          String
+  inputSnapshotJson     String
+  factorOutputJson      String
+  finalProbabilityJson  String
+  warningsJson          String
+  createdAt             DateTime @default(now())
+
+  prediction            Prediction? @relation(fields: [predictionId], references: [id], onDelete: SetNull)
+  match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+}
