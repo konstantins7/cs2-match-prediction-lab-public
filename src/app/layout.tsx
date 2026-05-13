@@ -8,12 +8,11 @@ export const metadata: Metadata = {
 };
 
 const nav = [
-  ["/", "Матчи"],
+  ["/matches", "Матчи"],
   ["/predictions", "Прогнозы"],
-  ["/admin/model", "Модель"],
-  ["/admin/backtesting", "Backtesting"],
-  ["/admin/data-quality", "Качество данных"],
-  ["/admin/sources", "Источники"]
+  ["/admin/research-queue", "Задачи"],
+  ["/admin/sources", "Источники"],
+  ["/admin/model-lab", "Модель"]
 ];
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

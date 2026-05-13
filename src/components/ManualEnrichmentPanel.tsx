@@ -5,13 +5,13 @@ import { manualEnrichmentTemplates } from "@/lib/manualEnrichmentTemplates";
 import type { ResearchTask } from "@/lib/researchQueueCore";
 
 const manualTemplateLabels: Array<[keyof typeof manualEnrichmentTemplates, string]> = [
-  ["manual_real_pack", "Manual Real Pack"],
-  ["roster", "Roster JSON"],
-  ["player_stats", "Player Stats JSON"],
-  ["map_stats", "Map Stats JSON"],
-  ["veto_history", "Veto History JSON"],
+  ["manual_real_pack", "Ручной data pack"],
+  ["roster", "Состав JSON"],
+  ["player_stats", "Статистика игроков JSON"],
+  ["map_stats", "Карты JSON"],
+  ["veto_history", "Veto JSON"],
   ["h2h", "H2H JSON"],
-  ["news", "News/Roster Events JSON"],
+  ["news", "Новости / roster JSON"],
   ["parsed_demo", "Parsed Demo JSON"]
 ];
 
@@ -22,14 +22,14 @@ type MatchOption = {
 };
 
 const builderSteps = [
-  ["ranking", "Step 1 — Team identity / rank", "ranking confirmation + basic results -> может поднять до L2", "Confirm rank/team match"],
-  ["roster", "Step 2 — Roster", "roster -> открывает путь к L2/L3", "Bind roster"],
-  ["player_stats", "Step 3 — Player stats", "roster + player stats -> L2 strong / L3 weak", "Import player stats"],
-  ["map_stats", "Step 4 — Map stats", "roster + player stats + map stats -> L3 partial", "Import map stats"],
-  ["veto_history", "Step 5 — Veto history", "roster + player/map/veto -> L3 full", "Import veto history"],
+  ["ranking", "Шаг 1 — Команды / рейтинг", "подтверждение рейтинга + basic results -> может поднять до L2", "Confirm rank/team match"],
+  ["roster", "Шаг 2 — Состав", "состав -> открывает путь к L2/L3", "Bind roster"],
+  ["player_stats", "Шаг 3 — Статистика игроков", "состав + player stats -> L2 strong / L3 weak", "Import player stats"],
+  ["map_stats", "Шаг 4 — Карты", "состав + игроки + карты -> L3 partial", "Import map stats"],
+  ["veto_history", "Шаг 5 — Veto history", "состав + карты + veto -> L3 full", "Import veto history"],
   ["h2h", "Step 6 — H2H", "H2H добавляет matchup context", "Add H2H"],
-  ["news", "Step 7 — News / roster events", "news улучшает risk/confidence explanation", "Add news/roster events"],
-  ["final", "Step 8 — Final readiness recalculation", "Apply -> rebuild snapshots -> recalculate predictions -> readiness before/after", "Recalculate predictions"]
+  ["news", "Шаг 7 — Новости / roster events", "новости улучшают объяснение риска и уверенности", "Add news/roster events"],
+  ["final", "Шаг 8 — Финальный пересчёт", "Применить -> snapshots -> predictions -> readiness before/after", "Recalculate predictions"]
 ] as const;
 
 export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = false, matchOptions = [] }: { defaultMatchId?: string; analystSampleEnabled?: boolean; matchOptions?: MatchOption[] }) {
@@ -159,15 +159,15 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
   return (
     <section className="rounded border border-lab-border bg-lab-panel p-4">
       <div>
-        <h2 className="font-semibold text-white">Real Data Acquisition Pack Wizard</h2>
+        <h2 className="font-semibold text-white">Ручное добавление данных</h2>
         <p className="mt-1 text-sm text-lab-muted">
-          Основной workflow для manual_real: проходите шаги, проверяйте blockQuality, затем Apply. Validate показывает preview без изменения БД. Apply сначала сохраняет raw ExternalSourceRecord, затем создаёт match-scoped domain records. Пользователь отвечает за достоверность ручных данных.
+          Основной workflow для manual_real: проходите шаги, проверяйте качество блока, затем нажимайте “Применить”. “Проверить” показывает предпросмотр без изменения БД. Пользователь отвечает за достоверность ручных данных.
         </p>
       </div>
 
       <div className="mt-3 grid gap-3 lg:grid-cols-[1fr_2fr]">
         <label className="text-sm text-lab-muted">
-          Selected match
+          Выбранный матч
           <select
             value={selectedMatchId}
             onChange={(event) => chooseMatch(event.target.value)}
@@ -190,14 +190,14 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
               </div>
               <p className="mt-2 text-xs text-lab-muted">{step[2]}</p>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-lab-muted">
-                <dt>sourceMode</dt><dd className="text-white">{String(resultRecord?.sourceMode ?? (template === "analyst_pack" ? "analyst_sample" : "manual_real"))}</dd>
+                <dt>Источник данных</dt><dd className="text-white">{String(resultRecord?.sourceMode ?? (template === "analyst_pack" ? "analyst_sample" : "manual_real"))}</dd>
                 <dt>sourceName</dt><dd className="text-white">{String(metadata.sourceName ?? "missing") || "missing"}</dd>
                 <dt>collectedAt</dt><dd className="text-white">{String(metadata.collectedAt ?? "missing")}</dd>
                 <dt>sampleSize</dt><dd className="text-white">{String(metadata.sampleSize ?? "missing")}</dd>
                 <dt>confidence</dt><dd className="text-white">{String(metadata.confidence ?? "missing")}</dd>
-                <dt>usedInPrediction</dt><dd className="text-white">{status === "applied" || status === "valid" ? "yes after Apply" : "no"}</dd>
-                <dt>reasonIfNotUsed</dt><dd className="text-white">{status === "missing" ? "missing data" : status === "invalid" ? "validation failed" : "-"}</dd>
-                <dt>blockQuality</dt><dd className="text-white">{preview?.quality !== undefined ? `${Math.round(Number(preview.quality) * 100)}/100` : step[0] === "final" && resultRecord?.manualRealPackQuality && typeof resultRecord.manualRealPackQuality === "object" ? `${String((resultRecord.manualRealPackQuality as Record<string, unknown>).score)}/100` : "n/a"}</dd>
+                <dt>Используется в прогнозе</dt><dd className="text-white">{status === "applied" || status === "valid" ? "да после применения" : "нет"}</dd>
+                <dt>Почему не используется</dt><dd className="text-white">{status === "missing" ? "нет данных" : status === "invalid" ? "проверка не прошла" : "-"}</dd>
+                <dt>Качество блока</dt><dd className="text-white">{preview?.quality !== undefined ? `${Math.round(Number(preview.quality) * 100)}/100` : step[0] === "final" && resultRecord?.manualRealPackQuality && typeof resultRecord.manualRealPackQuality === "object" ? `${String((resultRecord.manualRealPackQuality as Record<string, unknown>).score)}/100` : "n/a"}</dd>
               </dl>
             </div>
           );})}
@@ -216,13 +216,13 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
           onClick={() => chooseTemplate("analyst_pack")}
           className={template === "analyst_pack" ? "rounded bg-violet-300 px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40" : "rounded border border-violet-400/50 px-3 py-1.5 text-sm text-violet-200 hover:border-violet-300 disabled:cursor-not-allowed disabled:opacity-40"}
         >
-          Generate Sample Analyst Pack
+          Создать тестовый analyst pack
         </button>
       </div>
 
       {!analystSampleEnabled ? (
         <p className="mt-3 rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
-          Sample generator disabled. Set ENABLE_ANALYST_SAMPLE=true locally to validate the pipeline with dev-only SAMPLE DATA.
+          Генератор тестовых данных выключен. Установите ENABLE_ANALYST_SAMPLE=true локально, если нужно проверить pipeline на dev-only тестовых данных.
         </p>
       ) : null}
 
@@ -232,7 +232,7 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
         </div>
       ) : (
         <div className="mt-3 rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
-          Manual real enrichment: вставляйте только вручную проверенные реальные данные. SAMPLE и MANUAL REAL не смешиваются без badge.
+          Ручные реальные данные: вставляйте только проверенные данные. Тестовые и ручные реальные данные не смешиваются без отдельного badge.
         </div>
       )}
 
@@ -245,24 +245,24 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
       <p className="mt-2 text-xs text-lab-muted">Advanced JSON fallback. Wizard cards above are the primary workflow; textarea remains for batch import/export and precise analyst packs.</p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={loading} onClick={() => send("validate")} className="rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan disabled:opacity-50">
-          Validate
+          Проверить
         </button>
         <button type="button" disabled={loading || (isSampleTemplate && !analystSampleEnabled)} onClick={() => send("apply")} className="rounded bg-lab-cyan px-3 py-2 text-sm font-medium text-black disabled:opacity-50">
-          {isSampleTemplate ? "Apply Sample Analyst Pack" : "Apply Manual Real Enrichment"}
+          {isSampleTemplate ? "Применить тестовый analyst pack" : "Применить ручные реальные данные"}
         </button>
         <button type="button" disabled={loading || !selectedMatchId} onClick={resetManual} className="rounded border border-lab-red/60 px-3 py-2 text-sm text-lab-red disabled:opacity-50">
-          Reset manual_real data for selected match
+          Сбросить manual_real для выбранного матча
         </button>
         <button type="button" disabled={loading || !selectedMatchId} onClick={exportManual} className="rounded border border-lab-green/60 px-3 py-2 text-sm text-lab-green disabled:opacity-50">
-          Export current data pack JSON
+          Экспорт data pack JSON
         </button>
         <button type="button" disabled={loading || !selectedMatchId} onClick={resetSample} className="rounded border border-violet-400/60 px-3 py-2 text-sm text-violet-200 disabled:opacity-50">
-          Reset sample data for selected match
+          Сбросить тестовые данные для выбранного матча
         </button>
       </div>
       {Array.isArray(resultRecord?.whatStillMissing) && resultRecord.whatStillMissing.length ? (
         <div className="mt-3 rounded border border-lab-amber/60 bg-lab-panel2 p-3 text-sm text-lab-amber">
-          What is still missing: {(resultRecord.whatStillMissing as string[]).join(", ")}
+          Что ещё не хватает: {(resultRecord.whatStillMissing as string[]).join(", ")}
         </div>
       ) : null}
       {result ? (

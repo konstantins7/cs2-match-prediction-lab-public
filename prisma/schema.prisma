@@ -40,12 +40,14 @@ model Team {
   vetoPatterns          VetoPattern[] @relation("VetoTeam")
   opponentVetoPatterns  VetoPattern[] @relation("VetoOpponent")
   newsItems             NewsItem[]
+  newsImpactSnapshots   NewsImpactSnapshot[]
   rosterVersions        TeamRosterVersion[]
   chemistrySnapshots    TeamChemistrySnapshot[]
   rosterEvents          RosterEvent[]
   matchesAsTeamA        Match[] @relation("MatchTeamA")
   matchesAsTeamB        Match[] @relation("MatchTeamB")
   matchesWon            Match[] @relation("MatchWinner")
+  valveRosterHints      ValveRosterHint[]
 }
 
 model Player {
@@ -112,6 +114,8 @@ model Match {
   h2hEntries       HeadToHead[]
   audits           PredictionAudit[]
   researchPacks    ResearchPack[]
+  featureSnapshots MatchFeatureSnapshot[]
+  newsImpactSnapshots NewsImpactSnapshot[]
 
   @@index([status, startTime])
   @@index([teamAId])
@@ -129,6 +133,23 @@ model ResearchPack {
   match          Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@index([readinessLevel])
+}
+
+model ValveRosterHint {
+  id               String   @id @default(cuid())
+  teamId           String?
+  source           String   @default("valve_rankings")
+  sourceRecordId   String?
+  rankingDate      DateTime
+  rosterJson       String
+  rosterConfidence Float    @default(0.35)
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  team             Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, rankingDate])
+  @@index([sourceRecordId])
 }
 
 model TeamRankSnapshot {
@@ -414,6 +435,7 @@ model HeadToHead {
 
 model NewsItem {
   id                 String   @id @default(cuid())
+  sourceId           String?
   teamId             String?
   playerId           String?
   title              String
@@ -421,26 +443,84 @@ model NewsItem {
   source             String
   url                String?
   publishedAt        DateTime
+  collectedAt        DateTime?
   reliability        String
   eventType          String
+  sourceTier         String   @default("unknown")
   sentiment          String
+  impactDirection    String   @default("neutral")
   impactScore        Float
   maxAllowedImpact   Float
+  riskScore          Float    @default(0)
+  confidence         Float    @default(0.5)
   isRumor            Boolean  @default(false)
   isOfficial         Boolean  @default(false)
+  isConfirmed        Boolean  @default(false)
+  expiresAt          DateTime?
+  sourceMode         String   @default("manual_real")
+  rawJson            String   @default("{}")
   matchId            String?
   importBatchId      String?
   sourceRecordId     String?
   isActive           Boolean  @default(true)
   createdAt          DateTime @default(now())
+  updatedAt          DateTime? @updatedAt
 
+  newsSource         NewsSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
   team               Team? @relation(fields: [teamId], references: [id])
   player             Player? @relation(fields: [playerId], references: [id])
 
+  @@index([sourceId])
   @@index([teamId])
   @@index([playerId])
   @@index([matchId, source])
   @@index([importBatchId])
+  @@index([sourceMode, sourceTier])
+  @@index([expiresAt])
+}
+
+model NewsSource {
+  id              String   @id @default(cuid())
+  name            String
+  sourceType      String
+  sourceTier      String
+  url             String?
+  handle          String?
+  platform        String?
+  reliabilityBase Float    @default(0.5)
+  isOfficial      Boolean  @default(false)
+  isInsider       Boolean  @default(false)
+  isManualOnly    Boolean  @default(true)
+  scrapingAllowed Boolean  @default(false)
+  apiAllowed      Boolean  @default(false)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           NewsItem[]
+
+  @@index([sourceType, sourceTier])
+  @@index([name])
+}
+
+model NewsImpactSnapshot {
+  id              String   @id @default(cuid())
+  matchId         String
+  teamId          String?
+  newsItemIdsJson String
+  totalImpact     Float
+  totalRisk       Float
+  confirmedImpact Float
+  rumorImpact     Float
+  confidence      Float
+  warningsJson    String
+  createdAt       DateTime @default(now())
+
+  match           Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team            Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([matchId, createdAt])
+  @@index([teamId])
 }
 
 model Prediction {
@@ -660,6 +740,60 @@ model PredictionAudit {
   match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@index([matchId])
+}
+
+model MatchFeatureSnapshot {
+  id                          String   @id @default(cuid())
+  matchId                     String
+  modelVersion                String
+  featureSchemaVersion        String
+  readinessLevel              String
+  sourceMode                  String
+  dataQualityScore            Float
+  featureCutoffTime           DateTime
+  dataLeakageCheckPassed      Boolean  @default(true)
+  featureSourcesJson          String
+  missingCriticalDataJson     String
+  sourceConfidence            Float
+  sampleSizeScore             Float
+  valveRankDiff               Float
+  hltvManualRankDiff          Float
+  internalEloDiff             Float
+  ratingUncertaintyDiff       Float
+  recentWinRateDiff           Float
+  opponentAdjustedFormDiff    Float
+  currentRosterFormDiff       Float
+  avgPlayerRatingDiff         Float
+  kdDiff                      Float
+  adrDiff                     Float
+  kastDiff                    Float
+  impactDiff                  Float
+  starPlayerDiff              Float
+  awpImpactDiff               Float
+  worstPlayerLiabilityDiff    Float
+  mapPoolAdvantage            Float
+  vetoAdvantage               Float
+  deciderAdvantage            Float
+  mapSampleConfidence         Float
+  punishRisk                  Float
+  pistolAdvantage             Float
+  forceBuyAdvantage           Float
+  economyRecoveryAdvantage    Float
+  closingAdvantage            Float
+  overtimeAdvantage           Float
+  rosterStabilityDiff         Float
+  newsImpactDiff              Float
+  fatigueDiff                 Float
+  lanOnlineDiff               Float
+  patchRelevance              Float
+  createdAt                   DateTime @default(now())
+
+  match                       Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+  @@index([readinessLevel])
+  @@index([modelVersion, featureSchemaVersion])
+  @@index([dataLeakageCheckPassed])
 }
 
 model ExternalSourceRecord {

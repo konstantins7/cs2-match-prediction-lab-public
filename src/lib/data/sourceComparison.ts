@@ -22,7 +22,7 @@ function latestDate(values: Array<Date | string | undefined | null>) {
     .sort((a, b) => b.getTime() - a.getTime())[0];
 }
 
-function itemSource(item: { source?: string; sourceMode?: string }) {
+function itemSource(item: { source?: string | null; sourceMode?: string | null }) {
   return item.source ?? item.sourceMode;
 }
 
@@ -100,6 +100,21 @@ export function buildDataSourceRows(input: PredictionInput): DataSourceRow[] {
   }
   rows.push(...manualRows(input, "manual_enrichment", "manual_real"));
   rows.push(...manualRows(input, "analyst_sample", "analyst_sample"));
+  const manualReferenceNews = input.news.filter((item) => item.sourceMode === "manual_reference");
+  if (manualReferenceNews.length > 0) {
+    rows.push({
+      group: "News source",
+      source: "manual_reference",
+      sourceMode: "manual_reference",
+      dataType: "official/media/insider news",
+      status: "used",
+      freshness: "manual reference",
+      confidence: manualReferenceNews.reduce((sum, item) => sum + (item.confidence ?? 0.5), 0) / manualReferenceNews.length,
+      sampleSize: manualReferenceNews.length,
+      usedInPrediction: true,
+      reasonIfNotUsed: ""
+    });
+  }
   const sampleRawOnly = (input.manualSourceRecords ?? []).filter((record) => record.entityType.startsWith("analyst_sample_"));
   if (sampleRawOnly.length > 0 && !rows.some((row) => row.sourceMode === "analyst_sample")) {
     rows.push({

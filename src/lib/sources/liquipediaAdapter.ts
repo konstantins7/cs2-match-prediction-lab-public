@@ -4,9 +4,11 @@ import type { SourceAdapter, SourceJobType } from "./types";
 import { buildSourceStatus, disabledResult, envFlag, envPresent, SOURCE_PRIORITY } from "./types";
 
 const source = "liquipedia" as const;
-const capabilities = ["rosters", "teams", "players", "results"] as const;
+const capabilities = ["rosters", "teams", "players", "results", "tournaments"] as const;
 const requiredEnv = ["LIQUIPEDIA_API_KEY", "ENABLE_LIQUIPEDIA_SYNC"];
 const hourlyLimit = 60;
+export const liquipediaMediaWikiEndpoint = "https://liquipedia.net/counterstrike/api.php";
+export const liquipediaMediaWikiUserAgent = "CS2MatchPredictionLab/0.4 (local research analytics; contact: saldinkostya97@gmail.com)";
 
 export function isLiquipediaBlockedByRateLimit(health: Pick<SourceHealth, "nextAllowedSyncAt" | "rateLimitRemaining"> | null, now = new Date()) {
   if (!health?.nextAllowedSyncAt) return false;
@@ -22,7 +24,7 @@ export function liquipediaRateLimitResult(jobType: SourceJobType, now = new Date
     records: [],
     recordsFetched: 0,
     errors: ["Liquipedia rate limit reached; retry after nextAllowedSyncAt."],
-    notes: "Blocked by MVP 0.3 Liquipedia 60 requests/hour guard.",
+    notes: "Blocked by LiquipediaDB 60 requests/hour guard.",
     nextAllowedSyncAt,
     rateLimitRemaining: 0
   };
@@ -45,7 +47,14 @@ export const liquipediaAdapter: SourceAdapter = {
       requiredEnv,
       enabled,
       configured,
-      message: configured ? "Configured for roster, tournament and historical context sync with 60 requests/hour guard." : "Not configured: set LIQUIPEDIA_API_KEY and ENABLE_LIQUIPEDIA_SYNC=true."
+      message: configured
+        ? "Configured for LiquipediaDB roster, tournament and historical context sync with 60 requests/hour guard."
+        : "LiquipediaDB not configured. MediaWiki API can be used conservatively via api.php only: 1 request / 2 seconds, action=parse 1 / 30 seconds, custom User-Agent, no HTML scraping.",
+      endpointsAvailable: [
+        `${liquipediaMediaWikiEndpoint} (MediaWiki API, no key, conservative/manual use)`,
+        "LiquipediaDB rosters/tournaments/roster changes/event participants when access exists"
+      ],
+      endpointsBlocked: ["Generated HTML pages are not allowed for automated access"]
     });
   },
   async sync(context) {
@@ -66,7 +75,7 @@ export const liquipediaAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "partial",
-      notes: "Liquipedia API access is configured, but MVP 0.3 keeps query-specific ingestion conservative to avoid abusive access.",
+      notes: "LiquipediaDB access is configured, but MVP 0.4.1 keeps query-specific ingestion conservative to avoid abusive access.",
       rateLimitRemaining: hourlyLimit - 1
     });
   }

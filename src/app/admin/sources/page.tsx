@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/prisma";
 import { RankMatchingPanel } from "@/components/RankMatchingPanel";
 import { SourceSyncPanel } from "@/components/SourceSyncPanel";
+import { SourceCoverageMatrix } from "@/components/SourceCoverageMatrix";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getRankMatchingCandidates } from "@/lib/data/rankMatching";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
 import { getProFocusCoverage } from "@/lib/proFocusCoverage";
 import { getSourceStatuses } from "@/lib/sources/sourceHealth";
+import { buildSourceCoverageMatrix } from "@/lib/sourceCoverageMatrix";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ const priorityNotes = [
   "Steam/CS Updates: free patches/meta.",
   "PandaScore Free Fixtures Mode: schedule, matches, teams, players, tournaments, basic results.",
   "Manual import: fallback/override.",
+  "Manual News/HLTV/Telegram reference: manual-only news intelligence, no scraping.",
   "Parsed Demo JSON: local deep stats from parsed demos.",
   "Liquipedia limited: rosters/tournaments/history with rate limits.",
   "GRID Open Access: future detailed match/round/player/economy stats.",
@@ -31,6 +34,7 @@ export default async function SourcesPage() {
     getReadinessDistribution()
   ]);
   const rawCounts = new Map(rawRecords.map((record) => [record.source, record._count.source]));
+  const coverageMatrix = buildSourceCoverageMatrix(undefined, statuses);
 
   return (
     <div className="space-y-5">
@@ -51,6 +55,8 @@ export default async function SourcesPage() {
       </section>
 
       <SourceSyncPanel statuses={statuses} />
+
+      <SourceCoverageMatrix rows={coverageMatrix} />
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Pro Focus Coverage</h2>

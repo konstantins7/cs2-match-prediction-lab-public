@@ -10,6 +10,9 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 
 export function MatchCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
+  const updatedAt = new Date(match.updatedAt);
+  const stale = Number.isFinite(updatedAt.getTime()) ? Date.now() - updatedAt.getTime() > 7 * 24 * 60 * 60 * 1000 : true;
+  const recalculatedAt = match.audits?.[0]?.createdAt;
   return (
     <article className="rounded border border-lab-border bg-lab-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -54,6 +57,11 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
         <Link href={`/match/${match.id}`} className="rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black hover:bg-cyan-300">
           Разбор
         </Link>
+      </div>
+      <div className="mt-3 grid gap-2 text-xs text-lab-muted md:grid-cols-3">
+        <span>Матч обновлён: {formatDateTime(match.updatedAt)}</span>
+        <span>Прогноз пересчитан: {recalculatedAt ? formatDateTime(recalculatedAt) : "нет"}</span>
+        <span>Данные устарели: {stale ? "да" : "нет"}</span>
       </div>
     </article>
   );

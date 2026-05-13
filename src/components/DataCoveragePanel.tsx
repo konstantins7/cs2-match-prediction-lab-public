@@ -2,7 +2,7 @@ import { formatDateTime } from "@/lib/format";
 import type { PredictionInput } from "@/lib/predictionEngine";
 
 function yesNo(value: boolean) {
-  return value ? "yes" : "no";
+  return value ? "да" : "нет";
 }
 
 function localDateTime(value: Date | string) {
@@ -17,52 +17,52 @@ function localDateTime(value: Date | string) {
 
 function countdown(value: Date | string) {
   const diffMs = new Date(value).getTime() - Date.now();
-  if (!Number.isFinite(diffMs)) return "unknown";
-  if (diffMs <= 0) return "match time passed";
+  if (!Number.isFinite(diffMs)) return "неизвестно";
+  if (diffMs <= 0) return "время матча прошло";
   const days = Math.floor(diffMs / 86_400_000);
   const hours = Math.floor((diffMs % 86_400_000) / 3_600_000);
   const minutes = Math.floor((diffMs % 3_600_000) / 60_000);
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  return `${minutes}m`;
+  if (days > 0) return `${days}д ${hours}ч`;
+  if (hours > 0) return `${hours}ч ${minutes}м`;
+  return `${minutes}м`;
 }
 
 export function DataCoveragePanel({ input }: { input: PredictionInput }) {
   const coverage = input.dataCoverage;
   if (!coverage) return null;
   const rows = [
-    ["match fixture data", coverage.fixtureData],
-    ["team rank data", coverage.rankData],
-    ["team recent matches", coverage.recentMatches],
-    ["team form snapshots", coverage.teamFormSnapshots],
-    ["player roster", coverage.playerRoster],
-    ["player stats", coverage.playerStats],
-    ["map stats", coverage.mapStats],
-    ["veto history", coverage.vetoHistory],
+    ["базовые данные матча", coverage.fixtureData],
+    ["рейтинг команд", coverage.rankData],
+    ["последние матчи команд", coverage.recentMatches],
+    ["снимки формы команд", coverage.teamFormSnapshots],
+    ["состав игроков", coverage.playerRoster],
+    ["статистика игроков", coverage.playerStats],
+    ["статистика карт", coverage.mapStats],
+    ["история veto", coverage.vetoHistory],
     ["H2H", coverage.h2h],
-    ["news/roster events", coverage.newsOrRosterEvents],
-    ["source conflicts", coverage.sourceConflicts]
+    ["новости / roster events", coverage.newsOrRosterEvents],
+    ["конфликты источников", coverage.sourceConflicts]
   ] as const;
 
   return (
     <section className="rounded border border-lab-border bg-lab-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-white">Data Coverage</h2>
+          <h2 className="font-semibold text-white">Покрытие данных</h2>
           <p className="mt-1 text-sm text-lab-muted">Что уже известно по матчу и какие сигналы пока отсутствуют.</p>
         </div>
         <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{coverage.freshnessStatus}</span>
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        <Info label="Match date" value={formatDateTime(input.match.startTime)} />
-        <Info label="Local time" value={localDateTime(input.match.startTime)} />
-        <Info label="Countdown" value={countdown(input.match.startTime)} />
-        <Info label="Source mode" value={input.match.sourceMode ?? "unknown"} />
-        <Info label="Last PandaScore sync" value={coverage.lastPandaScoreSyncAt ? formatDateTime(coverage.lastPandaScoreSyncAt) : "never"} />
-        <Info label="Last Valve sync" value={coverage.lastValveSyncAt ? formatDateTime(coverage.lastValveSyncAt) : "never"} />
-        <Info label="Last CS Updates sync" value={coverage.lastCsUpdatesSyncAt ? formatDateTime(coverage.lastCsUpdatesSyncAt) : "never"} />
-        <Info label="Last recalculated" value={coverage.lastPredictionCalculatedAt ? formatDateTime(coverage.lastPredictionCalculatedAt) : "not saved"} />
+        <Info label="Дата матча" value={formatDateTime(input.match.startTime)} />
+        <Info label="Локальное время" value={localDateTime(input.match.startTime)} />
+        <Info label="До матча" value={countdown(input.match.startTime)} />
+        <Info label="Источник данных" value={input.match.sourceMode ?? "unknown"} />
+        <Info label="Последний sync PandaScore" value={coverage.lastPandaScoreSyncAt ? formatDateTime(coverage.lastPandaScoreSyncAt) : "никогда"} />
+        <Info label="Последний sync рейтингов" value={coverage.lastValveSyncAt ? formatDateTime(coverage.lastValveSyncAt) : "никогда"} />
+        <Info label="Последний sync CS2 updates" value={coverage.lastCsUpdatesSyncAt ? formatDateTime(coverage.lastCsUpdatesSyncAt) : "никогда"} />
+        <Info label="Прогноз пересчитан" value={coverage.lastPredictionCalculatedAt ? formatDateTime(coverage.lastPredictionCalculatedAt) : "не сохранён"} />
       </div>
 
       <div className="mt-4 grid gap-2 md:grid-cols-2 xl:grid-cols-3">

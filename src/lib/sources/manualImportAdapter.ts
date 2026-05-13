@@ -3,7 +3,7 @@ import type { SourceAdapter } from "./types";
 import { buildSourceStatus, SOURCE_PRIORITY } from "./types";
 
 const source = "manual" as const;
-const capabilities = ["manual", "matches", "teams", "players", "rosters", "meta"] as const;
+const capabilities = ["manual", "matches", "teams", "players", "rosters", "meta", "news"] as const;
 
 function parseManualPayload(payload?: string) {
   if (!payload?.trim()) return [];
@@ -27,6 +27,20 @@ function normalizeManualRecord(raw: unknown, index: number) {
       entityType: "hltv_manual_ranking",
       externalId: String(record.hltvReferenceUrl ?? `hltv-manual-${record.rankingDate ?? "unknown"}-${record.rank}-${record.teamName}`),
       raw: { ...record, source: "hltv_manual_reference" }
+    };
+  }
+  if (record.title && (record.sourceType || record.eventType || record.telegramPostUrl || record.hltvUrl)) {
+    const sourceType = String(record.sourceType ?? (record.telegramPostUrl ? "telegram_insider_manual" : record.hltvUrl ? "hltv_manual_reference" : "manual_note"));
+    return {
+      entityType: "manual_news",
+      externalId: String(record.id ?? record.url ?? record.hltvUrl ?? record.telegramPostUrl ?? `manual-news-${index}-${record.title}`),
+      raw: {
+        ...record,
+        sourceType,
+        sourceMode: sourceType === "manual_note" ? "manual_real" : "manual_reference",
+        isManualOnly: true,
+        scrapingAllowed: false
+      }
     };
   }
   if (record.teamA && record.teamB) {

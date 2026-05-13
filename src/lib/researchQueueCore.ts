@@ -76,7 +76,11 @@ function teamNeedsRank(input: PredictionInput, side: "A" | "B") {
   return !rank && isWatchlistTeam(team.name);
 }
 
-export function buildResearchQueueForMatch(input: PredictionInput, _readiness: PredictionReadiness): ResearchTask[] {
+function readinessBelowAnalytical(readiness: PredictionReadiness) {
+  return readiness.level !== "L3_ANALYTICAL" && readiness.level !== "L4_DEEP";
+}
+
+export function buildResearchQueueForMatch(input: PredictionInput, readiness: PredictionReadiness): ResearchTask[] {
   const tasks: ResearchTask[] = [];
   const matchId = input.match.id;
   const blocked = input.match.needsReview || input.sourceConflicts.length > 0;
@@ -176,6 +180,28 @@ export function buildResearchQueueForMatch(input: PredictionInput, _readiness: P
     actionType: "import_news_json",
     actionState: newsReady ? "Available" : "Requires manual input"
   }));
+
+  if (readinessBelowAnalytical(readiness)) {
+    const newsTasks: Array<[string, ResearchTaskPriority, string, string, string]> = [
+      ["Check official team news", "medium", "Официальные сообщения о stand-in/болезни/visa/roster change сильно влияют на risk.", "Official team/player/tournament channels, manual note only.", "official_news_check"],
+      ["Check roster/stand-in news", "high", "Stand-in или late roster change может снизить confidence даже при нормальных stats.", "Manual news import with sourceName, publishedAt and reliability.", "stand_in_news_check"],
+      ["Add insider signal if relevant", "low", "Инсайды не должны перебивать математику, но помогают risk context.", "Telegram/insider manual note; no scraping.", "insider_manual_note"],
+      ["Add HLTV manual reference", "low", "HLTV можно использовать только как ручной reference summary без scraping.", "HLTV manual reference import.", "hltv_manual_news_reference"],
+      ["Add Telegram insider manual note", "low", "Telegram signals добавляются вручную и не используются для ML training/fine-tuning.", "Telegram insider manual import.", "telegram_insider_manual_note"]
+    ];
+    for (const [task, priority, reason, sourceSuggestion, actionType] of newsTasks) {
+      tasks.push(makeTask(matchId, {
+        task,
+        status: newsReady ? "done" : "open",
+        priority,
+        reason,
+        expectedImpact: "Улучшает risk/confidence explanation; probability impact строго ограничен clamps.",
+        sourceSuggestion,
+        actionType,
+        actionState: newsReady ? "Available" : "Requires manual input"
+      }));
+    }
+  }
 
   tasks.push(makeTask(matchId, {
     task: "Import parsed demo JSON",

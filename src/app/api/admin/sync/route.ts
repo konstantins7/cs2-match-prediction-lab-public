@@ -10,6 +10,7 @@ import {
 import type { SourceJobType, SourceName } from "@/lib/sources/types";
 import { redactString } from "@/lib/security/redaction";
 import { confirmRankMatch, rejectRankMatch } from "@/lib/data/rankMatching";
+import { prepareMatchForecast, runOneClickGlobalRefresh } from "@/lib/autoResearch";
 
 export const dynamic = "force-dynamic";
 
@@ -18,11 +19,21 @@ type SyncRequest = {
   source?: SourceName;
   jobType?: SourceJobType;
   payload?: string;
+  matchId?: string;
 };
 
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as SyncRequest;
+    if (body.action === "one_click_global_refresh") {
+      const result = await runOneClickGlobalRefresh();
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "prepare_match") {
+      if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
+      const result = await prepareMatchForecast(body.matchId);
+      return NextResponse.json({ ok: true, result });
+    }
     if (body.action === "run_all") {
       const results = await runAllSync();
       return NextResponse.json({ ok: true, results });
@@ -45,6 +56,12 @@ export async function POST(request: Request) {
     }
     if (body.action === "manual_import") {
       const result = await runSourceSync("manual", "manual_import", body.payload);
+      await rebuildSnapshots();
+      await runPredictionsForUpcomingMatches();
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "manual_news_import") {
+      const result = await runSourceSync("manual", "manual_news_import", body.payload);
       await rebuildSnapshots();
       await runPredictionsForUpcomingMatches();
       return NextResponse.json({ ok: true, result });

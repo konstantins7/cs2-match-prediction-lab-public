@@ -7,6 +7,7 @@ import { parsedDemoAdapter } from "./parsedDemoAdapter";
 import { valveRankingsAdapter } from "./valveRankingsAdapter";
 import { csUpdatesAdapter } from "./csUpdatesAdapter";
 import { faceitAdapter } from "./faceitAdapter";
+import { telegramNewsAdapter } from "./telegramNewsAdapter";
 import type { SourceName } from "./types";
 
 export const sourceAdapters = [
@@ -17,6 +18,7 @@ export const sourceAdapters = [
   csUpdatesAdapter,
   manualImportAdapter,
   parsedDemoAdapter,
+  telegramNewsAdapter,
   faceitAdapter,
   mockAdapter
 ];

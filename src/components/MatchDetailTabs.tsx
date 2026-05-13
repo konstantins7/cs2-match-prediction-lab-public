@@ -5,7 +5,7 @@ import { DataQualityPanel } from "./DataQualityPanel";
 import { FactorBreakdownTable } from "./FactorBreakdownTable";
 import { FactorContributionChart } from "./FactorContributionChart";
 import { MapPoolMatrix } from "./MapPoolMatrix";
-import { NewsImpactPanel } from "./NewsImpactPanel";
+import { NewsImpactPanel, NewsRiskSummary } from "./NewsImpactPanel";
 import { PlayerFormTable } from "./PlayerFormTable";
 import { ProbabilityBar } from "./ProbabilityBar";
 import { ReadinessBadge } from "./ReadinessBadge";
@@ -16,7 +16,11 @@ import { DataSourcesTable } from "./DataSourcesTable";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
+import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
+import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
+import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
+import type { SourceCoverageRow } from "@/lib/sourceCoverageMatrix";
 import { formatDateTime } from "@/lib/format";
 import type { MatchPriorityResult } from "@/lib/proFocus";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
@@ -24,7 +28,21 @@ import type { ResearchTask } from "@/lib/researchQueueCore";
 
 const tabs = ["Overview", "Factor Breakdown", "Maps & Veto", "Opponent Matchup", "Players", "News & Events", "Head-to-Head", "Risk & Confidence", "Explanation"] as const;
 
-export function MatchDetailTabs({ input, prediction, priority, researchTasks = [] }: { input: PredictionInput; prediction: PredictionOutput; priority?: MatchPriorityResult; researchTasks?: ResearchTask[] }) {
+export function MatchDetailTabs({
+  input,
+  prediction,
+  priority,
+  researchTasks = [],
+  featureSnapshot,
+  sourceCoverageRows = []
+}: {
+  input: PredictionInput;
+  prediction: PredictionOutput;
+  priority?: MatchPriorityResult;
+  researchTasks?: ResearchTask[];
+  featureSnapshot?: FeatureSnapshotView | null;
+  sourceCoverageRows?: SourceCoverageRow[];
+}) {
   const [active, setActive] = useState<(typeof tabs)[number]>("Overview");
   const hasVetoHistory = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
   const winner = prediction.predictedWinnerId === input.teamA.id ? input.teamA.name : input.teamB.name;
@@ -37,6 +55,7 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
 
   return (
     <div className="space-y-5">
+      <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button
@@ -84,7 +103,7 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
                 <ReadinessBadge level={prediction.readiness.level} />
                 <RealForecastBadge isReady={prediction.realForecast.isReady} />
                 <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
-                {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
+                    {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">ТОЛЬКО ТЕСТОВЫЕ ДАННЫЕ</span>}
                 {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{priority.priorityLabel}</span>}
                 {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{priority.visibilityTier}</span>}
                 {input.match.isPinned && <span className="rounded border border-lab-green/60 px-2 py-1 text-xs text-lab-green">PINNED</span>}
@@ -96,10 +115,10 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
               <div className="mt-4 rounded border border-lab-border bg-lab-panel2 p-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div>
-                    <p className="text-xs uppercase text-lab-muted">Real Forecast Ready</p>
+                    <p className="text-xs uppercase text-lab-muted">Реальный прогноз готов</p>
                     <p className={prediction.realForecast.isReady ? "mt-1 text-sm text-lab-green" : "mt-1 text-sm text-lab-amber"}>{prediction.realForecast.label}</p>
                   </div>
-                  <div className="text-sm text-lab-muted">Manual Real Pack Quality: {prediction.manualRealPackQuality.score}/100 · {prediction.manualRealPackQuality.label}</div>
+                  <div className="text-sm text-lab-muted">Качество ручного real data pack: {prediction.manualRealPackQuality.score}/100 · {prediction.manualRealPackQuality.label}</div>
                 </div>
                 {!prediction.realForecast.isReady && (
                   <ul className="mt-2 space-y-1 text-sm text-lab-muted">
@@ -109,13 +128,13 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded border border-lab-border bg-lab-panel2 p-3">
-                  <p className="text-xs uppercase text-lab-muted">Readiness reasons</p>
+                  <p className="text-xs uppercase text-lab-muted">Почему такой статус</p>
                   <ul className="mt-2 space-y-1 text-sm text-lab-muted">
                     {prediction.readiness.reasons.map((reason, index) => <li key={`readiness-reason-${index}-${reason.slice(0, 24)}`}>{reason}</li>)}
                   </ul>
                 </div>
                 <div className="rounded border border-lab-border bg-lab-panel2 p-3">
-                  <p className="text-xs uppercase text-lab-muted">Missing critical data</p>
+                  <p className="text-xs uppercase text-lab-muted">Чего не хватает</p>
                   <ul className="mt-2 space-y-1 text-sm text-lab-muted">
                     {(prediction.readiness.missingCriticalData.length ? prediction.readiness.missingCriticalData : ["Критичных пропусков нет."]).slice(0, 6).map((item, index) => <li key={`readiness-missing-${index}-${item}`}>{item}</li>)}
                   </ul>
@@ -127,14 +146,17 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
             </div>
           </div>
           <DataCoveragePanel input={input} />
+          <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
+          <FeatureSnapshotPanel snapshot={featureSnapshot} />
+          <SourceCoverageMatrix rows={sourceCoverageRows} compact />
           <section className="rounded border border-lab-border bg-lab-panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>
                 <h2 className="font-semibold text-white">Что нужно добрать для улучшения прогноза</h2>
                 <p className="mt-1 text-sm text-lab-muted">Research Queue показывает, какие данные сильнее всего поднимут readiness.</p>
               </div>
-              <a href="/admin/research-queue" className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">Research Queue</a>
+              <a href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}`} className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">Создать data pack</a>
             </div>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
               {researchTasks.length > 0 ? researchTasks.slice(0, 8).map((task) => (

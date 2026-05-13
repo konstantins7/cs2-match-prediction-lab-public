@@ -18,11 +18,12 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
             <th className="px-3 py-3">Формат</th>
             <th className="px-3 py-3">Матч</th>
             <th className="px-3 py-3">Статус</th>
-            <th className="px-3 py-3">Source</th>
+            <th className="px-3 py-3">Источник данных</th>
             <th className="px-3 py-3">Priority</th>
-            <th className="px-3 py-3">Readiness</th>
+            <th className="px-3 py-3">Готовность прогноза</th>
             <th className="px-3 py-3">Прогноз</th>
             <th className="px-3 py-3">Качество</th>
+            <th className="px-3 py-3">Обновления</th>
             <th className="px-3 py-3" />
           </tr>
         </thead>
@@ -62,6 +63,10 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                 </div>
               </td>
               <td className="px-3 py-3">{prediction.dataQualityScore}/100</td>
+              <td className="px-3 py-3 text-xs text-lab-muted">
+                <div>Матч обновлён: {formatDateTime(match.updatedAt)}</div>
+                <div>Прогноз пересчитан: {match.audits?.[0]?.createdAt ? formatDateTime(match.audits[0].createdAt) : "нет"}</div>
+              </td>
               <td className="px-3 py-3">
                 <Link href={`/match/${match.id}`} className="text-lab-cyan hover:text-cyan-200">
                   Разбор

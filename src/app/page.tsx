@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { MatchCard } from "@/components/MatchCard";
+import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -35,8 +36,21 @@ export default async function HomePage() {
         <p className="text-sm uppercase tracking-wide text-lab-cyan">Research dashboard</p>
         <h1 className="mt-2 text-3xl font-semibold text-white">CS2 Match Prediction Lab</h1>
         <p className="mt-2 max-w-3xl text-sm text-lab-muted">
-          Вероятностная аналитика официальных CS2 матчей. Real/free источники показываются выше demo, а все проценты пересчитаны через calculatePrediction.
+          Вероятностная аналитика официальных CS2 матчей. Сайт честно показывает, когда есть только базовые free data, а когда прогноз готов к анализу.
         </p>
+        <div className="mt-5 grid gap-3 md:grid-cols-4">
+          {[
+            ["Шаг 1", "Обновить матчи и аналитику"],
+            ["Шаг 2", "Выбрать матч"],
+            ["Шаг 3", "Подготовить прогноз"],
+            ["Шаг 4", "Если данных мало — создать data pack"]
+          ].map(([step, text]) => (
+            <div key={step} className="rounded border border-lab-border bg-lab-panel2 p-3">
+              <p className="text-xs uppercase text-lab-cyan">{step}</p>
+              <p className="mt-1 text-sm text-white">{text}</p>
+            </div>
+          ))}
+        </div>
         <div className="mt-4 flex flex-wrap gap-2">
           {filters.map(([filter, href]) => (
             <Link key={filter} href={href} className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan hover:text-white">
@@ -45,6 +59,8 @@ export default async function HomePage() {
           ))}
         </div>
       </section>
+
+      <OneClickResearchButton />
 
       <DashboardStatusStrip status={fullStatus} />
 

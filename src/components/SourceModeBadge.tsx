@@ -1,14 +1,20 @@
+import { sourceModeRu } from "@/lib/russianLabels";
+
 const labels: Record<string, string> = {
-  demo: "DEMO DATA",
-  valve_rankings: "VALVE RANKING",
-  steam_updates: "REAL DATA",
-  pandascore_free: "PANDA FREE",
-  manual_real: "MANUAL REAL",
-  parsed_demo: "REAL DATA",
-  analyst_sample: "SAMPLE DATA",
-  mixed: "MIXED SOURCES",
-  partial: "PARTIAL DATA",
-  needs_review: "NEEDS REVIEW"
+  demo: sourceModeRu.demo,
+  valve_rankings: sourceModeRu.valve_rankings,
+  steam_updates: sourceModeRu.steam_updates,
+  pandascore_free: sourceModeRu.pandascore_free,
+  manual_real: sourceModeRu.manual_real,
+  manual_reference: sourceModeRu.manual_reference,
+  parsed_demo: sourceModeRu.parsed_demo,
+  analyst_sample: sourceModeRu.analyst_sample,
+  liquipedia_limited: sourceModeRu.liquipedia_limited,
+  faceit_optional: sourceModeRu.faceit_optional,
+  grid_open_access: sourceModeRu.grid_open_access,
+  mixed: sourceModeRu.mixed,
+  partial: sourceModeRu.partial,
+  needs_review: sourceModeRu.needs_review
 };
 
 const classes: Record<string, string> = {
@@ -17,8 +23,12 @@ const classes: Record<string, string> = {
   steam_updates: "border-lab-cyan/50 text-lab-cyan",
   pandascore_free: "border-lab-cyan/50 text-lab-cyan",
   manual_real: "border-lab-green/50 text-lab-green",
+  manual_reference: "border-lab-amber/60 text-lab-amber",
   parsed_demo: "border-lab-green/50 text-lab-green",
   analyst_sample: "border-violet-400/70 text-violet-300",
+  liquipedia_limited: "border-lab-cyan/50 text-lab-cyan",
+  faceit_optional: "border-lab-muted/50 text-lab-muted",
+  grid_open_access: "border-lab-green/50 text-lab-green",
   mixed: "border-lab-amber/60 text-lab-amber",
   partial: "border-lab-amber/60 text-lab-amber",
   needs_review: "border-lab-red/60 text-lab-red"
@@ -28,7 +38,7 @@ export function SourceModeBadge({ sourceMode, needsReview }: { sourceMode?: stri
   const mode = needsReview ? "needs_review" : sourceMode ?? "demo";
   return (
     <span className={`rounded border px-2 py-1 text-xs uppercase ${classes[mode] ?? classes.partial}`}>
-      {labels[mode] ?? "PARTIAL DATA"}
+      {labels[mode] ?? "ЧАСТИЧНЫЕ ДАННЫЕ"}
     </span>
   );
 }

@@ -15,21 +15,21 @@ export type DashboardStatus = {
 
 export function DashboardStatusStrip({ status }: { status: DashboardStatus }) {
   const items = [
-    ["Last PandaScore sync", formatMaybeDate(status.lastPandaScoreSyncAt)],
-    ["Last Valve sync", formatMaybeDate(status.lastValveSyncAt)],
-    ["Last CS Updates sync", formatMaybeDate(status.lastCsUpdatesSyncAt)],
-    ["Last prediction recalculation", formatMaybeDate(status.lastPredictionRecalculationAt)],
-    ["Real matches", String(status.realMatchesCount)],
-    ["Pro Focus", String(status.proFocusCount)],
-    ["Avg data quality", `${Math.round(status.averageDataQuality)}/100`],
-    ["Fixture-only", String(status.fixtureOnlyCount)],
+    ["Последний sync PandaScore", formatMaybeDate(status.lastPandaScoreSyncAt)],
+    ["Последний sync рейтингов", formatMaybeDate(status.lastValveSyncAt)],
+    ["Последний sync CS2 updates", formatMaybeDate(status.lastCsUpdatesSyncAt)],
+    ["Прогноз пересчитан", formatMaybeDate(status.lastPredictionRecalculationAt)],
+    ["Реальные матчи", String(status.realMatchesCount)],
+    ["Топовые матчи", String(status.proFocusCount)],
+    ["Качество данных", `${Math.round(status.averageDataQuality)}/100`],
+    ["Только базовые данные", String(status.fixtureOnlyCount)],
     ...(status.readinessDistribution
       ? [
-          ["Readiness L0/L1", `${status.readinessDistribution.L0_FIXTURE_ONLY}/${status.readinessDistribution.L1_BASIC_CONTEXT}`],
-          ["Readiness L2/L3/L4", `${status.readinessDistribution.L2_BASIC_PREDICTION}/${status.readinessDistribution.L3_ANALYTICAL}/${status.readinessDistribution.L4_DEEP}`],
-          ["Actionable previews", `${status.readinessDistribution.actionable}/${status.readinessDistribution.nonActionable}`],
-          ["Real actionable", String(status.readinessDistribution.realActionable)],
-          ["Sample actionable", String(status.readinessDistribution.sampleActionable)]
+          ["Готовность L0/L1", `${status.readinessDistribution.L0_FIXTURE_ONLY}/${status.readinessDistribution.L1_BASIC_CONTEXT}`],
+          ["Готовность L2/L3/L4", `${status.readinessDistribution.L2_BASIC_PREDICTION}/${status.readinessDistribution.L3_ANALYTICAL}/${status.readinessDistribution.L4_DEEP}`],
+          ["Actionable / preview", `${status.readinessDistribution.actionable}/${status.readinessDistribution.nonActionable}`],
+          ["Реальные готовые", String(status.readinessDistribution.realActionable)],
+          ["Тестовые готовые", String(status.readinessDistribution.sampleActionable)]
         ]
       : [])
   ];

@@ -5,6 +5,7 @@ export type SourceName =
   | "valve-rankings"
   | "cs-updates"
   | "faceit"
+  | "telegram-news"
   | "parsed-demo"
   | "analyst-sample"
   | "manual"
@@ -17,8 +18,12 @@ export type SourceMode =
   | "steam_updates"
   | "pandascore_free"
   | "manual_real"
+  | "manual_reference"
   | "parsed_demo"
   | "analyst_sample"
+  | "liquipedia_limited"
+  | "faceit_optional"
+  | "grid_open_access"
   | "mixed"
   | "partial"
   | "needs_review";
@@ -40,6 +45,7 @@ export type SourceJobType =
   | "game_meta_updates"
   | "manual_import"
   | "hltv_manual_ranking_import"
+  | "manual_news_import"
   | "parsed_demo_import";
 
 export type SourceCapability =
@@ -55,6 +61,7 @@ export type SourceCapability =
   | "series"
   | "tournaments"
   | "parsed-demo"
+  | "news"
   | "manual";
 
 export type SourceJobStatus = "success" | "partial" | "failed" | "blocked" | "disabled";
@@ -143,12 +150,13 @@ export const SOURCE_PRIORITY: Record<SourceName, number> = {
   pandascore: 3,
   manual: 4,
   "parsed-demo": 5,
-  "analyst-sample": 6,
-  liquipedia: 7,
-  grid: 8,
-  faceit: 9,
-  mock: 10,
-  "official-future": 11
+  "telegram-news": 6,
+  "analyst-sample": 7,
+  liquipedia: 8,
+  grid: 9,
+  faceit: 10,
+  mock: 11,
+  "official-future": 12
 };
 
 export function envFlag(name: string) {
@@ -195,7 +203,11 @@ export function sourceModeForSource(source: SourceName): SourceMode {
   if (source === "cs-updates") return "steam_updates";
   if (source === "manual") return "manual_real";
   if (source === "parsed-demo") return "parsed_demo";
+  if (source === "telegram-news") return "manual_reference";
   if (source === "analyst-sample") return "analyst_sample";
+  if (source === "liquipedia") return "liquipedia_limited";
+  if (source === "faceit") return "faceit_optional";
+  if (source === "grid") return "grid_open_access";
   if (source === "mock") return "demo";
   return "partial";
 }

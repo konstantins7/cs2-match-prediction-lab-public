@@ -59,6 +59,7 @@ type MatchRow = {
   updatedAt: Date;
   teamA: MatchTeamRow;
   teamB: MatchTeamRow;
+  audits?: Array<{ createdAt: Date }>;
 };
 
 export type CalculatedMatch = {
@@ -128,7 +129,8 @@ export async function getCalculatedMatches(options: {
           teamPriority: true,
           rankSnapshots: { orderBy: { rankingDate: "desc" }, take: 3 }
         }
-      }
+      },
+      audits: { select: { createdAt: true }, orderBy: { createdAt: "desc" }, take: 1 }
     },
     orderBy: [{ startTime: options.status === "finished" ? "desc" : "asc" }],
     take: options.limit ? Math.max(options.limit * 5, 80) : 160

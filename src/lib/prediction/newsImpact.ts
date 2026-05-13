@@ -1,28 +1,17 @@
 import type { NewsEntity, PredictionFactorOutput, PredictionInput } from "./types";
-import { clamp } from "./normalization";
+import { calculateNewsImpact, evaluateNewsItem } from "@/lib/news/newsImpact";
 import { makeEvidence, makeFactor } from "./utils";
 
 export function newsClamp(news: Pick<NewsEntity, "reliability" | "impactScore" | "isRumor" | "isOfficial" | "maxAllowedImpact">) {
-  const reliability = news.reliability.toLowerCase();
-  const max =
-    news.isOfficial || reliability.includes("official")
-      ? 12
-      : reliability.includes("confirmed")
-        ? 8
-        : reliability.includes("reliable")
-          ? 5
-          : news.isRumor || reliability.includes("rumor")
-            ? 3
-            : Math.min(news.maxAllowedImpact || 3, 3);
-  return clamp(news.impactScore, -max, max);
+  return evaluateNewsItem(news as NewsEntity).clampedImpact;
 }
 
 export function newsImpactFactor(input: PredictionInput): PredictionFactorOutput {
-  const teamANews = input.news.filter((item) => item.teamId === input.teamA.id);
-  const teamBNews = input.news.filter((item) => item.teamId === input.teamB.id);
-  const aImpact = clamp(teamANews.reduce((sum, item) => sum + newsClamp(item), 0), -12, 12);
-  const bImpact = clamp(teamBNews.reduce((sum, item) => sum + newsClamp(item), 0), -12, 12);
-  const rumorCount = input.news.filter((item) => item.isRumor).length;
+  const summary = calculateNewsImpact(input);
+  const aImpact = summary.teamA.totalImpact;
+  const bImpact = summary.teamB.totalImpact;
+  const totalCount = summary.teamA.usages.length + summary.teamB.usages.length;
+  const confidence = Math.min(summary.teamA.confidence, summary.teamB.confidence);
 
   return makeFactor({
     factorName: "News Impact",
@@ -31,12 +20,13 @@ export function newsImpactFactor(input: PredictionInput): PredictionFactorOutput
     teamAValue: aImpact,
     teamBValue: bImpact,
     scale: 12,
-    confidence: rumorCount > 0 ? 0.48 : 0.72,
+    confidence: summary.rumorCount > 0 ? Math.min(confidence, 0.48) : confidence,
     explanation: "Новости ограничены clamps; спорные слухи больше повышают risk, чем меняют победителя.",
     evidence: [
-      makeEvidence("clamped news impact", "last_7_days", teamANews.length + teamBNews.length, aImpact, bImpact, "Total news impact clamp: ±12%."),
-      makeEvidence("rumor count", "last_7_days", rumorCount, rumorCount, rumorCount, "Слухи имеют отдельные clamps и снижают confidence.")
+      makeEvidence("clamped news impact", "active_news", totalCount, aImpact, bImpact, "Total news impact clamp: ±12%."),
+      makeEvidence("rumor count", "active_news", summary.rumorCount, summary.rumorCount, summary.rumorCount, "Слухи имеют отдельные clamps и снижают confidence."),
+      makeEvidence("news risk", "active_news", totalCount, summary.teamA.totalRisk, summary.teamB.totalRisk, "Rumor/low reliability signals mostly raise risk, not probability.")
     ],
-    warnings: rumorCount > 0 ? ["Есть rumor/news uncertainty: risk повышен, probability movement ограничен."] : []
+    warnings: summary.warnings
   });
 }

@@ -23,7 +23,8 @@ export const gridAdapter: SourceAdapter = {
       requiredEnv,
       enabled,
       configured,
-      message: configured ? "GRID key is present. Detailed endpoint mapping is access-dependent." : "Not configured: set GRID_API_KEY and ENABLE_GRID_SYNC=true."
+      message: configured ? "GRID key is present. Open Access endpoint mapping is access-dependent; expected for round/player/economy telemetry." : "Not configured: set GRID_API_KEY and ENABLE_GRID_SYNC=true.",
+      endpointsAvailable: ["round data", "player data", "economy events", "map stats", "live/historical telemetry"]
     });
   },
   async sync(context) {
@@ -37,7 +38,7 @@ export const gridAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "partial",
-      notes: "GRID adapter is configured but MVP 0.3 keeps endpoint-specific detailed ingestion behind access/manual mapping."
+      notes: "GRID adapter is configured but MVP 0.4.1 keeps endpoint-specific detailed ingestion behind access/manual mapping."
     });
   }
 };

@@ -5,6 +5,7 @@ import { hashRawRecord, saveExternalSourceRecord } from "./sources/sourceReconci
 import { rebuildSnapshots, savePredictionAudit } from "./sources/sourceScheduler";
 import { refreshResearchPack } from "./researchQueue";
 import { sourceModeForSource, type SourceName } from "./sources/types";
+import { saveManualNewsItem } from "./news/manualNews";
 import {
   calculateManualBlockQuality,
   calculateManualRealPackQuality,
@@ -112,7 +113,7 @@ function parsePayload(text: string) {
 }
 
 function typedSourceMode(source: string) {
-  const known: SourceName[] = ["grid", "pandascore", "liquipedia", "valve-rankings", "cs-updates", "faceit", "parsed-demo", "analyst-sample", "manual", "mock", "official-future"];
+  const known: SourceName[] = ["grid", "pandascore", "liquipedia", "valve-rankings", "cs-updates", "faceit", "telegram-news", "parsed-demo", "analyst-sample", "manual", "mock", "official-future"];
   return known.includes(source as SourceName) ? sourceModeForSource(source as SourceName) : "partial";
 }
 
@@ -759,26 +760,20 @@ async function applyNews(teams: NonNullable<MatchTeams>, newsRows: Record<string
   const changed: string[] = [];
   for (const row of newsRows) {
     const team = resolveTeamName(teams, row.team);
-    await prisma.newsItem.create({
-      data: {
-        teamId: team?.id ?? null,
-        title: String(row.title ?? "Manual note"),
-        summary: String(row.summary ?? ""),
-        source: meta.recordSource,
-        url: typeof row.sourceUrl === "string" ? row.sourceUrl : null,
-        publishedAt: row.publishedAt ? new Date(String(row.publishedAt)) : new Date(),
-        reliability: String(row.reliability ?? "unknown"),
-        eventType: String(row.eventType ?? "manual"),
-        sentiment: num(row.impactScore, 0) >= 0 ? "positive" : "negative",
-        impactScore: num(row.impactScore, 0),
-        maxAllowedImpact: Math.min(12, Math.abs(num(row.maxAllowedImpact, 3))),
-        isRumor: String(row.reliability ?? "").toLowerCase().includes("rumor"),
-        isOfficial: String(row.reliability ?? "").toLowerCase() === "official",
-        matchId: meta.matchId,
-        importBatchId: meta.importBatchId,
-        sourceRecordId: meta.sourceRecordId,
-        isActive: true
-      }
+    await saveManualNewsItem({
+      raw: {
+        ...row,
+        sourceName: row.sourceName ?? meta.recordSource,
+        sourceType: row.sourceType ?? (meta.isSample ? "manual_note" : "manual_note"),
+        sourceTier: row.sourceTier ?? (String(row.reliability ?? "").toLowerCase() === "official" ? "official" : String(row.reliability ?? "").toLowerCase().includes("rumor") ? "rumor" : "unknown")
+      },
+      teamId: team?.id ?? null,
+      matchId: meta.matchId,
+      importBatchId: meta.importBatchId,
+      sourceRecordId: meta.sourceRecordId,
+      recordSource: meta.recordSource,
+      sourceMode: meta.isSample ? "analyst_sample" : "manual_real",
+      isActive: true
     });
     changed.push(`${meta.recordSource} NewsItem created for ${team?.name ?? "unknown team"}`);
   }

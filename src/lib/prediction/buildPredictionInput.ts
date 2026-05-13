@@ -123,6 +123,7 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
         AND: [
           {
             OR: [
+              { matchId: match.id },
               { teamId: teamA.id },
               { teamId: teamB.id },
               { player: { is: { teamId: { in: [teamA.id, teamB.id] } } } }

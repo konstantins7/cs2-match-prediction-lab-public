@@ -10,6 +10,10 @@ import { sourceModeForSource } from "./types";
 import type { SourceJobType, SourceMode, SourceName, SourceSyncResult } from "./types";
 import { classifyTeamVisibility, classifyTournament, getEffectiveRank } from "../proFocus";
 import { aliasesForTeamName } from "../config/teamAliases";
+import { rebuildMatchFeatureSnapshots, saveMatchFeatureSnapshot } from "../features/matchFeatureSnapshot";
+import { updateInternalEloForFinishedMatches } from "../modelLab/ratings";
+import { saveManualNewsItem } from "../news/manualNews";
+import { rebuildNewsImpactSnapshots, saveNewsImpactSnapshot } from "../news/newsSnapshots";
 
 const now = () => new Date();
 
@@ -289,6 +293,49 @@ function rawRecord(raw: unknown) {
   return raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
 }
 
+async function findTeamByName(name: unknown, matchId?: string | null) {
+  if (typeof name !== "string" || !name.trim()) return null;
+  const normalized = name.trim().toLowerCase();
+  if (matchId) {
+    const match = await prisma.match.findUnique({ where: { id: matchId }, include: { teamA: true, teamB: true } });
+    if (match) {
+      const teams = [match.teamA, match.teamB];
+      const scoped = teams.find((team) => team.name.toLowerCase() === normalized || team.slug === normalized.replace(/[^a-z0-9]+/g, "-"));
+      if (scoped) return scoped;
+    }
+  }
+  const teams = await prisma.team.findMany({ take: 500 });
+  return teams.find((team) => team.name.toLowerCase() === normalized || team.slug === normalized.replace(/[^a-z0-9]+/g, "-")) ?? null;
+}
+
+async function findPlayerByName(name: unknown, teamId?: string | null) {
+  if (typeof name !== "string" || !name.trim()) return null;
+  const normalized = name.trim().toLowerCase();
+  const players = await prisma.player.findMany({ where: teamId ? { teamId } : undefined, take: 500 });
+  return players.find((player) => player.nickname.toLowerCase() === normalized || player.realName?.toLowerCase() === normalized) ?? null;
+}
+
+async function reconcileManualNewsRecord(raw: unknown, sourceRecordId?: string) {
+  const record = rawRecord(raw);
+  if (!record.title) return { created: 0, updated: 0, needsReview: 0 };
+  const matchId = typeof record.matchId === "string" ? record.matchId : null;
+  const team = await findTeamByName(record.affectedTeam ?? record.team, matchId);
+  const player = await findPlayerByName(record.affectedPlayer ?? record.player, team?.id);
+  const sourceMode = String(record.sourceMode ?? "manual_reference") === "manual_real" ? "manual_real" : "manual_reference";
+  await saveManualNewsItem({
+    raw: record,
+    teamId: team?.id ?? null,
+    playerId: player?.id ?? null,
+    matchId,
+    sourceRecordId,
+    importBatchId: typeof record.importBatchId === "string" ? record.importBatchId : null,
+    recordSource: sourceMode,
+    sourceMode,
+    isActive: true
+  });
+  return { created: 1, updated: 0, needsReview: team || !record.affectedTeam ? 0 : 1 };
+}
+
 function nestedName(value: unknown) {
   const record = rawRecord(value);
   return typeof record.name === "string" ? record.name : null;
@@ -539,6 +586,21 @@ async function reconcileValveRankingRecord(source: SourceName, raw: unknown) {
       rankingDate: rankingDateFromRaw(record),
       confidence: result.confidence,
       sourceUrl: typeof record.sourceUrl === "string" ? record.sourceUrl : null
+    });
+  }
+  const rosterHint = record.roster ?? record.players ?? record.lineup;
+  const hasRosterHint = Array.isArray(rosterHint) ? rosterHint.length > 0 : typeof rosterHint === "string" && rosterHint.trim().length > 0;
+  if (hasRosterHint) {
+    await prisma.valveRosterHint.create({
+      data: {
+        teamId: result.matchedEntityId,
+        source: "valve_rankings",
+        sourceRecordId: String(record.externalId ?? record.rank ?? externalName),
+        rankingDate: rankingDateFromRaw(record),
+        rosterJson: json(Array.isArray(rosterHint) ? rosterHint : String(rosterHint).split(/,\s*|\s{2,}/).map((player) => player.trim()).filter(Boolean)),
+        rosterConfidence: 0.35,
+        notes: "Valve standings roster hint only; not treated as confirmed full roster."
+      }
     });
   }
   await prisma.entityAlias.upsert({
@@ -836,11 +898,13 @@ async function persistSourceRecords(result: SourceSyncResult) {
           ? await reconcileValveRankingRecord(record.source, record.raw)
           : record.entityType === "hltv_manual_ranking"
             ? await reconcileHltvManualRankingRecord(record.raw)
-            : record.entityType === "game_meta_update"
-              ? await reconcileGameMetaRecord(record.raw)
-              : record.entityType === "parsed_demo_stats"
-                ? await reconcileParsedDemoRecord(record.raw)
-                : await reconcileEntityCandidate(saved.record.id, record.source, record.entityType, record.externalId, record.raw);
+            : record.entityType === "manual_news"
+              ? await reconcileManualNewsRecord(record.raw, saved.record.id)
+              : record.entityType === "game_meta_update"
+                ? await reconcileGameMetaRecord(record.raw)
+                : record.entityType === "parsed_demo_stats"
+                  ? await reconcileParsedDemoRecord(record.raw)
+                  : await reconcileEntityCandidate(saved.record.id, record.source, record.entityType, record.externalId, record.raw);
     recordsCreated += reconciled.created;
     recordsUpdated += reconciled.updated;
     needsReviewCount += reconciled.needsReview ?? 0;
@@ -1189,7 +1253,7 @@ export async function buildPredictionDataWindows() {
 }
 
 export async function rebuildSnapshots() {
-  const [teamForms, basicResults, playerStats, mapStats, vetoPatterns, styles, matchups, windows] = await Promise.all([
+  const [teamForms, basicResults, playerStats, mapStats, vetoPatterns, styles, matchups, windows, elo] = await Promise.all([
     buildTeamFormSnapshots(),
     buildTeamBasicResultSnapshots(),
     buildPlayerStatSnapshots(),
@@ -1197,9 +1261,12 @@ export async function rebuildSnapshots() {
     buildVetoPatterns(),
     buildTeamStyleSnapshots(),
     buildOpponentMatchupProfiles(),
-    buildPredictionDataWindows()
+    buildPredictionDataWindows(),
+    updateInternalEloForFinishedMatches()
   ]);
-  return { teamForms, basicResults, playerStats, mapStats, vetoPatterns, styles, matchups, windows };
+  const newsImpacts = await rebuildNewsImpactSnapshots();
+  const featureSnapshots = await rebuildMatchFeatureSnapshots();
+  return { teamForms, basicResults, playerStats, mapStats, vetoPatterns, styles, matchups, windows, elo, newsImpacts, featureSnapshots };
 }
 
 export async function savePredictionAudit(matchId: string) {
@@ -1219,7 +1286,7 @@ export async function savePredictionAudit(matchId: string) {
       warningsJson: json(prediction.warnings)
     }
   });
-  return prisma.predictionAudit.create({
+  const audit = await prisma.predictionAudit.create({
     data: {
       predictionId: savedPrediction.id,
       matchId,
@@ -1235,6 +1302,9 @@ export async function savePredictionAudit(matchId: string) {
       warningsJson: json(prediction.warnings)
     }
   });
+  await saveMatchFeatureSnapshot(matchId);
+  await saveNewsImpactSnapshot(matchId);
+  return audit;
 }
 
 export async function runPredictionsForUpcomingMatches() {

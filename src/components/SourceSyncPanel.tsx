@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SourceStatus } from "@/lib/sources/types";
+import { ManualNewsImportPanel } from "./ManualNewsImportPanel";
 
 type Action = {
   label: string;
@@ -32,7 +33,7 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
 
   async function run(action: Action) {
     setBusy(action.label);
-    setMessage("Запуск sync job...");
+      setMessage("Запускаю обновление...");
     try {
       const response = await fetch("/api/admin/sync", {
         method: "POST",
@@ -40,9 +41,9 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
         body: JSON.stringify(action)
       });
       const json = (await response.json()) as { ok: boolean; error?: string; result?: unknown; results?: unknown };
-      setMessage(json.ok ? `${action.label}: job accepted. Обновите страницу, чтобы увидеть свежий SourceHealth.` : json.error ?? "Sync failed.");
+      setMessage(json.ok ? `${action.label}: готово. Обновите страницу, чтобы увидеть свежий статус источников.` : json.error ?? "Источник временно недоступен.");
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Sync failed.");
+      setMessage(error instanceof Error ? error.message : "Источник временно недоступен.");
     } finally {
       setBusy(null);
     }
@@ -63,7 +64,7 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
   return (
     <div className="space-y-4">
       <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Sync actions</h2>
+        <h2 className="font-semibold text-white">Действия источников</h2>
         <p className="mt-1 text-sm text-lab-muted">{message}</p>
         <div className="mt-4 flex flex-wrap gap-2">
           {actions.map((action) => {
@@ -78,7 +79,7 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
                 title={status && !status.enabled ? status.message : action.label}
                 className="rounded border border-lab-border px-3 py-1.5 text-sm text-white disabled:cursor-not-allowed disabled:text-lab-muted hover:border-lab-cyan"
               >
-                {busy === action.label ? "Running..." : action.label}
+                {busy === action.label ? "Выполняется..." : action.label}
               </button>
             );
           })}
@@ -100,9 +101,11 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
           onClick={runHltvManualRankingImport}
           className="mt-3 rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50"
         >
-          Import HLTV Manual Ranking
+          Импортировать HLTV manual rank
         </button>
       </section>
+
+      <ManualNewsImportPanel />
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Manual JSON/CSV fallback</h2>
@@ -118,7 +121,7 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
           onClick={runManualImport}
           className="mt-3 rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50"
         >
-          Import Manual JSON/CSV
+          Импортировать Manual JSON/CSV
         </button>
       </section>
 
@@ -137,7 +140,7 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
           onClick={runParsedDemoImport}
           className="mt-3 rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black disabled:opacity-50"
         >
-          Import Parsed Demo JSON
+          Импортировать Parsed Demo JSON
         </button>
       </section>
     </div>

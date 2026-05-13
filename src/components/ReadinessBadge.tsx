@@ -1,11 +1,12 @@
 import type { PredictionReadinessLevel } from "@/lib/predictionEngine";
+import { readinessBadgeRu } from "@/lib/russianLabels";
 
 const labels: Record<PredictionReadinessLevel, string> = {
-  L0_FIXTURE_ONLY: "NOT READY",
-  L1_BASIC_CONTEXT: "BASIC SIGNAL",
-  L2_BASIC_PREDICTION: "BASIC PREDICTION",
-  L3_ANALYTICAL: "ANALYTICAL READY",
-  L4_DEEP: "DEEP READY"
+  L0_FIXTURE_ONLY: readinessBadgeRu.L0_FIXTURE_ONLY,
+  L1_BASIC_CONTEXT: readinessBadgeRu.L1_BASIC_CONTEXT,
+  L2_BASIC_PREDICTION: readinessBadgeRu.L2_BASIC_PREDICTION,
+  L3_ANALYTICAL: readinessBadgeRu.L3_ANALYTICAL,
+  L4_DEEP: readinessBadgeRu.L4_DEEP
 };
 
 const classes: Record<PredictionReadinessLevel, string> = {
@@ -23,4 +24,3 @@ export function ReadinessBadge({ level }: { level: PredictionReadinessLevel }) {
     </span>
   );
 }
-

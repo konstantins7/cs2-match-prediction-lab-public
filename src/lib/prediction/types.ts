@@ -321,6 +321,7 @@ export type VetoPatternEntity = {
   importBatchId?: string | null;
   sourceRecordId?: string | null;
   isActive?: boolean;
+  createdAt?: Date | string;
 };
 
 export type HeadToHeadEntity = {
@@ -341,6 +342,8 @@ export type HeadToHeadEntity = {
 };
 
 export type NewsEntity = {
+  id?: string;
+  sourceId?: string | null;
   teamId?: string | null;
   playerId?: string | null;
   title: string;
@@ -348,17 +351,27 @@ export type NewsEntity = {
   source: string;
   url?: string | null;
   publishedAt: Date | string;
+  collectedAt?: Date | string | null;
   reliability: string;
   eventType: string;
+  sourceTier?: string | null;
   sentiment: string;
+  impactDirection?: string | null;
   impactScore: number;
   maxAllowedImpact: number;
+  riskScore?: number | null;
+  confidence?: number | null;
   isRumor: boolean;
   isOfficial: boolean;
+  isConfirmed?: boolean | null;
+  expiresAt?: Date | string | null;
+  sourceMode?: string | null;
+  rawJson?: string | null;
   matchId?: string | null;
   importBatchId?: string | null;
   sourceRecordId?: string | null;
   isActive?: boolean;
+  updatedAt?: Date | string | null;
 };
 
 export type GameMetaEntity = {
