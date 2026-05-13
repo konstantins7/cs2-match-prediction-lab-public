@@ -17,19 +17,42 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     prisma.team.findUniqueOrThrow({ where: { id: match.teamBId }, include: { rankSnapshots: { orderBy: { rankingDate: "desc" }, take: 3 } } })
   ]);
   const weights = { ...defaultWeights, ...(await getDefaultModelWeights()), ...modelWeights };
-  const scopedSampleWhere = {
-    OR: [
-      { source: { not: "analyst_sample" } },
-      { source: "analyst_sample", matchId: match.id, isActive: true }
-    ]
-  };
+  const manualRealCounts = await Promise.all([
+    prisma.playerStatSnapshot.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
+    prisma.teamMapStat.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
+    prisma.vetoPattern.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
+    prisma.headToHead.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
+    prisma.newsItem.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
+    prisma.player.count({ where: { sourceMode: "manual_real", matchId: match.id, isActive: true } })
+  ]);
+  const hasManualRealForMatch = manualRealCounts.some((count) => count > 0);
+  const scopedSampleWhere = hasManualRealForMatch
+    ? {
+        OR: [
+          { source: { notIn: ["analyst_sample", "manual_enrichment"] } },
+          { source: "manual_enrichment", matchId: match.id, isActive: true }
+        ]
+      }
+    : {
+        OR: [
+          { source: { notIn: ["analyst_sample", "manual_enrichment"] } },
+          { source: "manual_enrichment", matchId: match.id, isActive: true },
+          { source: "analyst_sample", matchId: match.id, isActive: true }
+        ]
+      };
   const scopedPlayerWhere = (teamId: string) => ({
     teamId,
     isActive: true,
-    OR: [
-      { sourceMode: { not: "analyst_sample" } },
-      { sourceMode: "analyst_sample", matchId: match.id }
-    ]
+    OR: hasManualRealForMatch
+      ? [
+          { sourceMode: { notIn: ["analyst_sample", "manual_real"] } },
+          { sourceMode: "manual_real", matchId: match.id }
+        ]
+      : [
+          { sourceMode: { notIn: ["analyst_sample", "manual_real"] } },
+          { sourceMode: "manual_real", matchId: match.id },
+          { sourceMode: "analyst_sample", matchId: match.id }
+        ]
   });
 
   const [
@@ -147,6 +170,31 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     getCoverageMeta(match.id)
   ]);
 
+  const sourceRecordIds = [
+    ...playersA,
+    ...playersB,
+    ...playerStatsA,
+    ...playerStatsB,
+    ...mapStatsA,
+    ...mapStatsB,
+    ...vetoPatternsA,
+    ...vetoPatternsB,
+    ...h2h,
+    ...news
+  ]
+    .map((record) => record.sourceRecordId)
+    .filter((id): id is string => Boolean(id));
+  const manualSourceRecords = await prisma.externalSourceRecord.findMany({
+        where: {
+          OR: [
+            ...(sourceRecordIds.length ? [{ id: { in: [...new Set(sourceRecordIds)] } }] : []),
+            { entityId: match.id, entityType: { startsWith: "analyst_sample_" } },
+            { entityId: match.id, entityType: { startsWith: "manual_real_" } }
+          ]
+        },
+        select: { id: true, source: true, entityType: true, entityId: true, rawJson: true, fetchedAt: true, sourceConfidence: true }
+      });
+
   const input: PredictionInput = {
     match,
     teamA,
@@ -184,7 +232,8 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     teamStyleA,
     teamStyleB,
     dataWindows,
-    sourceConflicts
+    sourceConflicts,
+    manualSourceRecords
   };
   return { ...input, dataCoverage: buildDataCoverage(input, coverageMeta) };
 }

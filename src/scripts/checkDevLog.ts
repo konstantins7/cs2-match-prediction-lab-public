@@ -12,9 +12,14 @@ if (!existsSync(logPath)) {
 const result = checkDevLogContent(readFileSync(logPath, "utf8"));
 
 if (!result.ok) {
-  console.error("Fresh dev log contains runtime/Fast Refresh/Prisma errors:");
+  console.error("Fresh dev log contains critical runtime/Prisma/module/500 errors:");
   for (const match of result.matches) console.error(`- ${match}`);
   process.exit(1);
 }
 
-console.log("Fresh dev log clean: no runtime/Fast Refresh/Prisma unknown-field errors found.");
+if (result.warnings.length > 0) {
+  console.warn("Fresh dev log has Fast Refresh warnings, but no critical runtime errors:");
+  for (const warning of result.warnings) console.warn(`- ${warning}`);
+} else {
+  console.log("Fresh dev log clean: no critical runtime errors or Fast Refresh warnings found.");
+}

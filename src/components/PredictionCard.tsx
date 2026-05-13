@@ -5,6 +5,7 @@ import { ProbabilityBar } from "./ProbabilityBar";
 import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
+import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 
 export function PredictionCard({ row }: { row: CalculatedMatch }) {
@@ -37,6 +38,9 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
         <div className="flex flex-wrap gap-2">
           <SourceModeBadge sourceMode={match.sourceMode} needsReview={match.needsReview} />
           <ReadinessBadge level={prediction.readiness.level} />
+          <RealForecastBadge isReady={prediction.realForecast.isReady} />
+          <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
+          {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
           <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{row.priority.priorityLabel}</span>
           {dataLimited && <span className="rounded border border-lab-amber/60 px-2 py-1 text-xs text-lab-amber">Недостаточно данных</span>}
           <ConfidenceBadge value={prediction.confidenceScore} />

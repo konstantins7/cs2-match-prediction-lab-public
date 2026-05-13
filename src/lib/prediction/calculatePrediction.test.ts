@@ -261,6 +261,77 @@ describe("calculatePrediction acceptance rules", () => {
     expect(result.readiness.level).toBe("L4_DEEP");
   });
 
+  it("does not let raw-only or low-trust manual_real data unlock L3", () => {
+    const base = createPredictionFixture();
+    const rawRecord = {
+      id: "manual_low",
+      source: "manual",
+      entityType: "manual_real_manual_real_pack",
+      entityId: base.match.id,
+      rawJson: JSON.stringify({
+        type: "manual_real_pack",
+        source: "manual_real",
+        metadata: {
+          sourceName: "Manual note",
+          collectedAt: "2026-05-13T00:00:00Z",
+          period: "last_30_days",
+          sampleSize: 0,
+          confidence: 0.4,
+          notes: "low confidence"
+        }
+      }),
+      fetchedAt: "2026-05-13T00:00:00Z",
+      sourceConfidence: 0.4
+    };
+    const result = calculatePrediction(createPredictionFixture({
+      playerStatsA: base.playerStatsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      playerStatsB: base.playerStatsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      mapStatsA: base.mapStatsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      mapStatsB: base.mapStatsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      vetoPatternsA: base.vetoPatternsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      vetoPatternsB: base.vetoPatternsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      manualSourceRecords: [rawRecord]
+    }));
+    expect(result.readiness.level).not.toBe("L3_ANALYTICAL");
+  });
+
+  it("allows full validated manual_real roster/player/map/veto coverage to reach L3", () => {
+    const base = createPredictionFixture();
+    const rawRecord = {
+      id: "manual_valid",
+      source: "manual",
+      entityType: "manual_real_manual_real_pack",
+      entityId: base.match.id,
+      rawJson: JSON.stringify({
+        type: "manual_real_pack",
+        source: "manual_real",
+        metadata: {
+          sourceName: "Verified analyst pack",
+          sourceUrl: "https://example.test/source",
+          collectedAt: "2026-05-13T00:00:00Z",
+          period: "last_90_days",
+          sampleSize: 20,
+          confidence: 0.82,
+          notes: "test fixture"
+        }
+      }),
+      fetchedAt: "2026-05-13T00:00:00Z",
+      sourceConfidence: 0.82
+    };
+    const result = calculatePrediction(createPredictionFixture({
+      playersA: base.playersA.map((player) => ({ ...player, sourceMode: "manual_real", matchId: base.match.id, sourceConfidence: 0.82 })),
+      playersB: base.playersB.map((player) => ({ ...player, sourceMode: "manual_real", matchId: base.match.id, sourceConfidence: 0.82 })),
+      playerStatsA: base.playerStatsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      playerStatsB: base.playerStatsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      mapStatsA: base.mapStatsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      mapStatsB: base.mapStatsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      vetoPatternsA: base.vetoPatternsA.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      vetoPatternsB: base.vetoPatternsB.map((stat) => ({ ...stat, source: "manual_enrichment", matchId: base.match.id, sourceRecordId: rawRecord.id })),
+      manualSourceRecords: [rawRecord]
+    }));
+    expect(result.readiness.level).toBe("L3_ANALYTICAL");
+  });
+
   it("marks DQ below 20 as non-actionable and avoids forecast copy", () => {
     const base = createPredictionFixture();
     const result = calculatePrediction(

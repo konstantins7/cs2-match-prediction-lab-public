@@ -67,8 +67,8 @@ export async function getReadinessDistribution(limit = 120): Promise<ReadinessDi
       distribution.sampleDataCount += 1;
       if (prediction.readiness.isActionable) distribution.sampleActionable += 1;
     } else {
-      add(distribution.real, prediction.readiness.level, prediction.readiness.isActionable);
-      if (prediction.readiness.isActionable) distribution.realActionable += 1;
+      add(distribution.real, prediction.readiness.level, prediction.realForecast.isReady);
+      if (prediction.realForecast.isReady) distribution.realActionable += 1;
     }
   }
   Object.assign(distribution, distribution.total);

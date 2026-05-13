@@ -5,6 +5,16 @@ import { hashRawRecord, saveExternalSourceRecord } from "./sources/sourceReconci
 import { rebuildSnapshots, savePredictionAudit } from "./sources/sourceScheduler";
 import { refreshResearchPack } from "./researchQueue";
 import { sourceModeForSource, type SourceName } from "./sources/types";
+import {
+  calculateManualBlockQuality,
+  calculateManualRealPackQuality,
+  detectManualRealPlaceholderPayload,
+  manualPackUnlocks,
+  qualityMetadataFromRecord,
+  type ManualBlockQuality,
+  type ManualPackBlock,
+  type ManualPackStatus
+} from "./manualRealQuality";
 
 export { manualEnrichmentTemplates } from "./manualEnrichmentTemplates";
 
@@ -16,12 +26,21 @@ type Preview = {
   warnings: string[];
   creates: string[];
   updates: string[];
+  blockStatuses?: ManualBlockPreview[];
+  whatStillMissing?: string[];
   matchId?: string;
   type?: string;
   sourceMode?: "manual_real" | "analyst_sample";
   importBatchId?: string;
   realActionable?: boolean;
   pipelineProof?: boolean;
+  manualRealPackQuality?: {
+    score: number;
+    label: string;
+    canReachL3: boolean;
+    reasons: string[];
+    warnings: string[];
+  };
 };
 
 type EnrichmentMetadata = {
@@ -32,9 +51,30 @@ type EnrichmentMetadata = {
   importBatchId: string;
   sourceRecordId: string;
   matchId: string;
+  sourceConfidence: number;
 };
 
 type MatchTeams = Awaited<ReturnType<typeof matchTeams>>;
+
+type ManualBlockPreview = {
+  block: ManualPackBlock;
+  label: string;
+  status: ManualPackStatus;
+  quality: number;
+  readinessUnlock: string;
+  warnings: string[];
+  errors: string[];
+};
+
+const manualBlocks: Array<{ block: ManualPackBlock; label: string }> = [
+  { block: "ranking", label: "Ranking confirmation" },
+  { block: "roster", label: "Roster" },
+  { block: "player_stats", label: "Player stats" },
+  { block: "map_stats", label: "Map stats" },
+  { block: "veto_history", label: "Veto history" },
+  { block: "h2h", label: "H2H" },
+  { block: "news", label: "News / roster events" }
+];
 
 function analystSampleEnabled() {
   return process.env.ENABLE_ANALYST_SAMPLE === "true";
@@ -77,21 +117,13 @@ function typedSourceMode(source: string) {
 }
 
 function sourceScope(meta: EnrichmentMetadata) {
-  return meta.isSample
-    ? {
-        source: meta.recordSource,
-        matchId: meta.matchId,
-        importBatchId: meta.importBatchId,
-        sourceRecordId: meta.sourceRecordId,
-        isActive: true
-      }
-    : {
-        source: meta.recordSource,
-        matchId: null,
-        importBatchId: meta.importBatchId,
-        sourceRecordId: meta.sourceRecordId,
-        isActive: true
-      };
+  return {
+    source: meta.recordSource,
+    matchId: meta.matchId,
+    importBatchId: meta.importBatchId,
+    sourceRecordId: meta.sourceRecordId,
+    isActive: true
+  };
 }
 
 async function activeMaps() {
@@ -132,6 +164,89 @@ function analystPackSections(payload: Record<string, unknown>) {
   };
 }
 
+function manualPackSections(payload: Record<string, unknown>) {
+  return {
+    ranking: record(payload.rankingConfirmation ?? payload.ranking),
+    rosters: record(payload.rosters ?? payload.teams),
+    playerStats: rows(payload.playerStats ?? payload.players),
+    mapStats: rows(payload.mapStats ?? payload.teams),
+    vetoHistory: rows(payload.vetoHistory),
+    h2h: rows(payload.h2h ?? payload.entries),
+    news: rows(payload.news ?? payload.items)
+  };
+}
+
+function blockMetadata(payload: Record<string, unknown>, block: ManualPackBlock) {
+  const sections = manualPackSections(payload);
+  const sectionValue =
+    block === "ranking" ? sections.ranking :
+    block === "roster" ? record((payload as Record<string, unknown>).roster) :
+    block === "player_stats" ? record((payload as Record<string, unknown>).playerStatsMetadata) :
+    block === "map_stats" ? record((payload as Record<string, unknown>).mapStatsMetadata) :
+    block === "veto_history" ? record((payload as Record<string, unknown>).vetoMetadata) :
+    block === "h2h" ? record((payload as Record<string, unknown>).h2hMetadata) :
+    record((payload as Record<string, unknown>).newsMetadata);
+  return {
+    ...qualityMetadataFromRecord(payload),
+    ...qualityMetadataFromRecord(sectionValue)
+  };
+}
+
+function qualityPreview(payload: Record<string, unknown>, block: ManualPackBlock, valuesValid: boolean) {
+  return calculateManualBlockQuality(block, blockMetadata(payload, block), valuesValid);
+}
+
+function addQualityMessages(quality: ManualBlockQuality, warnings: string[], errors: string[]) {
+  warnings.push(...quality.warnings.map((warning) => `${quality.block}: ${warning}`));
+  if (quality.status === "needs_review") warnings.push(`${quality.block}: low source trust; block will be accepted as partial only.`);
+  if (quality.status === "invalid") errors.push(`${quality.block}: block quality invalid.`);
+}
+
+function missingAfterBlocks(statuses: ManualBlockPreview[]) {
+  const applied = new Set(statuses.filter((status) => status.status === "valid" || status.status === "applied").map((status) => status.block));
+  const missing: string[] = [];
+  if (!applied.has("roster")) missing.push("bind roster");
+  if (!applied.has("player_stats")) missing.push("import player stats");
+  if (!applied.has("map_stats")) missing.push("import map stats");
+  if (!applied.has("veto_history")) missing.push("import veto history");
+  if (!applied.has("h2h")) missing.push("add H2H");
+  if (!applied.has("news")) missing.push("add news/roster events");
+  return missing;
+}
+
+function makeBlockPreview(block: ManualPackBlock, status: ManualPackStatus, quality = 0, warnings: string[] = [], errors: string[] = []): ManualBlockPreview {
+  const label = manualBlocks.find((item) => item.block === block)?.label ?? block;
+  return {
+    block,
+    label,
+    status,
+    quality,
+    readinessUnlock: manualPackUnlocks[block],
+    warnings,
+    errors
+  };
+}
+
+function validateManualMetadata(payload: Record<string, unknown>, block: ManualPackBlock, valuesValid: boolean, warnings: string[], errors: string[]) {
+  const metadata = blockMetadata(payload, block);
+  const quality = calculateManualBlockQuality(block, metadata, valuesValid);
+  if (!metadata.sourceName) errors.push(`${block}: sourceName is required for manual_real.`);
+  if (!metadata.collectedAt) errors.push(`${block}: collectedAt is required for manual_real.`);
+  if (!metadata.period) errors.push(`${block}: period is required for manual_real.`);
+  addQualityMessages(quality, warnings, errors);
+  return quality;
+}
+
+function rate(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100;
+}
+
+function positive(value: unknown) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) && parsed > 0;
+}
+
 export async function validateManualEnrichment(text: string): Promise<Preview> {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -151,11 +266,19 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
   const importBatchId = sample ? `sample_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}` : `manual_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}`;
 
   if (sample && !analystSampleEnabled()) errors.push("ENABLE_ANALYST_SAMPLE=false: sample analyst pack is disabled.");
+  if (!sample) {
+    const fakeSignals = detectManualRealPlaceholderPayload(payload);
+    if (fakeSignals.isPlaceholder) {
+      errors.push("Похоже, что это шаблон, а не реальные данные.");
+      warnings.push(...fakeSignals.reasons);
+    }
+  }
   if (!matchId) errors.push("matchId is required.");
   if (!type) errors.push("type is required.");
   const teams = matchId ? await matchTeams(matchId) : null;
   if (!teams) errors.push(`Match not found: ${matchId}`);
   const maps = await activeMaps();
+  const blockStatuses: ManualBlockPreview[] = [];
 
   if (type === "analyst_pack") {
     const sections = analystPackSections(payload);
@@ -183,49 +306,188 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     creates.push(`${sections.vetoHistory.length} analyst_sample VetoPattern records scoped to ${matchId}`);
     creates.push(`${sections.h2h.length} analyst_sample HeadToHead records scoped to ${matchId}`);
     creates.push(`${sections.news.length} analyst_sample NewsItem records scoped to ${matchId}`);
+  } else if (type === "manual_real_pack") {
+    const sections = manualPackSections(payload);
+    const valuesValidByBlock: Record<ManualPackBlock, boolean> = {
+      ranking: true,
+      roster: true,
+      player_stats: true,
+      map_stats: true,
+      veto_history: true,
+      h2h: true,
+      news: true
+    };
+    if (Object.keys(sections.ranking).length) {
+      creates.push("manual_real ranking confirmation raw/reference");
+    }
+    if (!Object.keys(sections.rosters).length) valuesValidByBlock.roster = false;
+    for (const [teamName, players] of Object.entries(sections.rosters)) {
+      if (!resolveTeamName(teams, teamName)) warnings.push(`Team ${teamName} is not matched for this match; needs_review candidate required.`);
+      if (!Array.isArray(players) || players.length === 0) {
+        errors.push(`Roster for ${teamName} must include player names.`);
+        valuesValidByBlock.roster = false;
+      } else {
+        if (players.length < 5) warnings.push(`Roster for ${teamName} has fewer than five players; status partial.`);
+        if (players.length > 5) warnings.push(`Roster for ${teamName} has more than five players; review active lineup.`);
+        creates.push(`${players.length} manual_real roster/player links for ${teamName}`);
+      }
+    }
+    if (sections.playerStats.length) {
+      for (const player of sections.playerStats) {
+        if (!resolveTeamName(teams, player.team)) warnings.push(`Team ${String(player.team)} is not matched for this match.`);
+        if (!player.nickname) {
+          errors.push("playerStats nickname is required.");
+          valuesValidByBlock.player_stats = false;
+        }
+        if (!positive(player.kd)) { errors.push("playerStats kd must be > 0."); valuesValidByBlock.player_stats = false; }
+        if (!positive(player.rating)) { errors.push("playerStats rating must be > 0."); valuesValidByBlock.player_stats = false; }
+        if (num(player.adr, -1) < 0) { errors.push("playerStats adr must be >= 0."); valuesValidByBlock.player_stats = false; }
+        if (!rate(player.kast)) { errors.push("playerStats kast must be 0..100."); valuesValidByBlock.player_stats = false; }
+        if (!positive(player.maps)) { errors.push("playerStats maps must be > 0."); valuesValidByBlock.player_stats = false; }
+      }
+      creates.push(`${sections.playerStats.length} manual_real PlayerStatSnapshot records scoped to ${matchId}`);
+    } else valuesValidByBlock.player_stats = false;
+    if (sections.mapStats.length) {
+      for (const row of sections.mapStats) {
+        if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
+        if (!maps.includes(String(row.mapName))) { errors.push(`mapName ${String(row.mapName)} is not in active map pool.`); valuesValidByBlock.map_stats = false; }
+        if (!positive(row.mapsPlayed)) { errors.push("mapStats mapsPlayed must be > 0."); valuesValidByBlock.map_stats = false; }
+        for (const field of ["winRate", "pickRate", "banRate"]) {
+          if (!rate(row[field])) { errors.push(`mapStats ${field} must be 0..100.`); valuesValidByBlock.map_stats = false; }
+        }
+      }
+      creates.push(`${sections.mapStats.length} manual_real TeamMapStat records scoped to ${matchId}`);
+    } else valuesValidByBlock.map_stats = false;
+    if (sections.vetoHistory.length) {
+      for (const row of sections.vetoHistory) {
+        if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
+        if (!maps.includes(String(row.mapName))) { errors.push(`mapName ${String(row.mapName)} is not in active map pool.`); valuesValidByBlock.veto_history = false; }
+        for (const field of ["pickRate", "banRate", "deciderRate"]) {
+          if (!rate(row[field])) { errors.push(`vetoHistory ${field} must be 0..100.`); valuesValidByBlock.veto_history = false; }
+        }
+        if (!positive(row.sampleSize)) { errors.push("vetoHistory sampleSize must be > 0."); valuesValidByBlock.veto_history = false; }
+      }
+      creates.push(`${sections.vetoHistory.length} manual_real VetoPattern records scoped to ${matchId}`);
+    } else valuesValidByBlock.veto_history = false;
+    if (sections.h2h.length) {
+      for (const row of sections.h2h) {
+        if (!row.date) { errors.push("H2H date is required."); valuesValidByBlock.h2h = false; }
+        if (!row.format) { errors.push("H2H format is required."); valuesValidByBlock.h2h = false; }
+        if (row.winner && teams && !resolveTeamName(teams, row.winner)) { errors.push("H2H winner must match one match team."); valuesValidByBlock.h2h = false; }
+      }
+      creates.push(`${sections.h2h.length} manual_real HeadToHead records scoped to ${matchId}`);
+    } else valuesValidByBlock.h2h = false;
+    if (sections.news.length) {
+      for (const row of sections.news) {
+        if (!row.reliability) { errors.push("News reliability is required."); valuesValidByBlock.news = false; }
+        if (!Number.isFinite(Number(row.impactScore)) || Math.abs(Number(row.impactScore)) > 12) { errors.push("News impactScore must be numeric within ±12."); valuesValidByBlock.news = false; }
+        if (!row.publishedAt) { errors.push("News publishedAt is required."); valuesValidByBlock.news = false; }
+      }
+      creates.push(`${sections.news.length} manual_real NewsItem records scoped to ${matchId}`);
+    } else valuesValidByBlock.news = false;
+
+    for (const item of manualBlocks) {
+      const hasBlockData =
+        item.block === "ranking" ? Object.keys(sections.ranking).length > 0 :
+        item.block === "roster" ? Object.keys(sections.rosters).length > 0 :
+        item.block === "player_stats" ? sections.playerStats.length > 0 :
+        item.block === "map_stats" ? sections.mapStats.length > 0 :
+        item.block === "veto_history" ? sections.vetoHistory.length > 0 :
+        item.block === "h2h" ? sections.h2h.length > 0 :
+        sections.news.length > 0;
+      if (!hasBlockData) {
+        blockStatuses.push(makeBlockPreview(item.block, "missing", 0));
+      } else {
+        const quality = validateManualMetadata(payload, item.block, valuesValidByBlock[item.block], warnings, errors);
+        blockStatuses.push(makeBlockPreview(item.block, quality.status, quality.score, quality.warnings, quality.reasons));
+      }
+    }
   } else if (type === "roster") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "roster", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("roster", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     for (const [teamName, players] of Object.entries(record(payload.teams))) {
       if (!resolveTeamName(teams, teamName)) warnings.push(`Team ${teamName} is not matched for this match; needs_review candidate required.`);
-      if (!Array.isArray(players) || players.some((player) => typeof player !== "string" || !player.trim())) errors.push(`Roster for ${teamName} must be non-empty player names.`);
-      else creates.push(`${players.length} manual_real roster/player links for ${teamName}`);
+      if (!Array.isArray(players) || players.length === 0 || players.some((player) => typeof player !== "string" || !player.trim())) errors.push(`Roster for ${teamName} must be non-empty player names.`);
+      else {
+        if (players.length < 5) warnings.push(`Roster for ${teamName} has fewer than five players; status partial.`);
+        if (players.length > 5) warnings.push(`Roster for ${teamName} has more than five players; review active lineup.`);
+        creates.push(`${players.length} manual_real roster/player links for ${teamName}`);
+      }
     }
   } else if (type === "player_stats") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "player_stats", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("player_stats", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     const players = rows(payload.players);
     if (!players.length) errors.push("players[] is required for player_stats.");
     for (const player of players) {
       if (!resolveTeamName(teams, player.team)) warnings.push(`Team ${String(player.team)} is not matched for this match.`);
       if (!player.nickname) errors.push("player_stats nickname is required.");
-      for (const field of ["kd", "rating", "adr", "kast", "impact", "maps"]) {
-        if (!Number.isFinite(Number(player[field]))) errors.push(`player_stats ${field} must be numeric.`);
-      }
+      if (!positive(player.kd)) errors.push("player_stats kd must be > 0.");
+      if (!positive(player.rating)) errors.push("player_stats rating must be > 0.");
+      if (num(player.adr, -1) < 0) errors.push("player_stats adr must be >= 0.");
+      if (!rate(player.kast)) errors.push("player_stats kast must be 0..100.");
+      if (!positive(player.maps)) errors.push("player_stats maps must be > 0.");
+      if (player.impact !== undefined && !Number.isFinite(Number(player.impact))) errors.push("player_stats impact must be numeric.");
       creates.push(`PlayerStatSnapshot for ${String(player.nickname)}`);
     }
   } else if (type === "map_stats") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "map_stats", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("map_stats", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     const entries = rows(payload.teams);
     if (!entries.length) errors.push("teams[] is required for map_stats.");
     for (const row of entries) {
       if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
       if (!maps.includes(String(row.mapName))) errors.push(`mapName ${String(row.mapName)} is not in active map pool.`);
-      for (const field of ["mapsPlayed", "winRate", "pickRate", "banRate", "ctRoundWinRate", "tRoundWinRate"]) {
-        if (!Number.isFinite(Number(row[field]))) errors.push(`map_stats ${field} must be numeric.`);
-      }
+      if (!positive(row.mapsPlayed)) errors.push("map_stats mapsPlayed must be > 0.");
+      for (const field of ["winRate", "pickRate", "banRate"]) if (!rate(row[field])) errors.push(`map_stats ${field} must be 0..100.`);
+      for (const field of ["ctRoundWinRate", "tRoundWinRate"]) if (row[field] !== undefined && !rate(row[field])) errors.push(`map_stats ${field} must be 0..100.`);
       creates.push(`TeamMapStat ${String(row.team)} ${String(row.mapName)}`);
     }
   } else if (type === "veto_history") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "veto_history", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("veto_history", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     const entries = rows(payload.teams);
     if (!entries.length) errors.push("teams[] is required for veto_history.");
     for (const row of entries) {
       if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
       if (!maps.includes(String(row.mapName))) errors.push(`mapName ${String(row.mapName)} is not in active map pool.`);
+      for (const field of ["pickRate", "banRate", "deciderRate"]) if (!rate(row[field])) errors.push(`veto_history ${field} must be 0..100.`);
+      if (!positive(row.sampleSize)) errors.push("veto_history sampleSize must be > 0.");
       creates.push(`VetoPattern ${String(row.team)} ${String(row.mapName)}`);
     }
   } else if (type === "h2h") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "h2h", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("h2h", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     const entries = rows(payload.entries);
     if (!entries.length) errors.push("entries[] is required for h2h.");
+    for (const row of entries) {
+      if (!row.date) errors.push("h2h date is required.");
+      if (!row.format) errors.push("h2h format is required.");
+      if (row.winner && teams && !resolveTeamName(teams, row.winner)) errors.push("h2h winner must match one match team.");
+    }
     creates.push(`${entries.length} HeadToHead entries`);
   } else if (type === "news") {
+    if (!sample) {
+      const quality = validateManualMetadata(payload, "news", true, warnings, errors);
+      blockStatuses.push(makeBlockPreview("news", quality.status, quality.score, quality.warnings, quality.reasons));
+    }
     const entries = rows(payload.items);
     if (!entries.length) errors.push("items[] is required for news.");
+    for (const row of entries) {
+      if (!row.reliability) errors.push("news reliability is required.");
+      if (!Number.isFinite(Number(row.impactScore)) || Math.abs(Number(row.impactScore)) > 12) errors.push("news impactScore must be numeric within ±12.");
+      if (!row.publishedAt) errors.push("news publishedAt is required.");
+    }
     creates.push(`${entries.length} NewsItem records`);
   } else if (type === "parsed_demo") {
     creates.push("Parsed demo raw record plus any included player/map/form snapshots");
@@ -233,29 +495,66 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     errors.push(`Unsupported enrichment type: ${type}`);
   }
 
+  const qualityByBlock = new Map(blockStatuses.map((status) => [status.block, calculateManualBlockQuality(status.block, blockMetadata(payload, status.block), status.status !== "invalid" && status.status !== "missing")]));
+  const manualRealPackQuality = sample ? undefined : calculateManualRealPackQuality({
+    roster: qualityByBlock.get("roster") ?? calculateManualBlockQuality("roster", {}, false),
+    playerStats: qualityByBlock.get("player_stats") ?? calculateManualBlockQuality("player_stats", {}, false),
+    mapStats: qualityByBlock.get("map_stats") ?? calculateManualBlockQuality("map_stats", {}, false),
+    veto: qualityByBlock.get("veto_history") ?? calculateManualBlockQuality("veto_history", {}, false),
+    h2h: qualityByBlock.get("h2h") ?? calculateManualBlockQuality("h2h", {}, false),
+    news: qualityByBlock.get("news") ?? calculateManualBlockQuality("news", {}, false),
+    rosterComplete: blockStatuses.some((status) => status.block === "roster" && (status.status === "valid" || status.status === "applied")),
+    playerStatsComplete: blockStatuses.some((status) => status.block === "player_stats" && (status.status === "valid" || status.status === "applied")),
+    mapStatsComplete: blockStatuses.some((status) => status.block === "map_stats" && (status.status === "valid" || status.status === "applied")),
+    vetoComplete: blockStatuses.some((status) => status.block === "veto_history" && (status.status === "valid" || status.status === "applied")),
+    h2hPresent: blockStatuses.some((status) => status.block === "h2h" && (status.status === "valid" || status.status === "applied" || status.status === "partial")),
+    newsChecked: blockStatuses.some((status) => status.block === "news" && (status.status === "valid" || status.status === "applied" || status.status === "partial"))
+  });
+
   return {
     ok: errors.length === 0,
     errors: [...new Set(errors)],
     warnings: [...new Set(warnings)],
     creates,
     updates,
+    blockStatuses,
+    whatStillMissing: missingAfterBlocks(blockStatuses),
     matchId,
     type,
     sourceMode,
     importBatchId,
     realActionable: !sample,
-    pipelineProof: sample
+    pipelineProof: sample,
+    manualRealPackQuality: manualRealPackQuality
+      ? {
+          score: manualRealPackQuality.score,
+          label: manualRealPackQuality.label,
+          canReachL3: manualRealPackQuality.canReachL3,
+          reasons: manualRealPackQuality.reasons,
+          warnings: manualRealPackQuality.warnings
+        }
+      : undefined
   };
 }
 
 async function saveRaw(payload: Record<string, unknown>, status: "valid" | "invalid", meta: Omit<EnrichmentMetadata, "sourceRecordId">) {
   const matchId = meta.matchId;
   const type = String(payload.type ?? "unknown");
+  const primaryBlock: ManualPackBlock =
+    type === "manual_real_pack" ? "roster" :
+    type === "player_stats" ? "player_stats" :
+    type === "map_stats" ? "map_stats" :
+    type === "veto_history" ? "veto_history" :
+    type === "h2h" ? "h2h" :
+    type === "news" ? "news" :
+    "roster";
+  const quality = meta.isSample ? null : qualityPreview(payload, primaryBlock, status === "valid");
   const raw = {
     ...payload,
     importStatus: status,
     importBatchId: meta.importBatchId,
     sourceMode: meta.playerSourceMode,
+    blockQuality: quality,
     importedAt: new Date().toISOString()
   };
   return saveExternalSourceRecord(prisma, {
@@ -265,7 +564,7 @@ async function saveRaw(payload: Record<string, unknown>, status: "valid" | "inva
     entityId: matchId,
     raw,
     fetchedAt: new Date(),
-    sourceConfidence: status === "valid" ? (meta.isSample ? 0.66 : 0.72) : 0.2
+    sourceConfidence: status === "valid" ? (meta.isSample ? 0.66 : quality?.sourceConfidence ?? meta.sourceConfidence) : 0.2
   });
 }
 
@@ -273,7 +572,7 @@ async function findOrCreatePlayer(teamId: string, nickname: string, meta: Enrich
   const existing = await prisma.player.findFirst({
     where: meta.isSample
       ? { teamId, nickname, sourceMode: "analyst_sample", matchId: meta.matchId }
-      : { teamId, nickname }
+      : { teamId, nickname, sourceMode: "manual_real", matchId: meta.matchId }
   });
   if (existing) {
     if (meta.isSample && !existing.isActive) {
@@ -292,9 +591,9 @@ async function findOrCreatePlayer(teamId: string, nickname: string, meta: Enrich
       role: "unknown",
       country: "unknown",
       sourceMode: meta.playerSourceMode,
-      sourceConfidence: meta.isSample ? 0.66 : 0.72,
+      sourceConfidence: meta.sourceConfidence,
       needsReview: false,
-      matchId: meta.isSample ? meta.matchId : null,
+      matchId: meta.matchId,
       importBatchId: meta.importBatchId,
       sourceRecordId: meta.sourceRecordId,
       isActive: true
@@ -502,6 +801,16 @@ async function applyDomainRecords(payload: Record<string, unknown>, meta: Enrich
     changed.push(...await applyH2h(teams, sections.h2h, meta));
     changed.push(...await applyNews(teams, sections.news, meta));
   }
+  if (type === "manual_real_pack") {
+    const sections = manualPackSections(payload);
+    const period = String(qualityMetadataFromRecord(payload).period ?? "manual_real_pack");
+    changed.push(...await applyRoster(teams, sections.rosters, meta));
+    changed.push(...await applyPlayerStats(teams, sections.playerStats, period, meta));
+    changed.push(...await applyMapStats(teams, sections.mapStats, period, meta));
+    changed.push(...await applyVeto(teams, sections.vetoHistory, period, meta));
+    changed.push(...await applyH2h(teams, sections.h2h, meta));
+    changed.push(...await applyNews(teams, sections.news, meta));
+  }
   if (type === "roster") changed.push(...await applyRoster(teams, record(payload.teams), meta));
   if (type === "player_stats") changed.push(...await applyPlayerStats(teams, rows(payload.players), period, meta));
   if (type === "map_stats") changed.push(...await applyMapStats(teams, rows(payload.teams), period, meta));
@@ -510,12 +819,12 @@ async function applyDomainRecords(payload: Record<string, unknown>, meta: Enrich
   if (type === "news") changed.push(...await applyNews(teams, rows(payload.items), meta));
   if (type === "parsed_demo") changed.push("Parsed demo raw accepted; detailed parsed-demo adapter can transform richer payloads.");
 
-  if (meta.isSample && changed.length) {
+  if (changed.length) {
     await prisma.match.update({
       where: { id: meta.matchId },
-      data: { sourceMode: "analyst_sample", sourceConfidence: 0.66 }
+      data: { sourceMode: meta.playerSourceMode, sourceConfidence: meta.sourceConfidence }
     });
-    changed.push("Match marked analyst_sample for dev-only pipeline validation.");
+    changed.push(meta.isSample ? "Match marked analyst_sample for dev-only pipeline validation." : "Match marked manual_real for validated manual data pack.");
   }
 
   return changed;
@@ -543,13 +852,22 @@ export async function applyManualEnrichment(text: string) {
   const validation = await validateManualEnrichment(text);
   const matchId = String(payload.matchId ?? "unknown");
   const isSample = isSamplePayload(payload);
+  const primaryBlock: ManualPackBlock =
+    payload.type === "player_stats" ? "player_stats" :
+    payload.type === "map_stats" ? "map_stats" :
+    payload.type === "veto_history" ? "veto_history" :
+    payload.type === "h2h" ? "h2h" :
+    payload.type === "news" ? "news" :
+    "roster";
+  const sourceConfidence = isSample ? 0.66 : qualityPreview(payload, primaryBlock, true).sourceConfidence;
   const baseMeta: Omit<EnrichmentMetadata, "sourceRecordId"> = {
     isSample,
     source: isSample ? "analyst-sample" : "manual",
     recordSource: isSample ? "analyst_sample" : "manual_enrichment",
     playerSourceMode: isSample ? "analyst_sample" : "manual_real",
     importBatchId: validation.importBatchId ?? `${isSample ? "sample" : "manual"}_${matchId}_${hashRawRecord(payload).slice(0, 12)}`,
-    matchId
+    matchId,
+    sourceConfidence
   };
 
   if (!validation.ok) {
@@ -634,5 +952,130 @@ export async function resetAnalystSampleForMatch(matchId: string) {
       news: news.count
     },
     whatChanged: ["Only analyst_sample records for the selected match were deactivated.", "Manual real, parsed demo, PandaScore, Valve and other real records were untouched."]
+  };
+}
+
+export async function resetManualRealForMatch(matchId: string) {
+  const before = await snapshot(matchId);
+  const match = await prisma.match.findUnique({ where: { id: matchId } });
+  if (!match) return { ok: false, errors: [`Match not found: ${matchId}`] };
+
+  const [players, playerStats, mapStats, veto, h2h, news] = await prisma.$transaction([
+    prisma.player.updateMany({ where: { sourceMode: "manual_real", matchId }, data: { isActive: false } }),
+    prisma.playerStatSnapshot.updateMany({ where: { source: "manual_enrichment", matchId }, data: { isActive: false } }),
+    prisma.teamMapStat.updateMany({ where: { source: "manual_enrichment", matchId }, data: { isActive: false } }),
+    prisma.vetoPattern.updateMany({ where: { source: "manual_enrichment", matchId }, data: { isActive: false } }),
+    prisma.headToHead.updateMany({ where: { source: "manual_enrichment", matchId }, data: { isActive: false } }),
+    prisma.newsItem.updateMany({ where: { source: "manual_enrichment", matchId }, data: { isActive: false } })
+  ]);
+
+  if (match.sourceMode === "manual_real") {
+    await prisma.match.update({
+      where: { id: matchId },
+      data: { sourceMode: restoreSourceMode(match.source), sourceConfidence: Math.max(0.3, Math.min(0.9, match.sourceConfidence)) }
+    });
+  }
+
+  await rebuildSnapshots();
+  await savePredictionAudit(matchId);
+  await refreshResearchPack(matchId);
+  const after = await snapshot(matchId);
+
+  return {
+    ok: true,
+    matchId,
+    readinessBefore: before.readiness,
+    readinessAfter: after.readiness,
+    dataQualityBefore: before.dataQuality,
+    dataQualityAfter: after.dataQuality,
+    confidenceBefore: before.confidence,
+    confidenceAfter: after.confidence,
+    probabilityBefore: before.probability,
+    probabilityAfter: after.probability,
+    deactivated: {
+      players: players.count,
+      playerStats: playerStats.count,
+      mapStats: mapStats.count,
+      veto: veto.count,
+      h2h: h2h.count,
+      news: news.count
+    },
+    whatChanged: ["Only manual_real records for the selected match were deactivated.", "PandaScore, Valve, Steam, parsed_demo, analyst_sample and other matches were untouched."]
+  };
+}
+
+export async function exportManualRealPackForMatch(matchId: string) {
+  const match = await prisma.match.findUnique({ where: { id: matchId }, include: { teamA: true, teamB: true } });
+  if (!match) return { ok: false, errors: [`Match not found: ${matchId}`] };
+  const [players, playerStats, mapStats, veto, h2h, news, raws] = await Promise.all([
+    prisma.player.findMany({ where: { matchId, sourceMode: "manual_real", isActive: true }, include: { team: true }, orderBy: { nickname: "asc" } }),
+    prisma.playerStatSnapshot.findMany({ where: { matchId, source: "manual_enrichment", isActive: true }, include: { player: true }, orderBy: { createdAt: "desc" } }),
+    prisma.teamMapStat.findMany({ where: { matchId, source: "manual_enrichment", isActive: true }, include: { team: true }, orderBy: [{ teamId: "asc" }, { mapName: "asc" }] }),
+    prisma.vetoPattern.findMany({ where: { matchId, source: "manual_enrichment", isActive: true }, include: { team: true }, orderBy: [{ teamId: "asc" }, { mapName: "asc" }] }),
+    prisma.headToHead.findMany({ where: { matchId, source: "manual_enrichment", isActive: true }, orderBy: { date: "desc" } }),
+    prisma.newsItem.findMany({ where: { matchId, source: "manual_enrichment", isActive: true }, include: { team: true }, orderBy: { publishedAt: "desc" } }),
+    prisma.externalSourceRecord.findMany({ where: { entityId: matchId, entityType: { startsWith: "manual_real_" } }, orderBy: { fetchedAt: "desc" }, take: 1 })
+  ]);
+  const metadata = qualityMetadataFromRecord(parsePayload(raws[0]?.rawJson ?? "{}"));
+  const roster = new Map<string, string[]>();
+  for (const player of players) {
+    const teamName = player.team?.name ?? "unknown";
+    roster.set(teamName, [...(roster.get(teamName) ?? []), player.nickname]);
+  }
+  return {
+    ok: true,
+    pack: {
+      matchId,
+      type: "manual_real_pack",
+      source: "manual_real",
+      metadata,
+      rosters: Object.fromEntries(roster),
+      playerStats: playerStats.map((stat) => ({
+        team: stat.teamId === match.teamAId ? match.teamA.name : match.teamB.name,
+        nickname: stat.player.nickname,
+        kd: stat.kd,
+        rating: stat.rating,
+        adr: stat.adr,
+        kast: Math.round(stat.kast * 100),
+        impact: stat.impact,
+        maps: stat.maps
+      })),
+      mapStats: mapStats.map((stat) => ({
+        team: stat.team.name,
+        mapName: stat.mapName,
+        mapsPlayed: stat.mapsPlayed,
+        winRate: Math.round(stat.winRate * 100),
+        pickRate: Math.round(stat.pickRate * 100),
+        banRate: Math.round(stat.banRate * 100),
+        ctRoundWinRate: Math.round(stat.ctRoundWinRate * 100),
+        tRoundWinRate: Math.round(stat.tRoundWinRate * 100)
+      })),
+      vetoHistory: veto.map((row) => ({
+        team: row.team.name,
+        mapName: row.mapName,
+        pickRate: Math.round(row.pickProbability * 100),
+        banRate: Math.round(row.banProbability * 100),
+        deciderRate: Math.round(row.confidenceScore * 100),
+        sampleSize: metadata.sampleSize ?? 0
+      })),
+      h2h: h2h.map((row) => ({
+        date: row.date.toISOString(),
+        format: row.format,
+        winner: row.winnerTeamId === match.teamAId ? match.teamA.name : row.winnerTeamId === match.teamBId ? match.teamB.name : null,
+        teamARosterSimilarity: row.teamARosterSimilarity,
+        teamBRosterSimilarity: row.teamBRosterSimilarity,
+        relevanceScore: row.relevanceScore,
+        notes: row.notes
+      })),
+      news: news.map((item) => ({
+        team: item.team?.name ?? null,
+        title: item.title,
+        summary: item.summary,
+        reliability: item.reliability,
+        impactScore: item.impactScore,
+        publishedAt: item.publishedAt.toISOString(),
+        sourceUrl: item.url
+      }))
+    }
   };
 }

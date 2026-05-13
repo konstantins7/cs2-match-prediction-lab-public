@@ -2,15 +2,28 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../../package.json";
 import { checkDevLogContent } from "./devLogCheck";
 
-describe("MVP 0.3.5 safety checks", () => {
-  it("package version is 0.3.5", () => {
-    expect(packageJson.version).toBe("0.3.5");
+describe("MVP 0.3.7 safety checks", () => {
+  it("package version is 0.3.7", () => {
+    expect(packageJson.version).toBe("0.3.7");
   });
 
-  it("dev log checker fails when runtime or Fast Refresh errors exist", () => {
+  it("dev log checker fails when Fast Refresh is caused by runtime errors", () => {
     const result = checkDevLogContent("warn\nFast Refresh had to perform a full reload due to a runtime error.\n");
     expect(result.ok).toBe(false);
     expect(result.matches.length).toBe(1);
+  });
+
+  it("plain Fast Refresh reload is warning-only", () => {
+    const result = checkDevLogContent("warn\nFast Refresh had to perform a full reload. Read more: https://nextjs.org/docs/messages/fast-refresh-reload\n");
+    expect(result.ok).toBe(true);
+    expect(result.matches.length).toBe(0);
+    expect(result.warnings.length).toBe(1);
+  });
+
+  it("dev log checker fails on critical runtime signatures", () => {
+    const result = checkDevLogContent("GET / 500 in 42ms\nError: Cannot find module './741.js'\n    at Object.<anonymous> (page.js:1:1)\n");
+    expect(result.ok).toBe(false);
+    expect(result.matches.length).toBe(3);
   });
 
   it("dev log checker passes clean content", () => {

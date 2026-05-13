@@ -6,6 +6,7 @@ import { ProbabilityBar } from "./ProbabilityBar";
 import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
+import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 
 export function MatchCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
@@ -24,6 +25,9 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
         <div className="flex flex-wrap gap-2">
           <SourceModeBadge sourceMode={match.sourceMode} needsReview={match.needsReview} />
           <ReadinessBadge level={prediction.readiness.level} />
+          <RealForecastBadge isReady={prediction.realForecast.isReady} />
+          <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
+          {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
           {match.isPinned && <span className="rounded border border-lab-green/60 px-2 py-1 text-xs text-lab-green">PINNED</span>}
           <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{row.priority.priorityLabel}</span>
           <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{row.priority.visibilityTier}</span>

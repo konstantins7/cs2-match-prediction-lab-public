@@ -40,6 +40,7 @@ import { clamp, daysBetween, factorContribution, probabilityFromRawScore, round 
 import { generateExplanation } from "./explanationGenerator";
 import { getEffectiveRank } from "../proFocus";
 import { calculatePredictionReadiness, readinessRank } from "./readiness";
+import { evaluateRealForecastStatus } from "../realForecast";
 
 function sumContributions(factors: PredictionFactorOutput[]) {
   return factors.reduce((sum, factor) => sum + factorContribution(factor), 0);
@@ -344,6 +345,7 @@ export function calculatePrediction(input: PredictionInput): PredictionOutput {
       : undefined;
   const warnings = [...factorsWithReadiness.flatMap((factor) => factor.warnings), ...(probabilityCap?.reasons ?? [])].filter((warning, index, all) => all.indexOf(warning) === index);
   const predictedWinnerId = probabilities.teamAProbability >= probabilities.teamBProbability ? input.teamA.id : input.teamB.id;
+  const realForecast = evaluateRealForecastStatus(input, { readiness, dataQualityScore: quality, warnings });
   const partial = {
     teamAProbability: probabilities.teamAProbability,
     teamBProbability: probabilities.teamBProbability,
@@ -367,6 +369,21 @@ export function calculatePrediction(input: PredictionInput): PredictionOutput {
     modelVersion: "mvp-0.3-live",
     rawScore,
     probabilityCap,
-    readiness
+    readiness,
+    sourceLevel: realForecast.sourceLevel,
+    manualRealPackQuality: {
+      score: realForecast.manualRealPackQuality.score,
+      label: realForecast.manualRealPackQuality.label,
+      canReachL3: realForecast.manualRealPackQuality.canReachL3,
+      reasons: realForecast.manualRealPackQuality.reasons,
+      warnings: realForecast.manualRealPackQuality.warnings
+    },
+    realForecast: {
+      isReady: realForecast.isReady,
+      label: realForecast.label,
+      sourceLevel: realForecast.sourceLevel,
+      reasons: realForecast.reasons,
+      sampleOnlyWarning: realForecast.sampleOnlyWarning
+    }
   };
 }

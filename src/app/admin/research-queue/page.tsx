@@ -47,7 +47,11 @@ export default async function ResearchQueuePage() {
         </div>
       </section>
 
-      <ManualEnrichmentPanel defaultMatchId={rows[0]?.matchId ?? "pandascore_match_1474573"} analystSampleEnabled={analystSampleEnabled} />
+      <ManualEnrichmentPanel
+        defaultMatchId={rows[0]?.matchId ?? "pandascore_match_1474573"}
+        analystSampleEnabled={analystSampleEnabled}
+        matchOptions={rows.map((row) => ({ matchId: row.matchId, label: `${row.matchLabel} · ${formatDateTime(row.startTime)}`, tasks: row.tasks }))}
+      />
 
       <div className="grid gap-4">
         {rows.length === 0 ? (

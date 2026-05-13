@@ -12,8 +12,10 @@ import { ReadinessBadge } from "./ReadinessBadge";
 import { VetoScenarioCard } from "./VetoScenarioCard";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { DataCoveragePanel } from "./DataCoveragePanel";
+import { DataSourcesTable } from "./DataSourcesTable";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
+import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import { formatDateTime } from "@/lib/format";
 import type { MatchPriorityResult } from "@/lib/proFocus";
@@ -56,6 +58,12 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
               <p className="mt-2 text-sm text-violet-100/80">Это sample analyst pack для проверки pipeline, не реальный прогноз. Sample records match-scoped и не считаются real actionable.</p>
             </div>
           ) : null}
+          {prediction.realForecast.sampleOnlyWarning ? (
+            <div className="rounded border border-lab-amber/60 bg-lab-panel p-4">
+              <h2 className="font-semibold text-lab-amber">Real forecast is not ready</h2>
+              <p className="mt-2 text-sm text-lab-muted">{prediction.realForecast.sampleOnlyWarning}</p>
+            </div>
+          ) : null}
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded border border-lab-border bg-lab-panel p-5">
               <p className="text-sm uppercase tracking-wide text-lab-cyan">{input.match.eventName}</p>
@@ -74,6 +82,9 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
               <div className="mt-4 flex flex-wrap gap-2">
                 <SourceModeBadge sourceMode={input.match.sourceMode} needsReview={input.match.needsReview} />
                 <ReadinessBadge level={prediction.readiness.level} />
+                <RealForecastBadge isReady={prediction.realForecast.isReady} />
+                <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
+                {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
                 {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{priority.priorityLabel}</span>}
                 {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{priority.visibilityTier}</span>}
                 {input.match.isPinned && <span className="rounded border border-lab-green/60 px-2 py-1 text-xs text-lab-green">PINNED</span>}
@@ -81,6 +92,20 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
                 <RiskBadge value={prediction.riskLevel} />
                 <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">DQ {prediction.dataQualityScore}/100</span>
                 {prediction.probabilityCap && <span className="rounded border border-lab-amber/60 px-2 py-1 text-xs text-lab-amber">Probability cap {prediction.probabilityCap.cap}/100</span>}
+              </div>
+              <div className="mt-4 rounded border border-lab-border bg-lab-panel2 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="text-xs uppercase text-lab-muted">Real Forecast Ready</p>
+                    <p className={prediction.realForecast.isReady ? "mt-1 text-sm text-lab-green" : "mt-1 text-sm text-lab-amber"}>{prediction.realForecast.label}</p>
+                  </div>
+                  <div className="text-sm text-lab-muted">Manual Real Pack Quality: {prediction.manualRealPackQuality.score}/100 · {prediction.manualRealPackQuality.label}</div>
+                </div>
+                {!prediction.realForecast.isReady && (
+                  <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+                    {prediction.realForecast.reasons.slice(0, 6).map((reason, index) => <li key={`real-forecast-reason-${index}-${reason.slice(0, 24)}`}>{reason}</li>)}
+                  </ul>
+                )}
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded border border-lab-border bg-lab-panel2 p-3">
@@ -102,6 +127,7 @@ export function MatchDetailTabs({ input, prediction, priority, researchTasks = [
             </div>
           </div>
           <DataCoveragePanel input={input} />
+          <DataSourcesTable input={input} />
           <section className="rounded border border-lab-border bg-lab-panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

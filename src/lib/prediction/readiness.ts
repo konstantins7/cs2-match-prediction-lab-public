@@ -1,4 +1,5 @@
 import { getEffectiveRank, isWatchlistTeam } from "../proFocus";
+import { manualQualityAllowsReadiness, parseManualRawJson, qualityFromRawRecord, type ManualPackBlock } from "../manualRealQuality";
 import type { PredictionInput, PredictionReadiness, PredictionReadinessLevel } from "./types";
 
 function hasRank(input: PredictionInput) {
@@ -16,29 +17,57 @@ function hasBasicResults(input: PredictionInput) {
 }
 
 function hasRoster(input: PredictionInput) {
-  return input.playersA.length >= 5 && input.playersB.length >= 5;
+  const trusted = (player: PredictionInput["playersA"][number]) =>
+    player.sourceMode !== "manual_real" || (player.matchId === input.match.id && (player.sourceConfidence ?? 0) > 0.5);
+  return input.playersA.filter(trusted).length >= 5 && input.playersB.filter(trusted).length >= 5;
+}
+
+function sourceRecord(input: PredictionInput, id?: string | null) {
+  return input.manualSourceRecords?.find((record) => record.id === id);
+}
+
+function trustedManualRecord(input: PredictionInput, sourceRecordId: string | null | undefined, block: ManualPackBlock) {
+  const record = sourceRecord(input, sourceRecordId);
+  const quality = qualityFromRawRecord(record, block);
+  return manualQualityAllowsReadiness(quality);
+}
+
+function manualRecordIsDeep(input: PredictionInput, sourceRecordId: string | null | undefined) {
+  const raw = parseManualRawJson(sourceRecord(input, sourceRecordId)?.rawJson);
+  return raw?.type === "parsed_demo" || raw?.type === "round_data" || raw?.type === "deep_stats";
 }
 
 function hasPlayerStats(input: PredictionInput) {
-  return input.playerStatsA.length >= 5 && input.playerStatsB.length >= 5;
+  const trusted = (stat: PredictionInput["playerStatsA"][number]) =>
+    stat.source !== "manual_enrichment" || (stat.matchId === input.match.id && trustedManualRecord(input, stat.sourceRecordId, "player_stats"));
+  return input.playerStatsA.filter(trusted).length >= 5 && input.playerStatsB.filter(trusted).length >= 5;
 }
 
 function hasMapStats(input: PredictionInput) {
-  const sampleA = input.mapStatsA.reduce((sum, stat) => sum + stat.mapsPlayed, 0);
-  const sampleB = input.mapStatsB.reduce((sum, stat) => sum + stat.mapsPlayed, 0);
+  const trusted = (stat: PredictionInput["mapStatsA"][number]) =>
+    stat.source !== "manual_enrichment" || (stat.matchId === input.match.id && trustedManualRecord(input, stat.sourceRecordId, "map_stats"));
+  const sampleA = input.mapStatsA.filter(trusted).reduce((sum, stat) => sum + stat.mapsPlayed, 0);
+  const sampleB = input.mapStatsB.filter(trusted).reduce((sum, stat) => sum + stat.mapsPlayed, 0);
   return sampleA >= 7 && sampleB >= 7;
 }
 
 function hasVetoHistory(input: PredictionInput) {
-  return input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
+  const trusted = (stat: PredictionInput["vetoPatternsA"][number]) =>
+    stat.source !== "manual_enrichment" || (stat.matchId === input.match.id && trustedManualRecord(input, stat.sourceRecordId, "veto_history"));
+  return input.vetoPatternsA.filter(trusted).length > 0 && input.vetoPatternsB.filter(trusted).length > 0;
 }
 
 function hasDeepStats(input: PredictionInput) {
   const parsedDemoSample = [...input.playerStatsA, ...input.playerStatsB, ...input.mapStatsA, ...input.mapStatsB]
-    .filter((stat) => stat.source === "parsed_demo" || stat.source === "manual_enrichment" || stat.source === "grid")
+    .filter((stat) =>
+      stat.source === "parsed_demo" ||
+      stat.source === "grid" ||
+      (stat.source === "manual_enrichment" && manualRecordIsDeep(input, stat.sourceRecordId) && trustedManualRecord(input, stat.sourceRecordId, "mapsPlayed" in stat ? "map_stats" : "player_stats"))
+    )
     .reduce((sum, stat) => sum + ("mapsPlayed" in stat ? stat.mapsPlayed : stat.maps), 0);
   const hasRoundDepth = input.mapStatsA.concat(input.mapStatsB).some((stat) =>
     ["parsed_demo", "manual_enrichment", "grid"].includes(stat.source) &&
+    (stat.source !== "manual_enrichment" || (manualRecordIsDeep(input, stat.sourceRecordId) && trustedManualRecord(input, stat.sourceRecordId, "map_stats"))) &&
     stat.mapsPlayed >= 8 &&
     (stat.pistolWinRate !== 0.5 || stat.forceBuyWinRate !== 0.3 || stat.overtimeFrequency > 0)
   );

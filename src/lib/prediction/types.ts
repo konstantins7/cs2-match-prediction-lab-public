@@ -523,6 +523,16 @@ export type SourceConflictEntity = {
   status: string;
 };
 
+export type SourceRecordEntity = {
+  id: string;
+  source: string;
+  entityType: string;
+  entityId?: string | null;
+  rawJson: string;
+  fetchedAt: Date | string;
+  sourceConfidence: number;
+};
+
 export type DataCoverageStatus = "fresh" | "aging" | "stale" | "unknown";
 
 export type DataCoverage = {
@@ -589,6 +599,7 @@ export type PredictionInput = {
   teamStyleB?: TeamStyleSnapshotEntity | null;
   dataWindows: PredictionDataWindowEntity[];
   sourceConflicts: SourceConflictEntity[];
+  manualSourceRecords?: SourceRecordEntity[];
   dataCoverage?: DataCoverage;
 };
 
@@ -620,4 +631,19 @@ export type PredictionOutput = {
     reasons: string[];
   };
   readiness: PredictionReadiness;
+  sourceLevel: string;
+  manualRealPackQuality: {
+    score: number;
+    label: string;
+    canReachL3: boolean;
+    reasons: string[];
+    warnings: string[];
+  };
+  realForecast: {
+    isReady: boolean;
+    label: string;
+    sourceLevel: string;
+    reasons: string[];
+    sampleOnlyWarning?: string;
+  };
 };

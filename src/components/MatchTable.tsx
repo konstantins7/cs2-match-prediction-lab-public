@@ -5,6 +5,7 @@ import { ConfidenceBadge } from "./ConfidenceBadge";
 import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
+import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 
 export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
   return (
@@ -19,6 +20,7 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
             <th className="px-3 py-3">Статус</th>
             <th className="px-3 py-3">Source</th>
             <th className="px-3 py-3">Priority</th>
+            <th className="px-3 py-3">Readiness</th>
             <th className="px-3 py-3">Прогноз</th>
             <th className="px-3 py-3">Качество</th>
             <th className="px-3 py-3" />
@@ -44,9 +46,16 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
               </td>
               <td className="px-3 py-3">
                 <div className="flex flex-wrap gap-2">
+                  <ReadinessBadge level={prediction.readiness.level} />
+                  <RealForecastBadge isReady={prediction.realForecast.isReady} />
+                  <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
+                  {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
+                </div>
+              </td>
+              <td className="px-3 py-3">
+                <div className="flex flex-wrap gap-2">
                   <ConfidenceBadge value={prediction.confidenceScore} />
                   <RiskBadge value={prediction.riskLevel} />
-                  <ReadinessBadge level={prediction.readiness.level} />
                 </div>
                 <div className="mt-1 text-xs text-lab-muted">
                   {prediction.teamAProbability}% / {prediction.teamBProbability}%

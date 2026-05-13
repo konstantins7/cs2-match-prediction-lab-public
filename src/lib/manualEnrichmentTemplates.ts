@@ -1,48 +1,104 @@
 export const manualEnrichmentTemplates = {
+  manual_real_pack: {
+    matchId: "pandascore_match_1474573",
+    type: "manual_real_pack",
+    source: "manual_real",
+    metadata: {
+      sourceName: "",
+      sourceUrl: "",
+      collectedAt: "2026-05-13T00:00:00Z",
+      period: "last_30_days",
+      sampleSize: 0,
+      confidence: 0.5,
+      notes: "Manual real data. User is responsible for source accuracy."
+    },
+    rankingConfirmation: {
+      teams: []
+    },
+    rosters: {
+      Monte: [],
+      G2: []
+    },
+    playerStats: [],
+    mapStats: [],
+    vetoHistory: [],
+    h2h: [],
+    news: []
+  },
   roster: {
     matchId: "pandascore_match_1474573",
     type: "roster",
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
+    period: "current_roster",
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real roster. User is responsible for source accuracy.",
     teams: {
-      Monte: ["player1", "player2", "player3", "player4", "player5"],
-      G2: ["player1", "player2", "player3", "player4", "player5"]
+      Monte: [],
+      G2: []
     }
   },
   player_stats: {
     matchId: "pandascore_match_1474573",
     type: "player_stats",
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
     period: "last_30_days",
-    players: [
-      { team: "G2", nickname: "player", kd: 1.12, rating: 1.08, adr: 78, kast: 72, impact: 1.11, maps: 12 }
-    ]
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real player stats. Fill only verified values.",
+    players: []
   },
   map_stats: {
     matchId: "pandascore_match_1474573",
     type: "map_stats",
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
     period: "last_90_days",
-    teams: [
-      { team: "G2", mapName: "Mirage", mapsPlayed: 12, winRate: 58, pickRate: 22, banRate: 10, ctRoundWinRate: 51, tRoundWinRate: 49 }
-    ]
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real map stats. mapName must be in active pool.",
+    teams: []
   },
   veto_history: {
     matchId: "pandascore_match_1474573",
     type: "veto_history",
-    teams: [
-      { team: "G2", mapName: "Mirage", pickRate: 25, banRate: 12, deciderRate: 18, sampleSize: 20 }
-    ]
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
+    period: "last_90_days",
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real veto history.",
+    teams: []
   },
   h2h: {
     matchId: "pandascore_match_1474573",
     type: "h2h",
-    entries: [
-      { date: "2026-05-01T00:00:00Z", format: "BO3", winner: "G2", teamARosterSimilarity: 0.8, teamBRosterSimilarity: 0.8, relevanceScore: 0.7, notes: "Manual H2H reference" }
-    ]
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
+    period: "current_roster_h2h",
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real H2H.",
+    entries: []
   },
   news: {
     matchId: "pandascore_match_1474573",
     type: "news",
-    items: [
-      { team: "G2", title: "Roster update", summary: "Short note", reliability: "official", impactScore: -2, publishedAt: "2026-05-13T00:00:00Z", sourceUrl: "" }
-    ]
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "2026-05-13T00:00:00Z",
+    period: "latest",
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Manual real news/roster events.",
+    items: []
   },
   parsed_demo: {
     matchId: "pandascore_match_1474573",
