@@ -8,16 +8,30 @@ import { MapPoolMatrix } from "./MapPoolMatrix";
 import { NewsImpactPanel } from "./NewsImpactPanel";
 import { PlayerFormTable } from "./PlayerFormTable";
 import { ProbabilityBar } from "./ProbabilityBar";
+import { ReadinessBadge } from "./ReadinessBadge";
 import { VetoScenarioCard } from "./VetoScenarioCard";
 import { ConfidenceBadge } from "./ConfidenceBadge";
+import { DataCoveragePanel } from "./DataCoveragePanel";
 import { RiskBadge } from "./RiskBadge";
+import { SourceModeBadge } from "./SourceModeBadge";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import { formatDateTime } from "@/lib/format";
+import type { MatchPriorityResult } from "@/lib/proFocus";
+import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
+import type { ResearchTask } from "@/lib/researchQueueCore";
 
-const tabs = ["Overview", "Factor Breakdown", "Maps & Veto", "Players", "News & Events", "Head-to-Head", "Risk & Confidence", "Explanation"] as const;
+const tabs = ["Overview", "Factor Breakdown", "Maps & Veto", "Opponent Matchup", "Players", "News & Events", "Head-to-Head", "Risk & Confidence", "Explanation"] as const;
 
-export function MatchDetailTabs({ input, prediction }: { input: PredictionInput; prediction: PredictionOutput }) {
+export function MatchDetailTabs({ input, prediction, priority, researchTasks = [] }: { input: PredictionInput; prediction: PredictionOutput; priority?: MatchPriorityResult; researchTasks?: ResearchTask[] }) {
   const [active, setActive] = useState<(typeof tabs)[number]>("Overview");
+  const hasVetoHistory = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
+  const winner = prediction.predictedWinnerId === input.teamA.id ? input.teamA.name : input.teamB.name;
+  const dataLimited =
+    prediction.readiness.level === "L0_FIXTURE_ONLY" ||
+    prediction.readiness.level === "L1_BASIC_CONTEXT" ||
+    prediction.dataQualityScore < 40 ||
+    Math.abs(prediction.teamAProbability - prediction.teamBProbability) <= 1 ||
+    Boolean(input.dataCoverage?.fixtureOnly);
 
   return (
     <div className="space-y-5">
@@ -35,21 +49,83 @@ export function MatchDetailTabs({ input, prediction }: { input: PredictionInput;
       </div>
 
       {active === "Overview" && (
-        <section className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded border border-lab-border bg-lab-panel p-5">
-            <p className="text-sm uppercase tracking-wide text-lab-cyan">{input.match.eventName}</p>
-            <h1 className="mt-2 text-3xl font-semibold text-white">{input.teamA.name} vs {input.teamB.name}</h1>
-            <p className="mt-2 text-sm text-lab-muted">{input.match.stage} · {formatDateTime(input.match.startTime)} · {input.match.format} · {input.match.isLan ? "LAN" : "Online"}</p>
-            <p className="mt-4 text-sm leading-6 text-lab-muted">{prediction.explanation}</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <ConfidenceBadge value={prediction.confidenceScore} />
-              <RiskBadge value={prediction.riskLevel} />
-              <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">DQ {prediction.dataQualityScore}/100</span>
+        <section className="space-y-4">
+          {input.match.sourceMode === "analyst_sample" ? (
+            <div className="rounded border border-violet-400/60 bg-violet-950/20 p-4">
+              <h2 className="font-semibold text-violet-100">SAMPLE DATA</h2>
+              <p className="mt-2 text-sm text-violet-100/80">Это sample analyst pack для проверки pipeline, не реальный прогноз. Sample records match-scoped и не считаются real actionable.</p>
+            </div>
+          ) : null}
+          <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded border border-lab-border bg-lab-panel p-5">
+              <p className="text-sm uppercase tracking-wide text-lab-cyan">{input.match.eventName}</p>
+              <h1 className="mt-2 text-3xl font-semibold text-white">{input.teamA.name} vs {input.teamB.name}</h1>
+              <p className="mt-2 text-sm text-lab-muted">{input.match.stage} · {formatDateTime(input.match.startTime)} · {input.match.format} · {input.match.isLan ? "LAN" : "Online"}</p>
+              {dataLimited ? (
+                <div className="mt-4 rounded border border-lab-amber/60 bg-lab-panel2 p-3">
+                  <h2 className="font-semibold text-lab-amber">{predictionHeadline(prediction, winner)}</h2>
+                  <p className="mt-2 text-sm leading-6 text-lab-muted">
+                    {predictionReadinessCopy(prediction)}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-4 text-sm leading-6 text-lab-muted">{prediction.explanation}</p>
+              )}
+              <div className="mt-4 flex flex-wrap gap-2">
+                <SourceModeBadge sourceMode={input.match.sourceMode} needsReview={input.match.needsReview} />
+                <ReadinessBadge level={prediction.readiness.level} />
+                {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{priority.priorityLabel}</span>}
+                {priority && <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{priority.visibilityTier}</span>}
+                {input.match.isPinned && <span className="rounded border border-lab-green/60 px-2 py-1 text-xs text-lab-green">PINNED</span>}
+                <ConfidenceBadge value={prediction.confidenceScore} />
+                <RiskBadge value={prediction.riskLevel} />
+                <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">DQ {prediction.dataQualityScore}/100</span>
+                {prediction.probabilityCap && <span className="rounded border border-lab-amber/60 px-2 py-1 text-xs text-lab-amber">Probability cap {prediction.probabilityCap.cap}/100</span>}
+              </div>
+              <div className="mt-4 grid gap-3 md:grid-cols-2">
+                <div className="rounded border border-lab-border bg-lab-panel2 p-3">
+                  <p className="text-xs uppercase text-lab-muted">Readiness reasons</p>
+                  <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+                    {prediction.readiness.reasons.map((reason, index) => <li key={`readiness-reason-${index}-${reason.slice(0, 24)}`}>{reason}</li>)}
+                  </ul>
+                </div>
+                <div className="rounded border border-lab-border bg-lab-panel2 p-3">
+                  <p className="text-xs uppercase text-lab-muted">Missing critical data</p>
+                  <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+                    {(prediction.readiness.missingCriticalData.length ? prediction.readiness.missingCriticalData : ["Критичных пропусков нет."]).slice(0, 6).map((item, index) => <li key={`readiness-missing-${index}-${item}`}>{item}</li>)}
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div className="rounded border border-lab-border bg-lab-panel p-5">
+              <ProbabilityBar teamAName={input.teamA.name} teamBName={input.teamB.name} teamAProbability={prediction.teamAProbability} teamBProbability={prediction.teamBProbability} />
             </div>
           </div>
-          <div className="rounded border border-lab-border bg-lab-panel p-5">
-            <ProbabilityBar teamAName={input.teamA.name} teamBName={input.teamB.name} teamAProbability={prediction.teamAProbability} teamBProbability={prediction.teamBProbability} />
-          </div>
+          <DataCoveragePanel input={input} />
+          <section className="rounded border border-lab-border bg-lab-panel p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h2 className="font-semibold text-white">Что нужно добрать для улучшения прогноза</h2>
+                <p className="mt-1 text-sm text-lab-muted">Research Queue показывает, какие данные сильнее всего поднимут readiness.</p>
+              </div>
+              <a href="/admin/research-queue" className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">Research Queue</a>
+            </div>
+            <div className="mt-3 grid gap-3 md:grid-cols-2">
+              {researchTasks.length > 0 ? researchTasks.slice(0, 8).map((task) => (
+                <article key={task.id} className="rounded border border-lab-border bg-lab-panel2 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <h3 className="font-medium text-white">{task.task}</h3>
+                    <span className={task.priority === "high" ? "rounded border border-lab-red/60 px-2 py-1 text-xs text-lab-red" : task.priority === "medium" ? "rounded border border-lab-amber/60 px-2 py-1 text-xs text-lab-amber" : "rounded border border-lab-border px-2 py-1 text-xs text-lab-muted"}>{task.priority}</span>
+                  </div>
+                  <p className="mt-2 text-sm text-lab-muted">{task.reason}</p>
+                  <p className="mt-2 text-xs text-lab-cyan">{task.expectedImpact}</p>
+                  <p className="mt-2 text-xs text-lab-muted">{task.status} · {task.actionState}</p>
+                </article>
+              )) : (
+                <p className="text-sm text-lab-muted">Критичных research tasks сейчас нет.</p>
+              )}
+            </div>
+          </section>
         </section>
       )}
 
@@ -63,9 +139,15 @@ export function MatchDetailTabs({ input, prediction }: { input: PredictionInput;
       {active === "Maps & Veto" && (
         <section className="space-y-4">
           <MapPoolMatrix input={input} />
-          <div className="grid gap-4 lg:grid-cols-3">
-            {prediction.vetoScenarios.map((scenario) => <VetoScenarioCard key={scenario.name} scenario={scenario} />)}
-          </div>
+          {hasVetoHistory ? (
+            <div className="grid gap-4 lg:grid-cols-3">
+              {prediction.vetoScenarios.map((scenario) => <VetoScenarioCard key={scenario.name} scenario={scenario} />)}
+            </div>
+          ) : (
+            <div className="rounded border border-lab-border bg-lab-panel p-4">
+              <p className="text-sm text-lab-amber">Veto scenario unavailable: no map/veto history.</p>
+            </div>
+          )}
         </section>
       )}
 
@@ -78,13 +160,54 @@ export function MatchDetailTabs({ input, prediction }: { input: PredictionInput;
         </section>
       )}
 
+      {active === "Opponent Matchup" && (
+        <section className="space-y-4">
+          <div className="grid gap-4 lg:grid-cols-2">
+            <MatchupCard title={input.teamA.name} profile={input.opponentMatchupA} style={input.teamStyleA} />
+            <MatchupCard title={input.teamB.name} profile={input.opponentMatchupB} style={input.teamStyleB} />
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel p-4">
+            <h2 className="font-semibold text-white">Prediction data windows</h2>
+            <div className="mt-3 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead className="text-xs uppercase text-lab-muted">
+                  <tr><th className="py-2">Team</th><th>Window</th><th>Matches</th><th>Maps</th><th>DQ</th><th>Relevance</th></tr>
+                </thead>
+                <tbody className="divide-y divide-lab-border">
+                  {input.dataWindows.map((window) => (
+                    <tr key={`${window.teamId}-${window.windowType}`}>
+                      <td className="py-2 text-white">{window.teamId === input.teamA.id ? input.teamA.name : input.teamB.name}</td>
+                      <td>{window.windowType}</td>
+                      <td>{window.matchesCount}</td>
+                      <td>{window.mapsCount}</td>
+                      <td>{Math.round(window.dataQualityScore)}</td>
+                      <td>{Math.round(window.relevanceScore * 100)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+          {input.sourceConflicts.length > 0 && (
+            <div className="rounded border border-lab-amber/60 bg-lab-panel p-4">
+              <h2 className="font-semibold text-lab-amber">Source conflicts</h2>
+              <ul className="mt-3 space-y-2 text-sm text-lab-muted">
+                {input.sourceConflicts.map((conflict) => (
+                  <li key={`${conflict.source}-${conflict.externalId}`}>{conflict.source}: {conflict.externalName} · confidence {Math.round(conflict.confidence * 100)}% · {conflict.status}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </section>
+      )}
+
       {active === "News & Events" && <NewsImpactPanel news={input.news} />}
 
       {active === "Head-to-Head" && (
         <section className="rounded border border-lab-border bg-lab-panel p-4">
           <h2 className="font-semibold text-white">Head-to-Head</h2>
           <div className="mt-3 space-y-2 text-sm text-lab-muted">
-            {input.h2h.length === 0 ? <p>Релевантных H2H для текущих составов нет.</p> : input.h2h.map((entry) => (
+            {input.h2h.length === 0 ? <p>Нет релевантных H2H для текущих составов.</p> : input.h2h.map((entry) => (
               <p key={entry.matchId}>{formatDateTime(entry.date)} · {entry.format} · relevance {Math.round(entry.relevanceScore * 100)}% · roster similarity {Math.round(((entry.teamARosterSimilarity + entry.teamBRosterSimilarity) / 2) * 100)}%</p>
             ))}
           </div>
@@ -94,6 +217,14 @@ export function MatchDetailTabs({ input, prediction }: { input: PredictionInput;
       {active === "Risk & Confidence" && (
         <section className="space-y-4">
           <DataQualityPanel input={input} prediction={prediction} />
+          {priority && priority.hiddenReasons.length > 0 && (
+            <div className="rounded border border-lab-amber/60 bg-lab-panel p-4">
+              <h3 className="font-semibold text-lab-amber">Почему матч скрыт из Pro Focus?</h3>
+              <ul className="mt-3 space-y-2 text-sm text-lab-muted">
+                {priority.hiddenReasons.map((reason) => <li key={reason}>{reason}</li>)}
+              </ul>
+            </div>
+          )}
           <div className="grid gap-4 lg:grid-cols-2">
             <Panel title="Почему confidence повышен" items={prediction.riskBreakdown.confidenceDrivers} />
             <Panel title="Что снизило confidence" items={prediction.riskBreakdown.confidenceReducers} />
@@ -114,12 +245,33 @@ export function MatchDetailTabs({ input, prediction }: { input: PredictionInput;
   );
 }
 
+function MatchupCard({ title, profile, style }: { title: string; profile: PredictionInput["opponentMatchupA"]; style: PredictionInput["teamStyleA"] }) {
+  return (
+    <article className="rounded border border-lab-border bg-lab-panel p-4">
+      <h2 className="font-semibold text-white">{title}</h2>
+      {profile ? (
+        <dl className="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div><dt className="text-lab-muted">Direct sample</dt><dd className="text-white">{profile.matchesPlayed} matches / {profile.mapsPlayed} maps</dd></div>
+          <div><dt className="text-lab-muted">Confidence</dt><dd className="text-white">{Math.round(profile.confidenceScore * 100)}%</dd></div>
+          <div><dt className="text-lab-muted">Map winrate</dt><dd className="text-white">{Math.round(profile.mapWinRate * 100)}%</dd></div>
+          <div><dt className="text-lab-muted">Veto punish</dt><dd className="text-white">{Math.round(profile.vetoPunishScore * 100)}%</dd></div>
+          <div><dt className="text-lab-muted">AWP matchup</dt><dd className="text-white">{Math.round(profile.awpMatchupScore * 100)}%</dd></div>
+          <div><dt className="text-lab-muted">Closing</dt><dd className="text-white">{Math.round(profile.closingMatchupScore * 100)}%</dd></div>
+        </dl>
+      ) : (
+        <p className="mt-3 text-sm text-lab-amber">Недостаточно direct matchup sample. Используется neutral baseline.</p>
+      )}
+      {style && <p className="mt-3 text-sm text-lab-muted">Style: aggression {Math.round(style.aggressionScore * 100)}%, clutch {Math.round(style.clutchStrength * 100)}%, volatility {Math.round(style.volatilityScore * 100)}%.</p>}
+    </article>
+  );
+}
+
 function Panel({ title, items }: { title: string; items: string[] }) {
   return (
     <div className="rounded border border-lab-border bg-lab-panel p-4">
       <h3 className="font-semibold text-white">{title}</h3>
       <ul className="mt-3 space-y-2 text-sm text-lab-muted">
-        {items.length > 0 ? items.map((item) => <li key={item}>{item}</li>) : <li>Критичных сигналов нет.</li>}
+        {items.length > 0 ? items.map((item, index) => <li key={`${title}-${index}-${item.slice(0, 24)}`}>{item}</li>) : <li>Критичных сигналов нет.</li>}
       </ul>
     </div>
   );

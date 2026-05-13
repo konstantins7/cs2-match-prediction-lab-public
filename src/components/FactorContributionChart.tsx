@@ -9,8 +9,17 @@ export function FactorContributionChart({ factors }: { factors: PredictionFactor
       name: factor.factorName,
       contribution: Number((factor.impact * factor.weight * factor.confidence).toFixed(2))
     }))
+    .filter((factor) => Math.abs(factor.contribution) > 0.01)
     .sort((a, b) => Math.abs(b.contribution) - Math.abs(a.contribution))
     .slice(0, 14);
+
+  if (data.length === 0) {
+    return (
+      <div className="rounded border border-lab-border bg-lab-panel p-4">
+        <p className="text-sm text-lab-amber">Факторный график недоступен: все ключевые сигналы нейтральные или отсутствуют.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="h-80 rounded border border-lab-border bg-lab-panel p-4">

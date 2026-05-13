@@ -35,7 +35,14 @@ export const defaultWeights: ModelWeights = {
   leadership: 0.7,
   honeymoon: 0.55,
   coreStability: 0.82,
-  roleConflict: 0.74
+  roleConflict: 0.74,
+  opponentMatchup: 0.84,
+  basicRanking: 0.62,
+  basicRecentResults: 0.58,
+  tournamentImportance: 0.42,
+  teamKnownness: 0.34,
+  fixtureConfidence: 0.26,
+  unknownDataPenalty: 0.55
 };
 
 export function parseWeights(value?: string | null): ModelWeights {

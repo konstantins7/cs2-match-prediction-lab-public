@@ -1,6 +1,9 @@
 import type { BacktestResult } from "@/components/BacktestSummary";
 import { prisma } from "@/lib/prisma";
 import { buildPredictionInput, calculatePrediction } from "@/lib/predictionEngine";
+import { calculateMatchPriority, isDefaultProFocus, type MatchPriorityLike } from "@/lib/proFocus";
+
+export type BacktestScope = "all" | "pro_focus" | "demo" | "pandascore_fixtures" | "sample_dev_only";
 
 const buckets = [
   { label: "50-55", min: 50, max: 55 },
@@ -10,13 +13,27 @@ const buckets = [
   { label: "70+", min: 70, max: 100 }
 ];
 
-export async function runMockBacktest(): Promise<BacktestResult> {
+export async function runMockBacktest(scope: BacktestScope = "all"): Promise<BacktestResult> {
   const matches = await prisma.match.findMany({
     where: { status: "finished", winnerTeamId: { not: null } },
+    include: {
+      teamA: { include: { rankSnapshots: { orderBy: { rankingDate: "desc" }, take: 3 } } },
+      teamB: { include: { rankSnapshots: { orderBy: { rankingDate: "desc" }, take: 3 } } }
+    },
     orderBy: { startTime: "desc" }
   });
+  const scoped = matches.filter((match) => {
+    if (scope === "demo") return match.sourceMode === "demo";
+    if (scope === "pandascore_fixtures") return match.sourceMode === "pandascore_free";
+    if (scope === "sample_dev_only") return match.sourceMode === "analyst_sample";
+    if (scope === "pro_focus") {
+      const priority = calculateMatchPriority(match as unknown as MatchPriorityLike);
+      return match.sourceMode !== "demo" && match.sourceMode !== "analyst_sample" && isDefaultProFocus(priority, match.isPinned);
+    }
+    return match.sourceMode !== "analyst_sample";
+  });
   const rows = await Promise.all(
-    matches.map(async (match) => {
+    scoped.map(async (match) => {
       const input = await buildPredictionInput(match.id);
       const prediction = calculatePrediction(input);
       const winnerProbability = match.winnerTeamId === input.teamA.id ? prediction.teamAProbability / 100 : prediction.teamBProbability / 100;
@@ -74,6 +91,7 @@ export async function runMockBacktest(): Promise<BacktestResult> {
   ];
 
   return {
+    scope,
     testedMatches,
     correctPredictions,
     accuracy: testedMatches ? correctPredictions / testedMatches : 0,

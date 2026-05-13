@@ -34,7 +34,14 @@ const labels: Record<WeightKey, string> = {
   leadership: "Leadership",
   honeymoon: "Honeymoon",
   coreStability: "Core stability",
-  roleConflict: "Role conflict"
+  roleConflict: "Role conflict",
+  opponentMatchup: "Opponent matchup",
+  basicRanking: "Basic ranking advantage",
+  basicRecentResults: "Basic recent results",
+  tournamentImportance: "Tournament importance",
+  teamKnownness: "Team knownness / watchlist",
+  fixtureConfidence: "Fixture confidence",
+  unknownDataPenalty: "Unknown data penalty"
 };
 
 export function ModelWeightEditor({ input, initialWeights }: { input: PredictionInput; initialWeights: ModelWeights }) {

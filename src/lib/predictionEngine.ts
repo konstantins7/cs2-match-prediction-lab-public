@@ -7,6 +7,8 @@ export type {
   PredictionFactorOutput,
   PredictionInput,
   PredictionOutput,
+  PredictionReadiness,
+  PredictionReadinessLevel,
   RiskLevel,
   VetoScenario,
   WeightKey

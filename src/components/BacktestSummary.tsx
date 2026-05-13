@@ -1,4 +1,5 @@
 export type BacktestResult = {
+  scope?: string;
   testedMatches: number;
   correctPredictions: number;
   accuracy: number;
@@ -9,8 +10,18 @@ export type BacktestResult = {
 };
 
 export function BacktestSummary({ result }: { result: BacktestResult }) {
+  if (result.testedMatches === 0) {
+    return (
+      <div className="rounded border border-lab-border bg-lab-panel p-4">
+        {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}</h2>}
+        <p className="mt-2 text-sm text-lab-amber">Недостаточно матчей для backtesting в этом scope.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
+      {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}</h2>}
       <div className="grid gap-3 md:grid-cols-5">
         <Stat label="Tested" value={String(result.testedMatches)} />
         <Stat label="Correct" value={String(result.correctPredictions)} />
@@ -51,6 +62,14 @@ export function BacktestSummary({ result }: { result: BacktestResult }) {
       </section>
     </div>
   );
+}
+
+function scopeLabel(scope: string) {
+  if (scope === "pro_focus") return "Pro Focus only";
+  if (scope === "demo") return "Demo only";
+  if (scope === "pandascore_fixtures") return "PandaScore fixtures-only";
+  if (scope === "sample_dev_only") return "Sample/dev only";
+  return "All matches";
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

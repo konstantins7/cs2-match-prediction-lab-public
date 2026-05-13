@@ -1,21 +1,43 @@
+import { resultFromRecords } from "./adapterUtils";
 import type { SourceAdapter } from "./types";
-import { realImportsEnabled } from "./types";
+import { buildSourceStatus, disabledResult, envFlag, envPresent, failedResult, SOURCE_PRIORITY } from "./types";
+
+const source = "grid" as const;
+const capabilities = ["matches", "players", "results", "detailed-stats"] as const;
+const requiredEnv = ["GRID_API_KEY", "ENABLE_GRID_SYNC"];
 
 export const gridAdapter: SourceAdapter = {
-  name: "grid",
+  name: source,
+  label: "GRID Open Access",
+  priority: SOURCE_PRIORITY[source],
+  capabilities: [...capabilities],
+  requiredEnv,
   status() {
-    const configured = Boolean(process.env.GRID_API_KEY);
-    return {
-      source: "grid",
-      enabled: realImportsEnabled() && configured,
+    const configured = envPresent("GRID_API_KEY");
+    const enabled = envFlag("ENABLE_GRID_SYNC") && configured;
+    return buildSourceStatus({
+      source,
+      label: "GRID Open Access",
+      priority: SOURCE_PRIORITY[source],
+      capabilities: [...capabilities],
+      requiredEnv,
+      enabled,
       configured,
-      message: configured ? "GRID key present, enable real imports to use it." : "Not configured: GRID_API_KEY is empty."
-    };
+      message: configured ? "GRID key is present. Detailed endpoint mapping is access-dependent." : "Not configured: set GRID_API_KEY and ENABLE_GRID_SYNC=true."
+    });
   },
-  async fetchUpcomingMatches() {
-    if (!realImportsEnabled() || !process.env.GRID_API_KEY) {
-      throw new Error("GRID adapter not configured");
+  async sync(context) {
+    const status = this.status();
+    if (!status.enabled) return disabledResult(source, context.jobType, status.message);
+    if (!["match_history", "map_stats", "player_stats", "finished_matches", "live_matches"].includes(context.jobType)) {
+      return failedResult(source, context.jobType, `GRID is reserved for detailed stats; job ${context.jobType} is not routed to GRID.`);
     }
-    return { message: "GRID integration placeholder.", records: [] };
+    return resultFromRecords({
+      source,
+      jobType: context.jobType,
+      records: [],
+      status: "partial",
+      notes: "GRID adapter is configured but MVP 0.3 keeps endpoint-specific detailed ingestion behind access/manual mapping."
+    });
   }
 };

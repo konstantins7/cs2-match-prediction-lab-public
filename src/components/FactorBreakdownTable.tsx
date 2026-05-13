@@ -1,4 +1,5 @@
 import { signed } from "@/lib/format";
+import { factorEvidenceKey, factorWarningKey } from "@/lib/factorKeys";
 import type { PredictionFactorOutput } from "@/lib/predictionEngine";
 
 export function FactorBreakdownTable({ factors, teamAName, teamBName }: { factors: PredictionFactorOutput[]; teamAName: string; teamBName: string }) {
@@ -28,13 +29,13 @@ export function FactorBreakdownTable({ factors, teamAName, teamBName }: { factor
                 <td className="max-w-xl px-3 py-3">
                   <p className="text-lab-muted">{factor.explanation}</p>
                   <div className="mt-2 space-y-1 text-xs text-lab-muted">
-                    {factor.evidence.slice(0, 3).map((item) => (
-                      <p key={`${factor.factorName}-${item.metric}`}>
+                    {factor.evidence.slice(0, 3).map((item, index) => (
+                      <p key={factorEvidenceKey(factor.factorName, item, index)}>
                         <span className="text-lab-cyan">{item.metric}</span>: {item.note} Sample {item.sampleSize}; A {String(item.teamAValue)} / B {String(item.teamBValue)}
                       </p>
                     ))}
-                    {factor.warnings.map((warning) => (
-                      <p key={warning} className="text-lab-amber">{warning}</p>
+                    {factor.warnings.map((warning, index) => (
+                      <p key={factorWarningKey(factor.factorName, warning, index)} className="text-lab-amber">{warning}</p>
                     ))}
                   </div>
                 </td>

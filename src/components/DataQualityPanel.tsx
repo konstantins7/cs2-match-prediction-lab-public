@@ -6,6 +6,9 @@ export function DataQualityPanel({ input, prediction }: { input: PredictionInput
     ["Map stats", `${input.mapStatsA.length} vs ${input.mapStatsB.length}`],
     ["Veto patterns", `${input.vetoPatternsA.length} vs ${input.vetoPatternsB.length}`],
     ["Roster", `${input.rosterVersionA ? "known" : "unknown"} / ${input.rosterVersionB ? "known" : "unknown"}`],
+    ["Opponent matchup", `${input.opponentMatchupA ? "known" : "partial"} / ${input.opponentMatchupB ? "known" : "partial"}`],
+    ["Data windows", `${input.dataWindows.length} windows`],
+    ["Source conflicts", `${input.sourceConflicts.length} needs review`],
     ["News", `${input.news.length} items`],
     ["Data quality", `${prediction.dataQualityScore}/100`]
   ];

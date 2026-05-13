@@ -49,7 +49,8 @@ const weightKeys = [
   "leadership",
   "honeymoon",
   "coreStability",
-  "roleConflict"
+  "roleConflict",
+  "opponentMatchup"
 ] as const;
 
 function days(offset: number) {
@@ -80,7 +81,26 @@ function json(value: unknown) {
   return JSON.stringify(value);
 }
 
+function snapshotRankCategory(rank: number) {
+  if (rank <= 10) return "top_10";
+  if (rank <= 20) return "top_20";
+  if (rank <= 30) return "top_30";
+  if (rank <= 50) return "top_50";
+  if (rank <= 100) return "top_100";
+  return "unranked";
+}
+
 async function reset() {
+  await prisma.entityMatchCandidate.deleteMany();
+  await prisma.entityAlias.deleteMany();
+  await prisma.predictionDataWindow.deleteMany();
+  await prisma.teamStyleSnapshot.deleteMany();
+  await prisma.opponentMatchupProfile.deleteMany();
+  await prisma.externalSourceRecord.deleteMany();
+  await prisma.dataSyncJob.deleteMany();
+  await prisma.sourceHealth.deleteMany();
+  await prisma.tournamentProfile.deleteMany();
+  await prisma.teamRankSnapshot.deleteMany();
   await prisma.predictionAudit.deleteMany();
   await prisma.predictionFactor.deleteMany();
   await prisma.prediction.deleteMany();
@@ -135,7 +155,25 @@ async function seedTeamsAndPlayers() {
         hltvRank: i + 12,
         internalElo: 1715 - i * 27 + (i % 3) * 18,
         topRankCategory: i < 2 ? "top-10" : i < 5 ? "top-20" : i < 9 ? "top-50" : "top-100",
+        isAcademyTeam: false,
+        teamPriority: 40 - i * 2,
+        visibilityTier: i < 9 ? "top_50" : "top_100",
         isActive: true
+      }
+    });
+
+    await prisma.teamRankSnapshot.create({
+      data: {
+        id: `rank_valve_${id}`,
+        teamId: id,
+        source: "valve_rankings",
+        rank: i + 8,
+        points: 1715 - i * 27 + (i % 3) * 18,
+        region,
+        rankingDate: days(-8),
+        rankCategory: snapshotRankCategory(i + 8),
+        confidence: 0.9,
+        sourceUrl: "manual://seed/valve-ranking-reference"
       }
     });
 
@@ -459,6 +497,54 @@ async function seedMetaAndMaps() {
 }
 
 async function seedMatches() {
+  await prisma.tournamentProfile.createMany({
+    data: [
+      {
+        id: "tournament_analyst_cup",
+        source: "mock",
+        externalId: "analyst-cup-2026",
+        name: "Analyst Cup 2026",
+        tier: "A",
+        importanceScore: 72,
+        isKnownTournament: true,
+        confidence: 0.75,
+        notes: "Fictional known tournament for Pro Focus seed coverage."
+      },
+      {
+        id: "tournament_data_masters",
+        source: "mock",
+        externalId: "data-masters-spring",
+        name: "Data Masters Spring",
+        tier: "B",
+        importanceScore: 54,
+        isKnownTournament: true,
+        confidence: 0.7,
+        notes: "Fictional conditional tournament for MVP filters."
+      },
+      {
+        id: "tournament_historical_demo",
+        source: "mock",
+        externalId: "historical-demo-league",
+        name: "Historical Demo League",
+        tier: "B",
+        importanceScore: 45,
+        isKnownTournament: false,
+        confidence: 0.55,
+        notes: "Demo backtesting fixture."
+      },
+      {
+        id: "tournament_live_demo",
+        source: "mock",
+        externalId: "live-demo-series",
+        name: "Live Demo Series",
+        tier: "B",
+        importanceScore: 42,
+        isKnownTournament: false,
+        confidence: 0.55,
+        notes: "Demo live fixture."
+      }
+    ]
+  });
   const allMatches: Array<{
     id: string;
     teamAId: string;
@@ -590,6 +676,189 @@ async function seedMatches() {
       }
     });
   }
+}
+
+async function seedPipelineData() {
+  for (let i = 0; i < teams.length; i += 1) {
+    const [teamId, teamName, slug, country] = teams[i];
+    await prisma.entityAlias.createMany({
+      data: [
+        {
+          id: `alias_pandascore_${teamId}`,
+          entityType: "team",
+          entityId: teamId,
+          source: "pandascore",
+          externalId: `demo-ps-${i + 1}`,
+          alias: teamName,
+          confidence: 0.99
+        },
+        {
+          id: `alias_grid_${teamId}`,
+          entityType: "team",
+          entityId: teamId,
+          source: "grid",
+          externalId: `demo-grid-${i + 1}`,
+          alias: teamName,
+          confidence: 0.99
+        }
+      ]
+    });
+
+    await prisma.externalSourceRecord.create({
+      data: {
+        id: `raw_mock_team_${teamId}`,
+        source: "mock",
+        externalId: `mock-${teamId}`,
+        entityType: "team",
+        entityId: teamId,
+        rawJson: json({ id: teamId, name: teamName, country, source: "mock_seed" }),
+        fetchedAt: now,
+        hash: `seed-hash-team-${teamId}`,
+        sourceConfidence: 0.7
+      }
+    });
+
+    for (let slot = 0; slot < roles.length; slot += 1) {
+      const playerId = `player_${slug.replaceAll("-", "_")}_${slot + 1}`;
+      await prisma.entityAlias.create({
+        data: {
+          id: `alias_mock_${playerId}`,
+          entityType: "player",
+          entityId: playerId,
+          source: "mock",
+          externalId: `mock-${playerId}`,
+          alias: `${slug.split("-")[0]}-${roles[slot].replace(" ", "").slice(0, 4)}${slot + 1}`,
+          confidence: 0.98
+        }
+      });
+    }
+
+    const form = await prisma.teamFormSnapshot.findFirst({ where: { teamId }, orderBy: { createdAt: "desc" } });
+    const mapRows = await prisma.teamMapStat.findMany({ where: { teamId } });
+    const avg = (selector: (row: (typeof mapRows)[number]) => number) => mapRows.length ? mapRows.reduce((sum, row) => sum + selector(row), 0) / mapRows.length : 0.5;
+    await prisma.teamStyleSnapshot.create({
+      data: {
+        id: `style_${teamId}`,
+        teamId,
+        period: "last_90_days",
+        aggressionScore: round(avg((row) => row.openingRoundPerformance)),
+        defaultHeavyScore: round(clamp(0.62 - avg((row) => row.pickRate) * 0.2)),
+        executeHeavyScore: round(avg((row) => row.tRoundWinRate)),
+        awpDependencyScore: round(0.43 + wave(i, 10.1) * 0.24),
+        entryDependencyScore: round(avg((row) => row.openingRoundPerformance)),
+        pistolDependencyScore: round(avg((row) => row.pistolWinRate)),
+        forceBuyStrength: round(avg((row) => row.forceBuyWinRate)),
+        ctSideStrength: round(avg((row) => row.ctRoundWinRate)),
+        tSideStrength: round(avg((row) => row.tRoundWinRate)),
+        retakeStrength: round(avg((row) => row.clutchInOvertimeScore)),
+        clutchStrength: round(form?.mapPointConversion ?? 0.5),
+        tempoScore: round(form?.formScore ?? 0.5),
+        volatilityScore: round(form?.volatilityScore ?? 0.5)
+      }
+    });
+  }
+
+  const allMatches = await prisma.match.findMany();
+  const latestMeta = await prisma.gameMetaVersion.findFirst({ orderBy: { patchDate: "desc" } });
+  const activePool = await prisma.activeMapPoolVersion.findFirst({ where: { endedAt: null }, orderBy: { startedAt: "desc" } });
+  for (const match of allMatches) {
+    const pair = [
+      [match.teamAId, match.teamBId],
+      [match.teamBId, match.teamAId]
+    ] as const;
+    for (const [teamId, opponentTeamId] of pair) {
+      const teamIndex = teams.findIndex((team) => team[0] === teamId);
+      const opponentIndex = teams.findIndex((team) => team[0] === opponentTeamId);
+      const teamForm = await prisma.teamFormSnapshot.findFirst({ where: { teamId }, orderBy: { createdAt: "desc" } });
+      const opponentForm = await prisma.teamFormSnapshot.findFirst({ where: { teamId: opponentTeamId }, orderBy: { createdAt: "desc" } });
+      const mapRows = await prisma.teamMapStat.findMany({ where: { teamId } });
+      const favoriteMaps = [...mapRows].sort((a, b) => b.winRate - a.winRate).slice(0, 2).map((row) => row.mapName);
+      const weakMaps = [...mapRows].sort((a, b) => a.winRate - b.winRate).slice(0, 2).map((row) => row.mapName);
+      const delta = (teamForm?.opponentStrengthAdjustedForm ?? 0.5) - (opponentForm?.opponentStrengthAdjustedForm ?? 0.5);
+      await prisma.opponentMatchupProfile.create({
+        data: {
+          id: `matchup_${match.id}_${teamId}`,
+          teamId,
+          opponentTeamId,
+          period: match.status === "finished" ? "vs_same_opponent" : "last_90_days",
+          rosterSimilarity: round(clamp(0.48 + wave(teamIndex, opponentIndex) * 0.42)),
+          matchesPlayed: match.status === "finished" ? 1 + (teamIndex % 2) : teamIndex % 4,
+          mapsPlayed: 5 + ((teamIndex + opponentIndex) % 28),
+          matchWinRate: round(clamp((teamForm?.matchWinRate ?? 0.5) + delta * 0.18)),
+          mapWinRate: round(clamp((teamForm?.mapWinRate ?? 0.5) + delta * 0.14)),
+          averageRoundDiff: round(delta * 14, 2),
+          favoriteMapsJson: json(favoriteMaps),
+          weakMapsJson: json(weakMaps),
+          styleAdvantageScore: round(clamp(0.5 + delta + (wave(teamIndex, 11) - 0.5) * 0.12)),
+          awpMatchupScore: round(clamp(0.46 + wave(teamIndex, opponentIndex + 12) * 0.22)),
+          entryMatchupScore: round(clamp(0.46 + wave(teamIndex, opponentIndex + 13) * 0.22)),
+          vetoPunishScore: round(clamp(0.18 + wave(opponentIndex, teamIndex + 14) * 0.55)),
+          overtimeMatchupScore: round(clamp(0.46 + ((teamForm?.comebackFrom3RoundDeficit ?? 0.5) - (opponentForm?.comebackFrom3RoundDeficit ?? 0.5)))),
+          closingMatchupScore: round(clamp(0.46 + ((teamForm?.closeOutRate ?? 0.5) - (opponentForm?.closeOutRate ?? 0.5)))),
+          confidenceScore: round(clamp(0.34 + (teamForm?.matchesPlayed ?? 0) / 55 + wave(teamIndex, opponentIndex + 15) * 0.14))
+        }
+      });
+
+      const windows = [
+        ["last_7_days", -7, 0.48],
+        ["last_14_days", -14, 0.55],
+        ["last_30_days", -30, 0.66],
+        ["last_60_days", -60, 0.62],
+        ["last_90_days", -90, 0.58],
+        ["last_180_days", -180, 0.42],
+        ["post_last_major_patch", -36, 0.76],
+        ["current_roster_only", -28, 0.82],
+        ["current_role_only", -24, 0.78],
+        ["current_map_version_only", -42, 0.74],
+        ["vs_top_10", -90, 0.6],
+        ["vs_top_20", -90, 0.62],
+        ["vs_top_50", -90, 0.66],
+        ["vs_top_100", -90, 0.7],
+        ["vs_same_opponent", -120, 0.48],
+        ["lan_only", -120, 0.56],
+        ["online_only", -120, 0.64],
+        ["bo1_only", -120, 0.52],
+        ["bo3_only", -120, 0.68],
+        ["map_specific", -90, 0.62],
+        ["overtime_maps", -120, 0.5],
+        ["decider_maps", -120, 0.57]
+      ] as const;
+      for (const [windowType, offset, relevance] of windows) {
+        await prisma.predictionDataWindow.create({
+          data: {
+            id: `window_${match.id}_${teamId}_${windowType}`,
+            matchId: match.id,
+            teamId,
+            windowType,
+            startedAt: days(offset),
+            endedAt: match.startTime,
+            rosterVersionId: `roster_${teamId}`,
+            gameMetaVersionId: latestMeta?.id,
+            mapPoolVersionId: activePool?.id,
+            matchesCount: Math.max(0, Math.round((teamForm?.matchesPlayed ?? 0) * relevance)),
+            mapsCount: Math.max(0, Math.round((teamForm?.mapsPlayed ?? 0) * relevance)),
+            dataQualityScore: round(match.dataQualityScore * relevance),
+            relevanceScore: round(relevance + wave(teamIndex, opponentIndex) * 0.08),
+            summaryJson: json({ windowType, source: "mock_seed", note: "Fictional MVP 0.3 time window." })
+          }
+        });
+      }
+    }
+  }
+
+  await prisma.entityMatchCandidate.create({
+    data: {
+      id: "candidate_demo_conflict",
+      source: "pandascore",
+      entityType: "team",
+      externalId: "demo-uncertain-aurora",
+      externalName: "Aurora 5",
+      matchedEntityId: "team_aurora_five",
+      confidence: 0.71,
+      status: "needs_review",
+      rawJson: json({ id: "demo-uncertain-aurora", name: "Aurora 5", note: "Fictional low-confidence alias candidate." })
+    }
+  });
 }
 
 async function seedNewsPredictionsAndAdmin() {
@@ -750,6 +1019,99 @@ async function seedNewsPredictionsAndAdmin() {
       }
     ]
   });
+
+  await prisma.sourceHealth.createMany({
+    data: [
+      {
+        id: "health_grid",
+        source: "grid",
+        status: "disabled",
+        failureCount: 0,
+        rateLimitRemaining: null,
+        notes: "Not configured: GRID_API_KEY and ENABLE_GRID_SYNC are required."
+      },
+      {
+        id: "health_pandascore",
+        source: "pandascore",
+        status: "disabled",
+        failureCount: 0,
+        rateLimitRemaining: null,
+        notes: "Not configured: PANDASCORE_API_KEY and ENABLE_PANDASCORE_SYNC are required."
+      },
+      {
+        id: "health_liquipedia",
+        source: "liquipedia",
+        status: "disabled",
+        failureCount: 0,
+        rateLimitRemaining: 60,
+        notes: "Not configured: LIQUIPEDIA_API_KEY and ENABLE_LIQUIPEDIA_SYNC are required."
+      },
+      {
+        id: "health_valve_rankings",
+        source: "valve-rankings",
+        status: "disabled",
+        failureCount: 0,
+        notes: "Disabled: ENABLE_VALVE_RANKINGS_SYNC=false."
+      },
+      {
+        id: "health_cs_updates",
+        source: "cs-updates",
+        status: "disabled",
+        failureCount: 0,
+        notes: "Disabled: ENABLE_CS_UPDATES_SYNC=false."
+      },
+      {
+        id: "health_manual",
+        source: "manual",
+        status: "idle",
+        failureCount: 0,
+        notes: "Manual JSON/CSV fallback available."
+      },
+      {
+        id: "health_mock",
+        source: "mock",
+        status: "success",
+        lastSuccessAt: now,
+        lastSyncedAt: now,
+        failureCount: 0,
+        notes: "Mock seed loaded for local development."
+      }
+    ]
+  });
+
+  await prisma.dataSyncJob.createMany({
+    data: [
+      {
+        id: "job_mock_seed",
+        source: "mock",
+        jobType: "manual_import",
+        status: "success",
+        startedAt: now,
+        finishedAt: hours(1),
+        recordsFetched: 320,
+        recordsCreated: 320,
+        recordsUpdated: 0,
+        errorsJson: json([]),
+        notes: "Deterministic fictional seed data.",
+        lastSyncedAt: now,
+        failureCount: 0
+      },
+      {
+        id: "job_pandascore_disabled",
+        source: "pandascore",
+        jobType: "upcoming_matches",
+        status: "disabled",
+        startedAt: now,
+        finishedAt: now,
+        recordsFetched: 0,
+        recordsCreated: 0,
+        recordsUpdated: 0,
+        errorsJson: json([]),
+        notes: "PandaScore disabled until API key and flag are configured.",
+        failureCount: 0
+      }
+    ]
+  });
 }
 
 async function main() {
@@ -758,6 +1120,7 @@ async function main() {
   await seedTeamsAndPlayers();
   await seedTeamSnapshots();
   await seedMatches();
+  await seedPipelineData();
   await seedNewsPredictionsAndAdmin();
 }
 

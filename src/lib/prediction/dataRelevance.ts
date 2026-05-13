@@ -55,20 +55,30 @@ export function dataRelevanceFactor(input: PredictionInput): PredictionFactorOut
     positionSimilarity: input.chemistryB?.roleFitScore ?? 0.6,
     sampleSize: (input.teamFormB?.mapsPlayed ?? 0) + input.playerStatsB.reduce((sum, stat) => sum + stat.maps, 0)
   });
+  const windowsA = input.dataWindows.filter((window) => window.teamId === input.teamA.id);
+  const windowsB = input.dataWindows.filter((window) => window.teamId === input.teamB.id);
+  const windowScoreA = windowsA.length ? averageBy(windowsA, (window) => window.relevanceScore) : scoreA;
+  const windowScoreB = windowsB.length ? averageBy(windowsB, (window) => window.relevanceScore) : scoreB;
+  const finalScoreA = scoreA * 0.72 + windowScoreA * 0.28;
+  const finalScoreB = scoreB * 0.72 + windowScoreB * 0.28;
 
   return makeFactor({
     factorName: "Data Relevance Decay",
     factorGroup: "meta",
     weight: input.modelWeights.dataRelevance,
-    teamAValue: scoreA,
-    teamBValue: scoreB,
+    teamAValue: finalScoreA,
+    teamBValue: finalScoreB,
     scale: 0.28,
-    confidence: Math.min(scoreA, scoreB),
+    confidence: Math.min(finalScoreA, finalScoreB),
     explanation: "DataRelevanceScore = recency * patch relevance * map version relevance * roster/role/position similarity * sample confidence.",
     evidence: [
       makeEvidence("latest major patch", "meta", 1, latestMajorPatch?.patchName ?? "none", latestMajorPatch?.patchName ?? "none", "Данные до major patch теряют вес."),
-      makeEvidence("data relevance score", "computed", 1, scoreA.toFixed(3), scoreB.toFixed(3), "Старые/нерелевантные данные снижают confidence.")
+      makeEvidence("data relevance score", "computed", 1, finalScoreA.toFixed(3), finalScoreB.toFixed(3), "Старые/нерелевантные данные снижают confidence."),
+      makeEvidence("prediction data windows", "MVP 0.3", input.dataWindows.length, windowsA.length, windowsB.length, "Current roster/post-patch windows получают больший вес, чем старые baseline окна.")
     ],
-    warnings: scoreA < 0.45 || scoreB < 0.45 ? ["Есть сильный decay старых данных из-за patch/map/roster/role/position changes."] : []
+    warnings: [
+      ...(finalScoreA < 0.45 || finalScoreB < 0.45 ? ["Есть сильный decay старых данных из-за patch/map/roster/role/position changes."] : []),
+      ...(input.dataWindows.length ? [] : ["Нет PredictionDataWindow; relevance рассчитан только из snapshots."])
+    ]
   });
 }

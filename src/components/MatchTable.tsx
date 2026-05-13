@@ -2,7 +2,9 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/format";
 import type { CalculatedMatch } from "@/lib/data/matches";
 import { ConfidenceBadge } from "./ConfidenceBadge";
+import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
+import { SourceModeBadge } from "./SourceModeBadge";
 
 export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
   return (
@@ -15,13 +17,15 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
             <th className="px-3 py-3">Формат</th>
             <th className="px-3 py-3">Матч</th>
             <th className="px-3 py-3">Статус</th>
+            <th className="px-3 py-3">Source</th>
+            <th className="px-3 py-3">Priority</th>
             <th className="px-3 py-3">Прогноз</th>
             <th className="px-3 py-3">Качество</th>
             <th className="px-3 py-3" />
           </tr>
         </thead>
         <tbody className="divide-y divide-lab-border">
-          {rows.map(({ match, prediction }) => (
+          {rows.map(({ match, prediction, priority }) => (
             <tr key={match.id} className="hover:bg-lab-panel2/60">
               <td className="px-3 py-3 text-lab-muted">{formatDateTime(match.startTime)}</td>
               <td className="px-3 py-3">{match.eventName}</td>
@@ -33,10 +37,16 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                 </div>
               </td>
               <td className="px-3 py-3">{match.status}</td>
+              <td className="px-3 py-3"><SourceModeBadge sourceMode={match.sourceMode} needsReview={match.needsReview} /></td>
+              <td className="px-3 py-3">
+                <div className="text-white">{priority.priorityLabel}</div>
+                <div className="text-xs text-lab-muted">{priority.visibilityTier} · {priority.priorityScore}</div>
+              </td>
               <td className="px-3 py-3">
                 <div className="flex flex-wrap gap-2">
                   <ConfidenceBadge value={prediction.confidenceScore} />
                   <RiskBadge value={prediction.riskLevel} />
+                  <ReadinessBadge level={prediction.readiness.level} />
                 </div>
                 <div className="mt-1 text-xs text-lab-muted">
                   {prediction.teamAProbability}% / {prediction.teamBProbability}%

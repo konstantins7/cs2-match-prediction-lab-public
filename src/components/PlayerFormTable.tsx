@@ -1,7 +1,16 @@
 import type { PlayerEntity, PlayerStatEntity } from "@/lib/prediction/types";
 
-export function PlayerFormTable({ players, stats }: { players: PlayerEntity[]; stats: PlayerStatEntity[] }) {
+export function PlayerFormTable({ players, stats, emptyMessage }: { players: PlayerEntity[]; stats: PlayerStatEntity[]; emptyMessage?: string }) {
   const statByPlayer = new Map(stats.map((stat) => [stat.playerId, stat]));
+
+  if (players.length === 0) {
+    return (
+      <div className="rounded border border-lab-border bg-lab-panel p-4">
+        <p className="text-sm text-lab-amber">{emptyMessage ?? "Состав игроков не найден в бесплатных данных PandaScore или не сопоставлен."}</p>
+      </div>
+    );
+  }
+
   return (
     <div className="overflow-x-auto rounded border border-lab-border bg-lab-panel">
       <table className="min-w-full text-left text-sm">

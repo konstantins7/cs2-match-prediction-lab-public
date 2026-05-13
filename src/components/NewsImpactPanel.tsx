@@ -2,6 +2,14 @@ import { formatDateTime } from "@/lib/format";
 import type { NewsEntity } from "@/lib/prediction/types";
 
 export function NewsImpactPanel({ news }: { news: NewsEntity[] }) {
+  if (news.length === 0) {
+    return (
+      <div className="rounded border border-lab-border bg-lab-panel p-4">
+        <p className="text-sm text-lab-amber">Новостей/roster events для этого матча пока нет.</p>
+      </div>
+    );
+  }
+
   return (
     <div className="grid gap-3">
       {news.map((item) => (
