@@ -8,6 +8,7 @@ import {
 } from "./manualRealQuality";
 import { readinessRank } from "./prediction/readiness";
 import type { PredictionInput, PredictionOutput, PredictionReadiness } from "./prediction/types";
+import { isPreMatchUsableDataRole, parseEvidenceDate } from "./realData/dataRole";
 
 export type SourceLevel =
   | "Fixture only"
@@ -38,12 +39,29 @@ function bestQuality(input: PredictionInput, ids: Array<string | null | undefine
 
 function manualRecords(input: PredictionInput) {
   const manualPlayers = [...input.playersA, ...input.playersB].filter((player) => player.sourceMode === "manual_real" && player.matchId === input.match.id);
-  const manualPlayerStats = [...input.playerStatsA, ...input.playerStatsB].filter((stat) => stat.source === "manual_enrichment" && stat.matchId === input.match.id);
-  const manualMapStats = [...input.mapStatsA, ...input.mapStatsB].filter((stat) => stat.source === "manual_enrichment" && stat.matchId === input.match.id);
-  const manualVeto = [...input.vetoPatternsA, ...input.vetoPatternsB].filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id);
-  const manualH2h = input.h2h.filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id);
-  const manualNews = input.news.filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id);
+  const manualPlayerStats = [...input.playerStatsA, ...input.playerStatsB].filter((stat) => stat.source === "manual_enrichment" && stat.matchId === input.match.id && recordPassesCutoff(input, stat));
+  const manualMapStats = [...input.mapStatsA, ...input.mapStatsB].filter((stat) => stat.source === "manual_enrichment" && stat.matchId === input.match.id && recordPassesCutoff(input, stat));
+  const manualVeto = [...input.vetoPatternsA, ...input.vetoPatternsB].filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id && recordPassesCutoff(input, row));
+  const manualH2h = input.h2h.filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id && recordPassesCutoff(input, row));
+  const manualNews = input.news.filter((row) => row.source === "manual_enrichment" && row.matchId === input.match.id && recordPassesCutoff(input, row));
   return { manualPlayers, manualPlayerStats, manualMapStats, manualVeto, manualH2h, manualNews };
+}
+
+function recordPassesCutoff(input: PredictionInput, row: {
+  dataLeakageCheckPassed?: boolean | null;
+  dataRole?: string | null;
+  sourceDate?: Date | string | null;
+  collectedAt?: Date | string | null;
+  matchId?: string | null;
+}) {
+  if (row.dataLeakageCheckPassed === false) return false;
+  if (row.dataRole && !isPreMatchUsableDataRole(row.dataRole)) return false;
+  const evidenceDate = parseEvidenceDate(row.sourceDate ?? row.collectedAt ?? null);
+  if (!evidenceDate) return true;
+  const targetStart = new Date(input.match.startTime);
+  if (evidenceDate.getTime() > targetStart.getTime()) return false;
+  if (row.matchId === input.match.id && evidenceDate.getTime() >= targetStart.getTime() && row.dataRole === "post_match_analysis") return false;
+  return true;
 }
 
 export function calculateManualRealPackQualityForInput(input: PredictionInput): ManualRealPackQuality {
@@ -92,7 +110,23 @@ function hasManualRealData(input: PredictionInput) {
 }
 
 function hasDeepRealData(input: PredictionInput) {
-  return [...input.playerStatsA, ...input.playerStatsB, ...input.mapStatsA, ...input.mapStatsB].some((row) => row.source === "parsed_demo" || row.source === "grid");
+  return [...input.playerStatsA, ...input.playerStatsB, ...input.mapStatsA, ...input.mapStatsB].some((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row));
+}
+
+function deepRecords(input: PredictionInput) {
+  return {
+    playerStatsA: input.playerStatsA.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row)),
+    playerStatsB: input.playerStatsB.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row)),
+    mapStatsA: input.mapStatsA.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row)),
+    mapStatsB: input.mapStatsB.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row)),
+    vetoPatternsA: input.vetoPatternsA.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row)),
+    vetoPatternsB: input.vetoPatternsB.filter((row) => (row.source === "parsed_demo" || row.source === "grid") && recordPassesCutoff(input, row))
+  };
+}
+
+function hasLeakageFailures(input: PredictionInput) {
+  return [...input.playerStatsA, ...input.playerStatsB, ...input.mapStatsA, ...input.mapStatsB, ...input.vetoPatternsA, ...input.vetoPatternsB, ...input.h2h, ...input.news]
+    .some((row) => (row.source === "manual_enrichment" || row.source === "parsed_demo" || row.source === "grid") && !recordPassesCutoff(input, row));
 }
 
 export function determineSourceLevel(input: PredictionInput, readiness: PredictionReadiness, manualQuality = calculateManualRealPackQualityForInput(input)): SourceLevel {
@@ -111,16 +145,21 @@ export function evaluateRealForecastStatus(input: PredictionInput, prediction: P
   const sampleOnly = sourceLevel === "Sample only";
   const readinessOk = readinessRank(prediction.readiness.level) >= 3;
   const deepRealData = hasDeepRealData(input);
+  const deep = deepRecords(input);
   const hasNonSampleAnalyticalSource = manualRealPackQuality.canReachL3 || deepRealData;
-  const deepCoverage = deepRealData && input.playerStatsA.length >= 5 && input.playerStatsB.length >= 5 && input.mapStatsA.length > 0 && input.mapStatsB.length > 0 && input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
+  const deepVetoCoverage = deep.vetoPatternsA.length > 0 && deep.vetoPatternsB.length > 0;
+  const deepVetoSubstitute = deep.mapStatsA.length >= 3 && deep.mapStatsB.length >= 3 && (deep.mapStatsA.some((row) => row.pickRate > 0 || row.banRate > 0 || row.deciderRate > 0) || deep.mapStatsB.some((row) => row.pickRate > 0 || row.banRate > 0 || row.deciderRate > 0));
+  const deepCoverage = deepRealData && deep.playerStatsA.length >= 5 && deep.playerStatsB.length >= 5 && deep.mapStatsA.length > 0 && deep.mapStatsB.length > 0 && (deepVetoCoverage || deepVetoSubstitute);
   const hasCoverage = (manualRealPackQuality.coverage.playerStatsComplete && manualRealPackQuality.coverage.mapStatsComplete && manualRealPackQuality.coverage.vetoComplete) || deepCoverage;
   const sourceConflict = input.sourceConflicts.length > 0 || Boolean(input.match.needsReview) || prediction.warnings.some((warning) => warning.toLowerCase().includes("source conflict"));
+  const leakageFailed = hasLeakageFailures(input);
 
   if (!readinessOk) reasons.push("Readiness ниже L3.");
   if (!hasNonSampleAnalyticalSource) reasons.push("Нет validated manual_real / parsed_demo / GRID analytical source.");
   if (sampleOnly) reasons.push("L3 достигнут только через SAMPLE DATA.");
   if (sourceConflict) reasons.push("Есть critical needs_review/source conflict.");
   if (!hasCoverage) reasons.push("Нет полного player/map/veto coverage для real forecast.");
+  if (leakageFailed) reasons.push("Data leakage / cutoff check failed.");
   if (prediction.dataQualityScore < 50) reasons.push("Data Quality ниже 50.");
   if (manualRealPackQuality.score < 65 && !hasDeepRealData(input)) reasons.push("Manual Real Pack Quality ниже 65.");
 

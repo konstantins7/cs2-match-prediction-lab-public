@@ -3,6 +3,7 @@ import { buildPredictionInput, calculatePrediction, type PredictionInput } from 
 import { calculateGlickoStyleUncertainty } from "../modelLab/ratings";
 import { sourcePriorityByDataType, type SourceDataType } from "../sources/sourcePriority";
 import { calculateNewsImpact } from "../news/newsImpact";
+import { isPreMatchUsableDataRole } from "../realData/dataRole";
 
 export const FEATURE_SCHEMA_VERSION = "mvp_0_4_1_feature_schema_v1";
 export const FEATURE_MODEL_VERSION = "mvp_0_4_1_rule_based_feature_store";
@@ -81,18 +82,26 @@ function firstSource<T extends DatedSource>(items: T[], cutoff: Date) {
   return items.find((item) => beforeOrAt(item.date, cutoff));
 }
 
-function filterByCutoff<T extends { createdAt?: Date | string | null; publishedAt?: Date | string | null; date?: Date | string | null; lastMatchAt?: Date | string | null }>(
-  items: T[],
-  cutoff: Date
-) {
-  return items.filter((item) => beforeOrAt(item.createdAt ?? item.publishedAt ?? item.date ?? item.lastMatchAt, cutoff));
+function evidenceDate<T extends { sourceDate?: Date | string | null; collectedAt?: Date | string | null; createdAt?: Date | string | null; publishedAt?: Date | string | null; date?: Date | string | null; lastMatchAt?: Date | string | null }>(item: T) {
+  return item.sourceDate ?? item.collectedAt ?? item.createdAt ?? item.publishedAt ?? item.date ?? item.lastMatchAt;
 }
 
-function hasAfterCutoff<T extends { createdAt?: Date | string | null; publishedAt?: Date | string | null; date?: Date | string | null; lastMatchAt?: Date | string | null }>(
+function passesLeakageRole<T extends { dataLeakageCheckPassed?: boolean | null; dataRole?: string | null }>(item: T) {
+  return item.dataLeakageCheckPassed !== false && (!item.dataRole || isPreMatchUsableDataRole(item.dataRole));
+}
+
+function filterByCutoff<T extends { sourceDate?: Date | string | null; collectedAt?: Date | string | null; createdAt?: Date | string | null; publishedAt?: Date | string | null; date?: Date | string | null; lastMatchAt?: Date | string | null; dataLeakageCheckPassed?: boolean | null; dataRole?: string | null }>(
   items: T[],
   cutoff: Date
 ) {
-  return items.some((item) => !beforeOrAt(item.createdAt ?? item.publishedAt ?? item.date ?? item.lastMatchAt, cutoff));
+  return items.filter((item) => passesLeakageRole(item) && beforeOrAt(evidenceDate(item), cutoff));
+}
+
+function hasAfterCutoff<T extends { sourceDate?: Date | string | null; collectedAt?: Date | string | null; createdAt?: Date | string | null; publishedAt?: Date | string | null; date?: Date | string | null; lastMatchAt?: Date | string | null; dataLeakageCheckPassed?: boolean | null; dataRole?: string | null }>(
+  items: T[],
+  cutoff: Date
+) {
+  return items.some((item) => !passesLeakageRole(item) || !beforeOrAt(evidenceDate(item), cutoff));
 }
 
 function missingFeatures(input: PredictionInput, filtered: {
@@ -171,7 +180,7 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
       sourceRecordId: stat.sourceRecordId,
       sampleSize: stat.maps,
       confidence: stat.source === "manual_enrichment" ? 0.72 : stat.source === "parsed_demo" ? 0.82 : 0.58,
-      date: stat.createdAt
+      date: stat.sourceDate ?? stat.collectedAt ?? stat.createdAt
     })),
     cutoff
   );
@@ -181,7 +190,7 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
       sourceRecordId: stat.sourceRecordId,
       sampleSize: stat.mapsPlayed,
       confidence: stat.sampleQuality,
-      date: stat.createdAt
+      date: stat.sourceDate ?? stat.collectedAt ?? stat.createdAt
     })),
     cutoff
   );
@@ -191,7 +200,7 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
       sourceRecordId: stat.sourceRecordId,
       sampleSize: Math.round(stat.confidenceScore * 20),
       confidence: stat.confidenceScore,
-      date: stat.createdAt
+      date: stat.sourceDate ?? stat.collectedAt ?? stat.createdAt
     })),
     cutoff
   );
@@ -201,7 +210,7 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
       sourceRecordId: usage.item.sourceRecordId,
       sampleSize: 1,
       confidence: usage.confidence,
-      date: usage.item.publishedAt,
+      date: usage.item.sourceDate ?? usage.item.collectedAt ?? usage.item.publishedAt,
       itemIds: [usage.item.id].filter(Boolean),
       sourceTier: usage.tier,
       usedInPrediction: usage.usedInPrediction,

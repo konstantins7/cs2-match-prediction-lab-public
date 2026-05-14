@@ -41,7 +41,10 @@ export async function exportTrainingDatasetCsv() {
   const rows = snapshots.filter((snapshot) => {
     if (seen.has(snapshot.matchId)) return false;
     seen.add(snapshot.matchId);
-    return snapshot.match.status === "finished" && Boolean(snapshot.match.winnerTeamId) && snapshot.match.sourceMode !== "analyst_sample";
+    return snapshot.match.status === "finished" &&
+      Boolean(snapshot.match.winnerTeamId) &&
+      snapshot.match.sourceMode !== "analyst_sample" &&
+      snapshot.sourceMode !== "analyst_sample";
   });
   const lines = [
     TRAINING_DATASET_COLUMNS.join(","),

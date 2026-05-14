@@ -24,6 +24,9 @@ type SaveManualNewsParams = {
   importBatchId?: string | null;
   recordSource?: string;
   sourceMode?: "manual_real" | "manual_reference" | "analyst_sample";
+  sourceDate?: Date | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   isActive?: boolean;
 };
 
@@ -187,6 +190,7 @@ export async function saveManualNewsItem(params: SaveManualNewsParams) {
       url: asString(params.raw.sourceUrl ?? params.raw.url ?? params.raw.hltvUrl ?? params.raw.telegramPostUrl) || null,
       publishedAt: asDate(params.raw.publishedAt),
       collectedAt: asDate(params.raw.collectedAt, new Date()),
+      sourceDate: params.sourceDate ?? (params.raw.sourceDate ? asDate(params.raw.sourceDate) : params.raw.publishedAt ? asDate(params.raw.publishedAt) : null),
       reliability: asString(params.raw.reliability, String(Math.round(preview.confidence * 100))),
       eventType: asString(params.raw.eventType, "unknown"),
       sourceTier: preview.sourceTier,
@@ -201,6 +205,8 @@ export async function saveManualNewsItem(params: SaveManualNewsParams) {
       isConfirmed: preview.isConfirmed,
       expiresAt: params.raw.expiresAt ? asDate(params.raw.expiresAt) : null,
       sourceMode,
+      dataRole: params.dataRole ?? (typeof params.raw.dataRole === "string" ? params.raw.dataRole : "pre_match_evidence"),
+      dataLeakageCheckPassed: params.dataLeakageCheckPassed ?? true,
       rawJson: JSON.stringify(params.raw),
       matchId: params.matchId ?? (typeof params.raw.matchId === "string" ? params.raw.matchId : null),
       importBatchId: params.importBatchId ?? null,

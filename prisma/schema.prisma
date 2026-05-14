@@ -250,10 +250,15 @@ model PlayerStatSnapshot {
   lanRating             Float
   onlineRating          Float
   source                String
+  sourceMode            String   @default("partial")
   sourceUrl             String?
   matchId               String?
   importBatchId         String?
   sourceRecordId        String?
+  collectedAt           DateTime?
+  sourceDate            DateTime?
+  dataRole              String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
   isActive              Boolean  @default(true)
   createdAt             DateTime @default(now())
 
@@ -263,6 +268,8 @@ model PlayerStatSnapshot {
   @@index([teamId])
   @@index([matchId, source])
   @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
 }
 
 model TeamFormSnapshot {
@@ -307,11 +314,25 @@ model TeamFormSnapshot {
   badHalfRecovery              Float
   lostPistolRecovery           Float
   lostOwnPickRecovery          Float
+  source                       String   @default("generated")
+  sourceMode                   String   @default("partial")
+  matchId                      String?
+  importBatchId                String?
+  sourceRecordId               String?
+  isActive                     Boolean  @default(true)
+  collectedAt                  DateTime?
+  sourceDate                   DateTime?
+  dataRole                     String   @default("historical_team_form")
+  dataLeakageCheckPassed       Boolean  @default(true)
   createdAt                    DateTime @default(now())
 
   team                         Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
 }
 
 model TeamBasicResultSnapshot {
@@ -367,10 +388,15 @@ model TeamMapStat {
   openingRoundPerformance   Float
   sampleQuality             Float
   source                    String
+  sourceMode                String   @default("partial")
   sourceUrl                 String?
   matchId                   String?
   importBatchId             String?
   sourceRecordId            String?
+  collectedAt               DateTime?
+  sourceDate                DateTime?
+  dataRole                  String   @default("pre_match_evidence")
+  dataLeakageCheckPassed    Boolean  @default(true)
   isActive                  Boolean  @default(true)
   createdAt                 DateTime @default(now())
 
@@ -379,6 +405,8 @@ model TeamMapStat {
   @@index([teamId, mapName])
   @@index([matchId, source])
   @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
 }
 
 model VetoPattern {
@@ -395,9 +423,14 @@ model VetoPattern {
   comfortScore    Float
   confidenceScore Float
   source          String   @default("unknown")
+  sourceMode      String   @default("partial")
   matchId         String?
   importBatchId   String?
   sourceRecordId  String?
+  collectedAt     DateTime?
+  sourceDate      DateTime?
+  dataRole        String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
 
@@ -407,6 +440,8 @@ model VetoPattern {
   @@index([teamId, mapName])
   @@index([matchId, source])
   @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
 }
 
 model HeadToHead {
@@ -422,8 +457,13 @@ model HeadToHead {
   relevanceScore        Float
   notes                 String?
   source                String   @default("unknown")
+  sourceMode            String   @default("partial")
   importBatchId         String?
   sourceRecordId        String?
+  collectedAt           DateTime?
+  sourceDate            DateTime?
+  dataRole              String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
   isActive              Boolean  @default(true)
 
   match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
@@ -431,6 +471,8 @@ model HeadToHead {
   @@index([teamAId, teamBId])
   @@index([matchId, source])
   @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
 }
 
 model NewsItem {
@@ -456,9 +498,12 @@ model NewsItem {
   isRumor            Boolean  @default(false)
   isOfficial         Boolean  @default(false)
   isConfirmed        Boolean  @default(false)
-  expiresAt          DateTime?
-  sourceMode         String   @default("manual_real")
-  rawJson            String   @default("{}")
+    expiresAt          DateTime?
+    sourceMode         String   @default("manual_real")
+    sourceDate         DateTime?
+    dataRole           String   @default("pre_match_evidence")
+    dataLeakageCheckPassed Boolean @default(true)
+    rawJson            String   @default("{}")
   matchId            String?
   importBatchId      String?
   sourceRecordId     String?
@@ -475,8 +520,10 @@ model NewsItem {
   @@index([playerId])
   @@index([matchId, source])
   @@index([importBatchId])
-  @@index([sourceMode, sourceTier])
-  @@index([expiresAt])
+    @@index([sourceMode, sourceTier])
+    @@index([expiresAt])
+    @@index([dataRole])
+    @@index([dataLeakageCheckPassed])
 }
 
 model NewsSource {

@@ -42,10 +42,38 @@ function manualRealFixture() {
   });
 }
 
+function parsedDemoFixture(overrides: Record<string, unknown> = {}) {
+  const base = createPredictionFixture();
+  const lineage = {
+    source: "parsed_demo",
+    sourceMode: "parsed_demo",
+    matchId: base.match.id,
+    sourceRecordId: "parsed_demo_raw",
+    importBatchId: "parsed_demo_batch",
+    isActive: true,
+    collectedAt: "2026-05-01T00:00:00Z",
+    sourceDate: "2026-05-01T00:00:00Z",
+    dataRole: "historical_team_form",
+    dataLeakageCheckPassed: true,
+    ...overrides
+  };
+  return createPredictionFixture({
+    match: { ...base.match, sourceMode: "parsed_demo", dataQualityScore: 86 },
+    playersA: base.playersA.map((player) => ({ ...player, sourceMode: "parsed_demo", matchId: base.match.id, sourceRecordId: "parsed_demo_raw" })),
+    playersB: base.playersB.map((player) => ({ ...player, sourceMode: "parsed_demo", matchId: base.match.id, sourceRecordId: "parsed_demo_raw" })),
+    playerStatsA: base.playerStatsA.map((stat) => ({ ...stat, ...lineage })),
+    playerStatsB: base.playerStatsB.map((stat) => ({ ...stat, ...lineage })),
+    mapStatsA: base.mapStatsA.map((stat) => ({ ...stat, ...lineage })),
+    mapStatsB: base.mapStatsB.map((stat) => ({ ...stat, ...lineage })),
+    vetoPatternsA: base.vetoPatternsA.map((row) => ({ ...row, ...lineage })),
+    vetoPatternsB: base.vetoPatternsB.map((row) => ({ ...row, ...lineage }))
+  });
+}
+
 describe("real forecast readiness", () => {
-it("keeps package version at 0.4.5", () => {
+it("keeps package version at 0.4.6", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
-  expect(pkg.version).toBe("0.4.5");
+  expect(pkg.version).toBe("0.4.6");
 });
 
   it("does not promote sample-only L3 to a real forecast", () => {
@@ -67,12 +95,35 @@ it("keeps package version at 0.4.5", () => {
     expect(sample.realForecast.sampleOnlyWarning).toContain("SAMPLE DATA");
   });
 
+  it("does not claim a first real forecast without validated non-sample evidence", () => {
+    const prediction = calculatePrediction(createPredictionFixture());
+    expect(prediction.readiness.level).toBe("L3_ANALYTICAL");
+    expect(prediction.realForecast.isReady).toBe(false);
+    expect(prediction.realForecast.reasons).toContain("Нет validated manual_real / parsed_demo / GRID analytical source.");
+  });
+
   it("allows validated manual_real L3 to become Real Forecast Ready", () => {
     const prediction = calculatePrediction(manualRealFixture());
     expect(prediction.readiness.level).toBe("L3_ANALYTICAL");
     expect(prediction.manualRealPackQuality.score).toBeGreaterThanOrEqual(65);
     expect(prediction.realForecast.isReady).toBe(true);
     expect(prediction.sourceLevel).toBe("Manual real analytical");
+  });
+
+  it("allows valid scoped parsed_demo evidence to become a real forecast", () => {
+    const prediction = calculatePrediction(parsedDemoFixture());
+    expect(prediction.realForecast.isReady).toBe(true);
+    expect(prediction.sourceLevel).toBe("Deep data");
+  });
+
+  it("excludes parsed_demo evidence that fails leakage checks", () => {
+    const prediction = calculatePrediction(parsedDemoFixture({
+      sourceDate: "2026-05-12T09:00:00Z",
+      dataRole: "post_match_analysis",
+      dataLeakageCheckPassed: false
+    }));
+    expect(prediction.realForecast.isReady).toBe(false);
+    expect(prediction.realForecast.reasons).toContain("Data leakage / cutoff check failed.");
   });
 
   it("prioritizes manual_real over analyst_sample in real forecast mode", () => {

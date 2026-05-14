@@ -152,6 +152,7 @@ export function MatchDetailTabs({
           <DataCoveragePanel input={input} />
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
+          <ForecastReportBuilder input={input} prediction={prediction} featureSnapshot={featureSnapshot} />
           <FeatureSnapshotPanel snapshot={featureSnapshot} />
           <SourceCoverageMatrix rows={sourceCoverageRows} compact />
           <section className="rounded border border-lab-border bg-lab-panel p-4">
@@ -294,6 +295,58 @@ export function MatchDetailTabs({
         </section>
       )}
     </div>
+  );
+}
+
+function ForecastReportBuilder({ input, prediction, featureSnapshot }: { input: PredictionInput; prediction: PredictionOutput; featureSnapshot?: FeatureSnapshotView | null }) {
+  if (!prediction.realForecast.isReady) {
+    const missing = prediction.readiness.missingCriticalData.length ? prediction.readiness.missingCriticalData : prediction.realForecast.reasons;
+    return (
+      <section className="rounded border border-lab-amber/60 bg-lab-panel p-4">
+        <h2 className="font-semibold text-lab-amber">Forecast not ready</h2>
+        <p className="mt-2 text-sm text-lab-muted">Workflow готов. Первый настоящий прогноз не получен, потому что real data pack не предоставлен или не хватает validated real coverage.</p>
+        <ul className="mt-3 space-y-1 text-sm text-lab-muted">
+          {missing.slice(0, 6).map((item, index) => <li key={`forecast-not-ready-${index}-${item.slice(0, 24)}`}>{item}</li>)}
+        </ul>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <a href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}&template=parsed_demo`} className="rounded border border-lab-green/60 px-3 py-1.5 text-sm text-lab-green">Загрузить parsed_demo JSON</a>
+          <a href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}`} className="rounded border border-lab-cyan/60 px-3 py-1.5 text-sm text-lab-cyan">Создать manual_real data pack</a>
+          <a href="/admin/sources" className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan">Проверить provider capabilities</a>
+        </div>
+      </section>
+    );
+  }
+
+  const reportSections = [
+    ["Match Summary", `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)} · ${input.match.format}`],
+    ["Data Sources", prediction.sourceLevel],
+    ["Data Coverage", input.dataCoverage?.known.join(", ") || "Coverage metadata unavailable"],
+    ["Feature Snapshot", featureSnapshot ? `${featureSnapshot.modelVersion} · ${featureSnapshot.featureSchemaVersion}` : "Feature snapshot pending"],
+    ["Team Strength", prediction.factors.find((factor) => factor.factorName.includes("Team Strength"))?.explanation ?? "Team strength included in model factors."],
+    ["Player Form", `${input.playerStatsA.length}/${input.playerStatsB.length} player stat rows`],
+    ["Map Pool", `${input.mapStatsA.length}/${input.mapStatsB.length} map stat rows`],
+    ["Veto", `${input.vetoPatternsA.length}/${input.vetoPatternsB.length} veto rows`],
+    ["H2H", `${input.h2h.length} relevant H2H rows`],
+    ["News/Risk", `${input.news.length} news rows · risk ${prediction.riskLevel}`],
+    ["Probability", `${input.teamA.name} ${prediction.teamAProbability}% / ${input.teamB.name} ${prediction.teamBProbability}%`],
+    ["Confidence", `${prediction.confidenceScore}/100`],
+    ["Risk", prediction.riskLevel],
+    ["Explanation", prediction.explanation],
+    ["Missing/weak data", prediction.readiness.missingCriticalData.join(", ") || "No critical missing blocks."]
+  ];
+
+  return (
+    <section className="rounded border border-lab-green/50 bg-lab-panel p-4">
+      <h2 className="font-semibold text-lab-green">Full Forecast Report</h2>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {reportSections.map(([title, body]) => (
+          <article key={title} className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <h3 className="text-sm font-semibold text-white">{title}</h3>
+            <p className="mt-2 text-sm text-lab-muted">{body}</p>
+          </article>
+        ))}
+      </div>
+    </section>
   );
 }
 

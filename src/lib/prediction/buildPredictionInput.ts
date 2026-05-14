@@ -17,41 +17,76 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     prisma.team.findUniqueOrThrow({ where: { id: match.teamBId }, include: { rankSnapshots: { orderBy: { rankingDate: "desc" }, take: 3 } } })
   ]);
   const weights = { ...defaultWeights, ...(await getDefaultModelWeights()), ...modelWeights };
-  const manualRealCounts = await Promise.all([
-    prisma.playerStatSnapshot.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
-    prisma.teamMapStat.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
-    prisma.vetoPattern.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
-    prisma.headToHead.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
-    prisma.newsItem.count({ where: { source: "manual_enrichment", matchId: match.id, isActive: true } }),
-    prisma.player.count({ where: { sourceMode: "manual_real", matchId: match.id, isActive: true } })
+  const cutoff = new Date(match.startTime);
+  const preMatchRoles = ["pre_match_evidence", "historical_team_form"];
+  const safeRealEvidenceWhere = (source: "manual_enrichment" | "parsed_demo") => ({
+    source,
+    matchId: match.id,
+    isActive: true,
+    dataLeakageCheckPassed: true,
+    dataRole: { in: preMatchRoles },
+    sourceDate: { lte: cutoff }
+  });
+  const realEvidenceCounts = await Promise.all([
+    prisma.playerStatSnapshot.count({ where: safeRealEvidenceWhere("manual_enrichment") }),
+    prisma.teamMapStat.count({ where: safeRealEvidenceWhere("manual_enrichment") }),
+    prisma.vetoPattern.count({ where: safeRealEvidenceWhere("manual_enrichment") }),
+    prisma.headToHead.count({ where: safeRealEvidenceWhere("manual_enrichment") }),
+    prisma.newsItem.count({ where: safeRealEvidenceWhere("manual_enrichment") }),
+    prisma.player.count({ where: { sourceMode: "manual_real", matchId: match.id, isActive: true } }),
+    prisma.playerStatSnapshot.count({ where: safeRealEvidenceWhere("parsed_demo") }),
+    prisma.teamMapStat.count({ where: safeRealEvidenceWhere("parsed_demo") }),
+    prisma.vetoPattern.count({ where: safeRealEvidenceWhere("parsed_demo") }),
+    prisma.teamFormSnapshot.count({ where: safeRealEvidenceWhere("parsed_demo") }),
+    prisma.player.count({ where: { sourceMode: "parsed_demo", matchId: match.id, isActive: true } })
   ]);
-  const hasManualRealForMatch = manualRealCounts.some((count) => count > 0);
-  const scopedSampleWhere = hasManualRealForMatch
+  const hasRealEvidenceForMatch = realEvidenceCounts.some((count) => count > 0);
+  const scopedForecastWhere = hasRealEvidenceForMatch
     ? {
         OR: [
-          { source: { notIn: ["analyst_sample", "manual_enrichment"] } },
-          { source: "manual_enrichment", matchId: match.id, isActive: true }
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          safeRealEvidenceWhere("manual_enrichment"),
+          safeRealEvidenceWhere("parsed_demo")
         ]
       }
     : {
         OR: [
-          { source: { notIn: ["analyst_sample", "manual_enrichment"] } },
-          { source: "manual_enrichment", matchId: match.id, isActive: true },
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          safeRealEvidenceWhere("manual_enrichment"),
+          safeRealEvidenceWhere("parsed_demo"),
           { source: "analyst_sample", matchId: match.id, isActive: true }
         ]
       };
   const scopedPlayerWhere = (teamId: string) => ({
     teamId,
     isActive: true,
-    OR: hasManualRealForMatch
+    OR: hasRealEvidenceForMatch
       ? [
-          { sourceMode: { notIn: ["analyst_sample", "manual_real"] } },
-          { sourceMode: "manual_real", matchId: match.id }
+          { sourceMode: { notIn: ["analyst_sample", "manual_real", "parsed_demo"] } },
+          { sourceMode: "manual_real", matchId: match.id },
+          { sourceMode: "parsed_demo", matchId: match.id }
         ]
       : [
-          { sourceMode: { notIn: ["analyst_sample", "manual_real"] } },
+          { sourceMode: { notIn: ["analyst_sample", "manual_real", "parsed_demo"] } },
           { sourceMode: "manual_real", matchId: match.id },
+          { sourceMode: "parsed_demo", matchId: match.id },
           { sourceMode: "analyst_sample", matchId: match.id }
+        ]
+  });
+  const teamFormWhere = (teamId: string) => ({
+    teamId,
+    isActive: true,
+    OR: hasRealEvidenceForMatch
+      ? [
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          safeRealEvidenceWhere("manual_enrichment"),
+          safeRealEvidenceWhere("parsed_demo")
+        ]
+      : [
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          safeRealEvidenceWhere("manual_enrichment"),
+          safeRealEvidenceWhere("parsed_demo"),
+          { source: "analyst_sample", matchId: match.id, isActive: true }
         ]
   });
 
@@ -93,16 +128,16 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
   ] = await Promise.all([
     prisma.player.findMany({ where: scopedPlayerWhere(teamA.id), orderBy: { nickname: "asc" } }),
     prisma.player.findMany({ where: scopedPlayerWhere(teamB.id), orderBy: { nickname: "asc" } }),
-    prisma.teamFormSnapshot.findFirst({ where: { teamId: teamA.id }, orderBy: { createdAt: "desc" } }),
-    prisma.teamFormSnapshot.findFirst({ where: { teamId: teamB.id }, orderBy: { createdAt: "desc" } }),
+    prisma.teamFormSnapshot.findFirst({ where: teamFormWhere(teamA.id), orderBy: { createdAt: "desc" } }),
+    prisma.teamFormSnapshot.findFirst({ where: teamFormWhere(teamB.id), orderBy: { createdAt: "desc" } }),
     prisma.teamBasicResultSnapshot.findFirst({ where: { teamId: teamA.id }, orderBy: { createdAt: "desc" } }),
     prisma.teamBasicResultSnapshot.findFirst({ where: { teamId: teamB.id }, orderBy: { createdAt: "desc" } }),
-    prisma.playerStatSnapshot.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedSampleWhere }, orderBy: { createdAt: "desc" } }),
-    prisma.playerStatSnapshot.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedSampleWhere }, orderBy: { createdAt: "desc" } }),
-    prisma.teamMapStat.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedSampleWhere }, orderBy: { mapName: "asc" } }),
-    prisma.teamMapStat.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedSampleWhere }, orderBy: { mapName: "asc" } }),
-    prisma.vetoPattern.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedSampleWhere }, orderBy: { mapName: "asc" } }),
-    prisma.vetoPattern.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedSampleWhere }, orderBy: { mapName: "asc" } }),
+    prisma.playerStatSnapshot.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedForecastWhere }, orderBy: { createdAt: "desc" } }),
+    prisma.playerStatSnapshot.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedForecastWhere }, orderBy: { createdAt: "desc" } }),
+    prisma.teamMapStat.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedForecastWhere }, orderBy: { mapName: "asc" } }),
+    prisma.teamMapStat.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedForecastWhere }, orderBy: { mapName: "asc" } }),
+    prisma.vetoPattern.findMany({ where: { teamId: teamA.id, isActive: true, ...scopedForecastWhere }, orderBy: { mapName: "asc" } }),
+    prisma.vetoPattern.findMany({ where: { teamId: teamB.id, isActive: true, ...scopedForecastWhere }, orderBy: { mapName: "asc" } }),
     prisma.headToHead.findMany({
       where: {
         AND: [
@@ -113,7 +148,7 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
             ]
           },
           { isActive: true },
-          scopedSampleWhere
+          scopedForecastWhere
         ]
       },
       orderBy: { date: "desc" }
@@ -130,7 +165,7 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
             ]
           },
           { isActive: true },
-          scopedSampleWhere
+          scopedForecastWhere
         ]
       },
       orderBy: { publishedAt: "desc" }

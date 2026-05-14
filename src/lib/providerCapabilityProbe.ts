@@ -68,7 +68,16 @@ export async function probeProviderCapabilities(): Promise<ProviderCapabilityPro
     baseCapability("pandascore", ["fixtures", "teams", "players", "tournaments"], ["deep endpoints blocked/paid"], "PandaScore Free даёт fixture/basic context; deep stats недоступны на текущем тарифе."),
     baseCapability("valve-rankings", ["rankings available", "roster hints available", `latest ranking date: ${rankingDate}`], [], "Valve rankings доступны как ranking source и roster hints."),
     baseCapability("cs-updates", ["CS updates available", `latest patch/news date: ${steamDate}`], [], "Steam/CS Updates дают patch/meta context."),
-    baseCapability("grid", envPresent("GRID_API_KEY") ? ["Central Data access-dependent", "Series State access-dependent", "File Download access-dependent", "Series Events access-dependent", "round/player/economy telemetry prepared"] : [], envPresent("GRID_API_KEY") ? [] : ["GRID key missing"], envPresent("GRID_API_KEY") ? "GRID key настроен; endpoint mapping остаётся access-dependent." : "GRID не подключён. Добавьте API key в .env."),
+    baseCapability(
+      "grid",
+      envPresent("GRID_API_KEY") ? ["key configured", "capability probe available"] : [],
+      envPresent("GRID_API_KEY")
+        ? ["Central Data not confirmed", "Series State not confirmed", "File Download not confirmed", "Series Events not confirmed", "deep telemetry pending access confirmation"]
+        : ["GRID key missing", "Central Data unavailable", "Series State unavailable", "File Download unavailable", "Series Events unavailable"],
+      envPresent("GRID_API_KEY")
+        ? "GRID подключён, но deep telemetry недоступна/не подтверждена на текущем доступе."
+        : "GRID не подключён. Добавьте API key в .env."
+    ),
     baseCapability("liquipedia", envPresent("LIQUIPEDIA_API_KEY") ? ["roster capability", "tournament capability", "roster changes capability", "60 requests/hour guard"] : [], envPresent("LIQUIPEDIA_API_KEY") ? [] : ["LiquipediaDB key missing"], envPresent("LIQUIPEDIA_API_KEY") ? "LiquipediaDB доступ настроен с лимитом 60 requests/hour." : "LiquipediaDB не подключён. Можно запросить approved API access."),
     baseCapability("faceit", envPresent("FACEIT_API_KEY") ? ["players", "teams", "competitions", "player stats capability"] : [], envPresent("FACEIT_API_KEY") ? [] : ["FACEIT key missing"], envPresent("FACEIT_API_KEY") ? "FACEIT API key настроен для optional context." : "FACEIT не подключён. Добавьте developer API key."),
     {

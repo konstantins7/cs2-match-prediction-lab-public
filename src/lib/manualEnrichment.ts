@@ -16,6 +16,14 @@ import {
   type ManualPackBlock,
   type ManualPackStatus
 } from "./manualRealQuality";
+import {
+  evaluatePreMatchLeakage,
+  isPlaceholderText,
+  looksLikeTemplateUrl,
+  normalizeDataRole,
+  parseEvidenceDate,
+  type RealDataRole
+} from "./realData/dataRole";
 
 export { manualEnrichmentTemplates } from "./manualEnrichmentTemplates";
 
@@ -31,7 +39,7 @@ type Preview = {
   whatStillMissing?: string[];
   matchId?: string;
   type?: string;
-  sourceMode?: "manual_real" | "analyst_sample";
+  sourceMode?: "manual_real" | "analyst_sample" | "parsed_demo";
   importBatchId?: string;
   realActionable?: boolean;
   pipelineProof?: boolean;
@@ -46,13 +54,17 @@ type Preview = {
 
 type EnrichmentMetadata = {
   isSample: boolean;
-  source: "manual" | "analyst-sample";
-  recordSource: "manual_enrichment" | "analyst_sample";
-  playerSourceMode: "manual_real" | "analyst_sample";
+  source: "manual" | "analyst-sample" | "parsed-demo";
+  recordSource: "manual_enrichment" | "analyst_sample" | "parsed_demo";
+  playerSourceMode: "manual_real" | "analyst_sample" | "parsed_demo";
   importBatchId: string;
   sourceRecordId: string;
   matchId: string;
   sourceConfidence: number;
+  collectedAt: Date;
+  sourceDate: Date;
+  dataRole: RealDataRole;
+  dataLeakageCheckPassed: boolean;
 };
 
 type MatchTeams = Awaited<ReturnType<typeof matchTeams>>;
@@ -83,6 +95,10 @@ function analystSampleEnabled() {
 
 function isSamplePayload(payload: Record<string, unknown>) {
   return payload.type === "analyst_pack" || payload.source === "analyst_sample" || payload.source === "manual_sample";
+}
+
+function isParsedDemoPayload(payload: Record<string, unknown>) {
+  return payload.type === "parsed_demo" || payload.source === "parsed_demo";
 }
 
 function record(value: unknown) {
@@ -120,10 +136,48 @@ function typedSourceMode(source: string) {
 function sourceScope(meta: EnrichmentMetadata) {
   return {
     source: meta.recordSource,
+    sourceMode: meta.playerSourceMode,
     matchId: meta.matchId,
     importBatchId: meta.importBatchId,
     sourceRecordId: meta.sourceRecordId,
-    isActive: true
+    isActive: true,
+    collectedAt: meta.collectedAt,
+    sourceDate: meta.sourceDate,
+    dataRole: meta.dataRole,
+    dataLeakageCheckPassed: meta.dataLeakageCheckPassed
+  };
+}
+
+function sourceMetadata(payload: Record<string, unknown>) {
+  const metadata = qualityMetadataFromRecord(payload);
+  const sourceDateRaw = payload.sourceDate ?? payload.matchDate ?? payload.parsedAt ?? metadata.collectedAt;
+  const collectedAt = parseEvidenceDate(metadata.collectedAt);
+  const sourceDate = parseEvidenceDate(sourceDateRaw);
+  return {
+    ...metadata,
+    collectedAtDate: collectedAt,
+    sourceDate,
+    dataRole: normalizeDataRole(payload.dataRole ?? record(payload.metadata).dataRole, isParsedDemoPayload(payload) ? "historical_team_form" : "pre_match_evidence"),
+    sourceMatchId: typeof payload.sourceMatchId === "string" ? payload.sourceMatchId : typeof payload.parsedMatchId === "string" ? payload.parsedMatchId : null
+  };
+}
+
+function resolveTeamFromRow(teams: MatchTeams, row: Record<string, unknown>) {
+  if (!teams) return null;
+  if (typeof row.teamId === "string") {
+    const byId = teams.teams.find((team) => team.id === row.teamId);
+    if (byId) return byId;
+  }
+  return resolveTeamName(teams, row.team ?? row.teamName ?? row.name);
+}
+
+function parsedDemoSections(payload: Record<string, unknown>) {
+  return {
+    playerStats: rows(payload.playerStats ?? payload.players),
+    mapStats: rows(payload.mapStats ?? payload.maps),
+    vetoHistory: rows(payload.vetoHistory ?? payload.veto),
+    teamForms: rows(payload.teamForms ?? payload.historicalTeamForm),
+    roundEconomy: rows(payload.roundEconomy ?? payload.roundEconomyStats)
   };
 }
 
@@ -263,8 +317,13 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
   const matchId = typeof payload.matchId === "string" ? payload.matchId : "";
   const type = typeof payload.type === "string" ? payload.type : "";
   const sample = isSamplePayload(payload);
-  const sourceMode = sample ? "analyst_sample" : "manual_real";
-  const importBatchId = sample ? `sample_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}` : `manual_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}`;
+  const parsedDemo = isParsedDemoPayload(payload) && !sample;
+  const sourceMode = sample ? "analyst_sample" : parsedDemo ? "parsed_demo" : "manual_real";
+  const importBatchId = sample
+    ? `sample_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}`
+    : parsedDemo
+      ? `parsed_demo_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}`
+      : `manual_${matchId || "unknown"}_${hashRawRecord(payload).slice(0, 12)}`;
 
   if (sample && !analystSampleEnabled()) errors.push("ENABLE_ANALYST_SAMPLE=false: sample analyst pack is disabled.");
   if (!sample) {
@@ -491,7 +550,79 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     }
     creates.push(`${entries.length} NewsItem records`);
   } else if (type === "parsed_demo") {
-    creates.push("Parsed demo raw record plus any included player/map/form snapshots");
+    const metadata = sourceMetadata(payload);
+    if (!metadata.sourceName || isPlaceholderText(metadata.sourceName)) errors.push("parsed_demo sourceName is required and must not be a template value.");
+    if (!metadata.collectedAt) errors.push("parsed_demo collectedAt is required.");
+    if (!metadata.period) errors.push("parsed_demo period is required.");
+    if ((metadata.sampleSize ?? 0) <= 0) errors.push("parsed_demo sampleSize must be > 0.");
+    if (!Number.isFinite(Number(metadata.confidence))) errors.push("parsed_demo confidence is required.");
+    if (looksLikeTemplateUrl(metadata.sourceUrl)) errors.push("parsed_demo sourceUrl looks like a template URL.");
+
+    if (teams) {
+      const leakage = evaluatePreMatchLeakage({
+        dataRole: metadata.dataRole,
+        sourceDate: metadata.sourceDate,
+        collectedAt: metadata.collectedAtDate,
+        sourceMatchId: metadata.sourceMatchId,
+        targetMatchId: matchId,
+        targetStartTime: new Date(teams.match.startTime)
+      });
+      if (!leakage.passed) {
+        errors.push(...leakage.reasons.map((reason) => `parsed_demo leakage: ${reason}`));
+      }
+    }
+
+    const sections = parsedDemoSections(payload);
+    const hasDomainRows = sections.playerStats.length > 0 || sections.mapStats.length > 0 || sections.vetoHistory.length > 0 || sections.teamForms.length > 0 || sections.roundEconomy.length > 0;
+    if (!hasDomainRows) errors.push("parsed_demo must include playerStats, mapStats, vetoHistory, teamForms or roundEconomy; raw-only import does not increase readiness.");
+
+    let playerValuesValid = sections.playerStats.length > 0;
+    for (const player of sections.playerStats) {
+      if (!resolveTeamFromRow(teams, player)) { warnings.push(`Team ${String(player.team ?? player.teamId)} is not matched for this parsed_demo player row.`); playerValuesValid = false; }
+      if (!player.nickname && !player.playerName) { errors.push("parsed_demo playerStats nickname/playerName is required."); playerValuesValid = false; }
+      if (!positive(player.kd)) { errors.push("parsed_demo playerStats kd must be > 0."); playerValuesValid = false; }
+      if (!positive(player.rating)) { errors.push("parsed_demo playerStats rating must be > 0."); playerValuesValid = false; }
+      if (num(player.adr, -1) < 0) { errors.push("parsed_demo playerStats adr must be >= 0."); playerValuesValid = false; }
+      if (!rate(player.kast)) { errors.push("parsed_demo playerStats kast must be 0..100."); playerValuesValid = false; }
+      if (!positive(player.maps)) { errors.push("parsed_demo playerStats maps must be > 0."); playerValuesValid = false; }
+    }
+
+    let mapValuesValid = sections.mapStats.length > 0;
+    for (const row of sections.mapStats) {
+      if (!resolveTeamFromRow(teams, row)) { warnings.push(`Team ${String(row.team ?? row.teamId)} is not matched for this parsed_demo map row.`); mapValuesValid = false; }
+      if (!maps.includes(String(row.mapName))) { errors.push(`parsed_demo mapName ${String(row.mapName)} is not in active map pool.`); mapValuesValid = false; }
+      if (!positive(row.mapsPlayed)) { errors.push("parsed_demo mapStats mapsPlayed must be > 0."); mapValuesValid = false; }
+      for (const field of ["winRate", "pickRate", "banRate"]) {
+        if (!rate(row[field])) { errors.push(`parsed_demo mapStats ${field} must be 0..100.`); mapValuesValid = false; }
+      }
+    }
+
+    let vetoValuesValid = sections.vetoHistory.length > 0;
+    for (const row of sections.vetoHistory) {
+      if (!resolveTeamFromRow(teams, row)) { warnings.push(`Team ${String(row.team ?? row.teamId)} is not matched for this parsed_demo veto row.`); vetoValuesValid = false; }
+      if (!maps.includes(String(row.mapName))) { errors.push(`parsed_demo veto mapName ${String(row.mapName)} is not in active map pool.`); vetoValuesValid = false; }
+      for (const field of ["pickRate", "banRate", "deciderRate"]) {
+        if (!rate(row[field])) { errors.push(`parsed_demo veto ${field} must be 0..100.`); vetoValuesValid = false; }
+      }
+      if (!positive(row.sampleSize)) { errors.push("parsed_demo veto sampleSize must be > 0."); vetoValuesValid = false; }
+    }
+
+    if (sections.playerStats.length) {
+      const quality = calculateManualBlockQuality("player_stats", qualityMetadataFromRecord(payload), playerValuesValid);
+      blockStatuses.push(makeBlockPreview("player_stats", quality.status, quality.score, quality.warnings, quality.reasons));
+      creates.push(`${sections.playerStats.length} parsed_demo PlayerStatSnapshot records scoped to ${matchId}`);
+    }
+    if (sections.mapStats.length || sections.roundEconomy.length) {
+      const quality = calculateManualBlockQuality("map_stats", qualityMetadataFromRecord(payload), mapValuesValid);
+      blockStatuses.push(makeBlockPreview("map_stats", quality.status, quality.score, quality.warnings, quality.reasons));
+      creates.push(`${sections.mapStats.length} parsed_demo TeamMapStat records scoped to ${matchId}`);
+    }
+    if (sections.vetoHistory.length) {
+      const quality = calculateManualBlockQuality("veto_history", qualityMetadataFromRecord(payload), vetoValuesValid);
+      blockStatuses.push(makeBlockPreview("veto_history", quality.status, quality.score, quality.warnings, quality.reasons));
+      creates.push(`${sections.vetoHistory.length} parsed_demo VetoPattern records scoped to ${matchId}`);
+    }
+    if (sections.teamForms.length) creates.push(`${sections.teamForms.length} parsed_demo TeamFormSnapshot records scoped to ${matchId}`);
   } else {
     errors.push(`Unsupported enrichment type: ${type}`);
   }
@@ -571,9 +702,7 @@ async function saveRaw(payload: Record<string, unknown>, status: "valid" | "inva
 
 async function findOrCreatePlayer(teamId: string, nickname: string, meta: EnrichmentMetadata) {
   const existing = await prisma.player.findFirst({
-    where: meta.isSample
-      ? { teamId, nickname, sourceMode: "analyst_sample", matchId: meta.matchId }
-      : { teamId, nickname, sourceMode: "manual_real", matchId: meta.matchId }
+    where: { teamId, nickname, sourceMode: meta.playerSourceMode, matchId: meta.matchId }
   });
   if (existing) {
     if (meta.isSample && !existing.isActive) {
@@ -586,7 +715,7 @@ async function findOrCreatePlayer(teamId: string, nickname: string, meta: Enrich
   }
   return prisma.player.create({
     data: {
-      id: `${meta.isSample ? "sample" : "manual"}_player_${slug(teamId)}_${slug(nickname)}_${hashRawRecord({ teamId, nickname, matchId: meta.isSample ? meta.matchId : "" }).slice(0, 8)}`,
+      id: `${slug(meta.playerSourceMode)}_player_${slug(teamId)}_${slug(nickname)}_${hashRawRecord({ teamId, nickname, matchId: meta.matchId, sourceMode: meta.playerSourceMode }).slice(0, 8)}`,
       nickname,
       teamId,
       role: "unknown",
@@ -616,9 +745,10 @@ async function applyRoster(teams: NonNullable<MatchTeams>, teamPlayers: Record<s
 async function applyPlayerStats(teams: NonNullable<MatchTeams>, playerRows: Record<string, unknown>[], period: string, meta: EnrichmentMetadata) {
   const changed: string[] = [];
   for (const row of playerRows) {
-    const team = resolveTeamName(teams, row.team);
-    if (!team || typeof row.nickname !== "string") continue;
-    const player = await findOrCreatePlayer(team.id, row.nickname, meta);
+    const team = resolveTeamFromRow(teams, row);
+    const nickname = typeof row.nickname === "string" ? row.nickname : typeof row.playerName === "string" ? row.playerName : "";
+    if (!team || !nickname) continue;
+    const player = await findOrCreatePlayer(team.id, nickname, meta);
     await prisma.playerStatSnapshot.create({
       data: {
         playerId: player.id,
@@ -661,7 +791,7 @@ async function applyPlayerStats(teams: NonNullable<MatchTeams>, playerRows: Reco
 async function applyMapStats(teams: NonNullable<MatchTeams>, mapRows: Record<string, unknown>[], period: string, meta: EnrichmentMetadata) {
   const changed: string[] = [];
   for (const row of mapRows) {
-    const team = resolveTeamName(teams, row.team);
+    const team = resolveTeamFromRow(teams, row);
     if (!team) continue;
     await prisma.teamMapStat.create({
       data: {
@@ -704,7 +834,7 @@ async function applyMapStats(teams: NonNullable<MatchTeams>, mapRows: Record<str
 async function applyVeto(teams: NonNullable<MatchTeams>, vetoRows: Record<string, unknown>[], period: string, meta: EnrichmentMetadata) {
   const changed: string[] = [];
   for (const row of vetoRows) {
-    const team = resolveTeamName(teams, row.team);
+    const team = resolveTeamFromRow(teams, row);
     if (!team) continue;
     const opponentTeamId = team.id === teams.match.teamAId ? teams.match.teamBId : teams.match.teamAId;
     await prisma.vetoPattern.create({
@@ -728,6 +858,75 @@ async function applyVeto(teams: NonNullable<MatchTeams>, vetoRows: Record<string
   return changed;
 }
 
+async function applyTeamForms(teams: NonNullable<MatchTeams>, formRows: Record<string, unknown>[], period: string, meta: EnrichmentMetadata) {
+  const changed: string[] = [];
+  for (const row of formRows) {
+    const team = resolveTeamFromRow(teams, row);
+    if (!team) continue;
+    await prisma.teamFormSnapshot.create({
+      data: {
+        teamId: team.id,
+        period,
+        matchesPlayed: Math.round(num(row.matchesPlayed, num(row.matches, 1))),
+        mapsPlayed: Math.round(num(row.mapsPlayed, num(row.maps, 1))),
+        matchWinRate: pct(row.matchWinRate, pct(row.winRate, 0.5)),
+        mapWinRate: pct(row.mapWinRate, pct(row.winRate, 0.5)),
+        roundWinRate: pct(row.roundWinRate, 0.5),
+        vsTop10WinRate: pct(row.vsTop10WinRate, 0.5),
+        vsTop20WinRate: pct(row.vsTop20WinRate, 0.5),
+        vsTop50WinRate: pct(row.vsTop50WinRate, 0.5),
+        vsTop100WinRate: pct(row.vsTop100WinRate, 0.5),
+        winVsTop10: Math.round(num(row.winVsTop10, 0)),
+        winVsTop20: Math.round(num(row.winVsTop20, 0)),
+        winVsTop50: Math.round(num(row.winVsTop50, 0)),
+        winVsTop100: Math.round(num(row.winVsTop100, 0)),
+        lossVsLowerRanked: Math.round(num(row.lossVsLowerRanked, 0)),
+        opponentStrengthAdjustedForm: num(row.opponentStrengthAdjustedForm, num(row.formScore, 0.5)),
+        currentStreak: Math.round(num(row.currentStreak, 0)),
+        formScore: num(row.formScore, pct(row.winRate, 0.5)),
+        volatilityScore: pct(row.volatilityScore, 0.35),
+        matchesLast7Days: Math.round(num(row.matchesLast7Days, 0)),
+        mapsLast7Days: Math.round(num(row.mapsLast7Days, 0)),
+        travelRiskScore: pct(row.travelRiskScore, 0.2),
+        timezoneShiftHours: Math.round(num(row.timezoneShiftHours, 0)),
+        fatigueScore: pct(row.fatigueScore, 0.2),
+        lanWinRate: pct(row.lanWinRate, pct(row.winRate, 0.5)),
+        onlineWinRate: pct(row.onlineWinRate, pct(row.winRate, 0.5)),
+        motivationScore: pct(row.motivationScore, 0.5),
+        rosterStabilityScore: pct(row.rosterStabilityScore, 0.6),
+        closeOutRate: pct(row.closeOutRate, 0.5),
+        mapPointConversion: pct(row.mapPointConversion, 0.5),
+        leadProtectionScore: pct(row.leadProtectionScore, 0.5),
+        lostFromWinningPositionRate: pct(row.lostFromWinningPositionRate, 0.15),
+        deciderCollapseRate: pct(row.deciderCollapseRate, 0.15),
+        seriesCloseOutRate: pct(row.seriesCloseOutRate, 0.5),
+        comebackFrom3RoundDeficit: pct(row.comebackFrom3RoundDeficit, 0.25),
+        comebackFrom5RoundDeficit: pct(row.comebackFrom5RoundDeficit, 0.12),
+        badHalfRecovery: pct(row.badHalfRecovery, 0.25),
+        lostPistolRecovery: pct(row.lostPistolRecovery, 0.28),
+        lostOwnPickRecovery: pct(row.lostOwnPickRecovery, 0.3),
+        ...sourceScope(meta)
+      }
+    });
+    changed.push(`${meta.recordSource} TeamFormSnapshot created for ${team.name}`);
+  }
+  return changed;
+}
+
+async function applyParsedDemo(teams: NonNullable<MatchTeams>, payload: Record<string, unknown>, meta: EnrichmentMetadata) {
+  const sections = parsedDemoSections(payload);
+  const period = String(sourceMetadata(payload).period ?? "parsed_demo");
+  const changed: string[] = [];
+  changed.push(...await applyPlayerStats(teams, sections.playerStats, period, meta));
+  changed.push(...await applyMapStats(teams, sections.mapStats, period, meta));
+  changed.push(...await applyVeto(teams, sections.vetoHistory, period, meta));
+  changed.push(...await applyTeamForms(teams, sections.teamForms, period, meta));
+  if (sections.roundEconomy.length) {
+    changed.push(`${sections.roundEconomy.length} parsed_demo round/economy rows accepted as scoped evidence for feature snapshots.`);
+  }
+  return changed;
+}
+
 async function applyH2h(teams: NonNullable<MatchTeams>, h2hRows: Record<string, unknown>[], meta: EnrichmentMetadata) {
   const changed: string[] = [];
   for (const row of h2hRows) {
@@ -737,7 +936,6 @@ async function applyH2h(teams: NonNullable<MatchTeams>, h2hRows: Record<string, 
       data: {
         teamAId: teams.match.teamAId,
         teamBId: teams.match.teamBId,
-        matchId: teams.match.id,
         date: row.date ? new Date(String(row.date)) : new Date(),
         format: String(row.format ?? teams.match.format),
         winnerTeamId,
@@ -745,10 +943,7 @@ async function applyH2h(teams: NonNullable<MatchTeams>, h2hRows: Record<string, 
         teamBRosterSimilarity: pct(row.teamBRosterSimilarity, 0.5),
         relevanceScore: pct(row.relevanceScore, 0.5),
         notes: typeof row.notes === "string" ? row.notes : meta.recordSource,
-        source: meta.recordSource,
-        importBatchId: meta.importBatchId,
-        sourceRecordId: meta.sourceRecordId,
-        isActive: true
+        ...sourceScope(meta)
       }
     });
     changed.push(`${meta.recordSource} HeadToHead entry created`);
@@ -773,6 +968,9 @@ async function applyNews(teams: NonNullable<MatchTeams>, newsRows: Record<string
       sourceRecordId: meta.sourceRecordId,
       recordSource: meta.recordSource,
       sourceMode: meta.isSample ? "analyst_sample" : "manual_real",
+      sourceDate: meta.sourceDate,
+      dataRole: meta.dataRole,
+      dataLeakageCheckPassed: meta.dataLeakageCheckPassed,
       isActive: true
     });
     changed.push(`${meta.recordSource} NewsItem created for ${team?.name ?? "unknown team"}`);
@@ -812,14 +1010,20 @@ async function applyDomainRecords(payload: Record<string, unknown>, meta: Enrich
   if (type === "veto_history") changed.push(...await applyVeto(teams, rows(payload.teams), period, meta));
   if (type === "h2h") changed.push(...await applyH2h(teams, rows(payload.entries), meta));
   if (type === "news") changed.push(...await applyNews(teams, rows(payload.items), meta));
-  if (type === "parsed_demo") changed.push("Parsed demo raw accepted; detailed parsed-demo adapter can transform richer payloads.");
+  if (type === "parsed_demo") changed.push(...await applyParsedDemo(teams, payload, meta));
 
   if (changed.length) {
     await prisma.match.update({
       where: { id: meta.matchId },
       data: { sourceMode: meta.playerSourceMode, sourceConfidence: meta.sourceConfidence }
     });
-    changed.push(meta.isSample ? "Match marked analyst_sample for dev-only pipeline validation." : "Match marked manual_real for validated manual data pack.");
+    changed.push(
+      meta.isSample
+        ? "Match marked analyst_sample for dev-only pipeline validation."
+        : meta.playerSourceMode === "parsed_demo"
+          ? "Match marked parsed_demo for validated real data onboarding evidence."
+          : "Match marked manual_real for validated manual data pack."
+    );
   }
 
   return changed;
@@ -847,6 +1051,8 @@ export async function applyManualEnrichment(text: string) {
   const validation = await validateManualEnrichment(text);
   const matchId = String(payload.matchId ?? "unknown");
   const isSample = isSamplePayload(payload);
+  const parsedDemo = isParsedDemoPayload(payload) && !isSample;
+  const metadata = sourceMetadata(payload);
   const primaryBlock: ManualPackBlock =
     payload.type === "player_stats" ? "player_stats" :
     payload.type === "map_stats" ? "map_stats" :
@@ -854,15 +1060,21 @@ export async function applyManualEnrichment(text: string) {
     payload.type === "h2h" ? "h2h" :
     payload.type === "news" ? "news" :
     "roster";
-  const sourceConfidence = isSample ? 0.66 : qualityPreview(payload, primaryBlock, true).sourceConfidence;
+  const sourceConfidence = isSample ? 0.66 : parsedDemo ? Math.max(0.2, Math.min(0.92, metadata.confidence ?? 0.55)) : qualityPreview(payload, primaryBlock, true).sourceConfidence;
+  const collectedAt = metadata.collectedAtDate ?? new Date();
+  const sourceDate = metadata.sourceDate ?? collectedAt;
   const baseMeta: Omit<EnrichmentMetadata, "sourceRecordId"> = {
     isSample,
-    source: isSample ? "analyst-sample" : "manual",
-    recordSource: isSample ? "analyst_sample" : "manual_enrichment",
-    playerSourceMode: isSample ? "analyst_sample" : "manual_real",
-    importBatchId: validation.importBatchId ?? `${isSample ? "sample" : "manual"}_${matchId}_${hashRawRecord(payload).slice(0, 12)}`,
+    source: isSample ? "analyst-sample" : parsedDemo ? "parsed-demo" : "manual",
+    recordSource: isSample ? "analyst_sample" : parsedDemo ? "parsed_demo" : "manual_enrichment",
+    playerSourceMode: isSample ? "analyst_sample" : parsedDemo ? "parsed_demo" : "manual_real",
+    importBatchId: validation.importBatchId ?? `${isSample ? "sample" : parsedDemo ? "parsed_demo" : "manual"}_${matchId}_${hashRawRecord(payload).slice(0, 12)}`,
     matchId,
-    sourceConfidence
+    sourceConfidence,
+    collectedAt,
+    sourceDate,
+    dataRole: metadata.dataRole,
+    dataLeakageCheckPassed: validation.ok
   };
 
   if (!validation.ok) {

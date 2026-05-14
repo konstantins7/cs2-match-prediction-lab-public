@@ -14,6 +14,7 @@ import { rebuildMatchFeatureSnapshots, saveMatchFeatureSnapshot } from "../featu
 import { updateInternalEloForFinishedMatches } from "../modelLab/ratings";
 import { saveManualNewsItem } from "../news/manualNews";
 import { rebuildNewsImpactSnapshots, saveNewsImpactSnapshot } from "../news/newsSnapshots";
+import { evaluatePreMatchLeakage, normalizeDataRole, parseEvidenceDate } from "../realData/dataRole";
 
 const now = () => new Date();
 
@@ -726,12 +727,42 @@ async function reconcileGameMetaRecord(raw: unknown) {
   return { created: 1, updated: 0, needsReview: 0 };
 }
 
-async function reconcileParsedDemoRecord(raw: unknown) {
+async function reconcileParsedDemoRecord(raw: unknown, sourceRecordId: string) {
   const record = rawRecord(raw);
   let created = 0;
+  const matchId = typeof record.matchId === "string" ? record.matchId : null;
+  const targetMatch = matchId ? await prisma.match.findUnique({ where: { id: matchId } }) : null;
+  const collectedAt = parseEvidenceDate(record.collectedAt ?? rawRecord(record.metadata).collectedAt) ?? new Date();
+  const sourceDate = parseEvidenceDate(record.sourceDate ?? record.matchDate ?? record.parsedAt ?? rawRecord(record.metadata).sourceDate ?? collectedAt) ?? collectedAt;
+  const dataRole = normalizeDataRole(record.dataRole ?? rawRecord(record.metadata).dataRole, "historical_team_form");
+  const leakage = targetMatch
+    ? evaluatePreMatchLeakage({
+        dataRole,
+        sourceDate,
+        collectedAt,
+        sourceMatchId: typeof record.sourceMatchId === "string" ? record.sourceMatchId : null,
+        targetMatchId: targetMatch.id,
+        targetStartTime: targetMatch.startTime
+      })
+    : { passed: false, reasons: ["matchId is required for parsed_demo domain reconciliation."] };
+  if (!leakage.passed || !targetMatch) {
+    return { created: 0, updated: 0, needsReview: 1 };
+  }
+  const lineage = {
+    sourceMode: "parsed_demo",
+    matchId: targetMatch.id,
+    importBatchId: typeof record.importBatchId === "string" ? record.importBatchId : `parsed_demo_${targetMatch.id}_${sourceRecordId.slice(0, 8)}`,
+    sourceRecordId,
+    isActive: true,
+    collectedAt,
+    sourceDate,
+    dataRole,
+    dataLeakageCheckPassed: true
+  };
   const teams = Array.isArray(record.teams) ? record.teams : [];
   const playerStats = Array.isArray(record.playerStats) ? record.playerStats : [];
   const mapStats = Array.isArray(record.mapStats) ? record.mapStats : [];
+  const vetoHistory = Array.isArray(record.vetoHistory) ? record.vetoHistory : Array.isArray(record.veto) ? record.veto : [];
   const teamForms = Array.isArray(record.teamForms) ? record.teamForms : [];
 
   for (const team of teams) {
@@ -778,7 +809,8 @@ async function reconcileParsedDemoRecord(raw: unknown) {
         lanRating: Number(statRecord.lanRating ?? statRecord.rating ?? 1),
         onlineRating: Number(statRecord.onlineRating ?? statRecord.rating ?? 1),
         source: "parsed_demo",
-        sourceUrl: typeof statRecord.sourceUrl === "string" ? statRecord.sourceUrl : null
+        sourceUrl: typeof statRecord.sourceUrl === "string" ? statRecord.sourceUrl : null,
+        ...lineage
       }
     });
     created += 1;
@@ -819,7 +851,34 @@ async function reconcileParsedDemoRecord(raw: unknown) {
         openingRoundPerformance: Number(statRecord.openingRoundPerformance ?? 0.5),
         sampleQuality: Number(statRecord.sampleQuality ?? 0.5),
         source: "parsed_demo",
-        sourceUrl: typeof statRecord.sourceUrl === "string" ? statRecord.sourceUrl : null
+        sourceUrl: typeof statRecord.sourceUrl === "string" ? statRecord.sourceUrl : null,
+        ...lineage
+      }
+    });
+    created += 1;
+  }
+
+  for (const row of vetoHistory) {
+    const vetoRecord = rawRecord(row);
+    const teamId = String(vetoRecord.teamId ?? "");
+    const mapName = String(vetoRecord.mapName ?? "");
+    if (!teamId || !mapName) continue;
+    const opponentTeamId = teamId === targetMatch.teamAId ? targetMatch.teamBId : targetMatch.teamAId;
+    await prisma.vetoPattern.create({
+      data: {
+        teamId,
+        opponentTeamId,
+        format: targetMatch.format,
+        period: String(vetoRecord.period ?? record.period ?? "parsed_demo"),
+        mapName,
+        pickProbability: Number(vetoRecord.pickRate ?? vetoRecord.pickProbability ?? 0.1),
+        banProbability: Number(vetoRecord.banRate ?? vetoRecord.banProbability ?? 0.1),
+        punishProbability: Number(vetoRecord.punishProbability ?? 0.1),
+        weaknessScore: Number(vetoRecord.weaknessScore ?? 0.35),
+        comfortScore: Number(vetoRecord.comfortScore ?? 0.55),
+        confidenceScore: Number(vetoRecord.confidenceScore ?? Math.min(0.9, Number(vetoRecord.sampleSize ?? 1) / 25)),
+        source: "parsed_demo",
+        ...lineage
       }
     });
     created += 1;
@@ -870,7 +929,9 @@ async function reconcileParsedDemoRecord(raw: unknown) {
         comebackFrom5RoundDeficit: Number(formRecord.comebackFrom5RoundDeficit ?? 0.3),
         badHalfRecovery: Number(formRecord.badHalfRecovery ?? 0.5),
         lostPistolRecovery: Number(formRecord.lostPistolRecovery ?? 0.4),
-        lostOwnPickRecovery: Number(formRecord.lostOwnPickRecovery ?? 0.4)
+        lostOwnPickRecovery: Number(formRecord.lostOwnPickRecovery ?? 0.4),
+        source: "parsed_demo",
+        ...lineage
       }
     });
     created += 1;
@@ -903,7 +964,7 @@ async function persistSourceRecords(result: SourceSyncResult) {
               : record.entityType === "game_meta_update"
                 ? await reconcileGameMetaRecord(record.raw)
                 : record.entityType === "parsed_demo_stats"
-                  ? await reconcileParsedDemoRecord(record.raw)
+                  ? await reconcileParsedDemoRecord(record.raw, saved.record.id)
                   : await reconcileEntityCandidate(saved.record.id, record.source, record.entityType, record.externalId, record.raw);
     recordsCreated += reconciled.created;
     recordsUpdated += reconciled.updated;

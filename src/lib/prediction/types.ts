@@ -144,6 +144,18 @@ export type PlayerEntity = {
   sourceRecordId?: string | null;
 };
 
+export type ForecastLineageFields = {
+  sourceMode?: string | null;
+  matchId?: string | null;
+  importBatchId?: string | null;
+  sourceRecordId?: string | null;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
+};
+
 export type MatchEntity = {
   id: string;
   source?: string;
@@ -210,6 +222,16 @@ export type TeamFormEntity = {
   badHalfRecovery: number;
   lostPistolRecovery: number;
   lostOwnPickRecovery: number;
+  source?: string;
+  sourceMode?: string | null;
+  matchId?: string | null;
+  importBatchId?: string | null;
+  sourceRecordId?: string | null;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   createdAt?: Date | string;
 };
 
@@ -260,10 +282,15 @@ export type PlayerStatEntity = {
   onlineRating: number;
   source: string;
   sourceUrl?: string | null;
+  sourceMode?: string | null;
   matchId?: string | null;
   importBatchId?: string | null;
   sourceRecordId?: string | null;
-  isActive?: boolean;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   createdAt?: Date | string;
 };
 
@@ -297,10 +324,15 @@ export type TeamMapStatEntity = {
   sampleQuality: number;
   source: string;
   sourceUrl?: string | null;
+  sourceMode?: string | null;
   matchId?: string | null;
   importBatchId?: string | null;
   sourceRecordId?: string | null;
-  isActive?: boolean;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   createdAt?: Date | string;
 };
 
@@ -317,10 +349,15 @@ export type VetoPatternEntity = {
   comfortScore: number;
   confidenceScore: number;
   source?: string;
+  sourceMode?: string | null;
   matchId?: string | null;
   importBatchId?: string | null;
   sourceRecordId?: string | null;
-  isActive?: boolean;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   createdAt?: Date | string;
 };
 
@@ -336,9 +373,14 @@ export type HeadToHeadEntity = {
   relevanceScore: number;
   notes?: string | null;
   source?: string;
+  sourceMode?: string | null;
   importBatchId?: string | null;
   sourceRecordId?: string | null;
-  isActive?: boolean;
+  isActive?: boolean | null;
+  collectedAt?: Date | string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
 };
 
 export type NewsEntity = {
@@ -366,6 +408,9 @@ export type NewsEntity = {
   isConfirmed?: boolean | null;
   expiresAt?: Date | string | null;
   sourceMode?: string | null;
+  sourceDate?: Date | string | null;
+  dataRole?: string | null;
+  dataLeakageCheckPassed?: boolean | null;
   rawJson?: string | null;
   matchId?: string | null;
   importBatchId?: string | null;

@@ -103,10 +103,33 @@ export const manualEnrichmentTemplates = {
   parsed_demo: {
     matchId: "pandascore_match_1474573",
     type: "parsed_demo",
-    period: "parsed_demo_recent",
+    source: "parsed_demo",
+    dataRole: "historical_team_form",
+    sourceName: "",
+    sourceUrl: "",
+    collectedAt: "",
+    sourceDate: "",
+    sourceMatchId: "",
+    period: "",
+    sampleSize: 0,
+    confidence: 0.5,
+    notes: "Empty parsed_demo template. Fill only verified parsed demo or historical evidence values; template data cannot be applied.",
+    metadata: {
+      sourceName: "",
+      sourceUrl: "",
+      collectedAt: "",
+      period: "",
+      sampleSize: 0,
+      confidence: 0.5,
+      dataRole: "historical_team_form",
+      notes: "Use pre_match_evidence or historical_team_form for future-match forecasts. post_match_analysis/backtest_only will not count as real forecast evidence."
+    },
+    teams: [],
     playerStats: [],
     mapStats: [],
-    teamForms: []
+    vetoHistory: [],
+    teamForms: [],
+    roundEconomy: []
   },
   analyst_pack: {
     matchId: "pandascore_match_1474573",
