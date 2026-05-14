@@ -57,6 +57,8 @@ export async function getResearchQueueRows(limit = 80): Promise<ResearchQueueRow
     rows.push({
       matchId: match.id,
       matchLabel: `${match.teamA.name} vs ${match.teamB.name}`,
+      teamAName: match.teamA.name,
+      teamBName: match.teamB.name,
       eventName: match.eventName,
       startTime: match.startTime,
       readinessLevel: prediction.readiness.level,

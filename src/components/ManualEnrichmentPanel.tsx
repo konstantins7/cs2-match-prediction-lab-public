@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { manualEnrichmentTemplates } from "@/lib/manualEnrichmentTemplates";
+import { coachManualPayload } from "@/lib/dataQualityCoach";
+import { getPlaybookEntry, type AcquisitionDataType } from "@/lib/dataAcquisitionPlaybook";
 import type { ResearchTask } from "@/lib/researchQueueCore";
 
 const manualTemplateLabels: Array<[keyof typeof manualEnrichmentTemplates, string]> = [
@@ -18,29 +20,50 @@ const manualTemplateLabels: Array<[keyof typeof manualEnrichmentTemplates, strin
 type MatchOption = {
   matchId: string;
   label: string;
+  teamAName?: string;
+  teamBName?: string;
   tasks: ResearchTask[];
 };
 
+const activeMapPool = ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Dust2", "Train"];
+
 const builderSteps = [
-  ["ranking", "Шаг 1 — Команды / рейтинг", "подтверждение рейтинга + basic results -> может поднять до L2", "Confirm rank/team match"],
-  ["roster", "Шаг 2 — Состав", "состав -> открывает путь к L2/L3", "Bind roster"],
-  ["player_stats", "Шаг 3 — Статистика игроков", "состав + player stats -> L2 strong / L3 weak", "Import player stats"],
-  ["map_stats", "Шаг 4 — Карты", "состав + игроки + карты -> L3 partial", "Import map stats"],
-  ["veto_history", "Шаг 5 — Veto history", "состав + карты + veto -> L3 full", "Import veto history"],
-  ["h2h", "Step 6 — H2H", "H2H добавляет matchup context", "Add H2H"],
-  ["news", "Шаг 7 — Новости / roster events", "новости улучшают объяснение риска и уверенности", "Add news/roster events"],
-  ["final", "Шаг 8 — Финальный пересчёт", "Применить -> snapshots -> predictions -> readiness before/after", "Recalculate predictions"]
+  ["roster", "Шаг 1 — Добавьте составы", "состав -> открывает путь к L2/L3", "Bind roster"],
+  ["player_stats", "Шаг 2 — Добавьте статистику игроков", "состав + player stats -> L2 strong / L3 weak", "Import player stats"],
+  ["map_stats", "Шаг 3 — Добавьте карты/veto", "состав + игроки + карты/veto -> L3 partial/full", "Import map stats"],
+  ["h2h", "Шаг 4 — Добавьте H2H", "H2H добавляет matchup context", "Add H2H"],
+  ["news", "Шаг 5 — Добавьте новости", "новости улучшают объяснение риска и уверенности", "Add news/roster events"],
+  ["final", "Шаг 6 — Проверить и применить", "Проверить -> применить -> snapshots -> predictions -> readiness before/after", "Recalculate predictions"]
 ] as const;
 
-export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = false, matchOptions = [] }: { defaultMatchId?: string; analystSampleEnabled?: boolean; matchOptions?: MatchOption[] }) {
+const sourceHints: Record<string, string> = {
+  roster: "Где взять: LiquipediaDB, official team page, manual source.",
+  player_stats: "Где взять: parsed demo, FACEIT, GRID, manual analyst sheet.",
+  map_stats: "Где взять: parsed demo, GRID, manual history. Заполните map stats и veto history в pack.",
+  veto_history: "Где взять: parsed demo, GRID, manual history.",
+  h2h: "Где взять: PandaScore past, manual history, Liquipedia if available.",
+  news: "Где взять: official announcements, HLTV manual reference, Telegram insider manual note.",
+  final: "Проверка не создаёт records. Readiness меняется только после валидного apply."
+};
+
+const stepPlaybookType: Record<string, AcquisitionDataType> = {
+  roster: "roster",
+  player_stats: "player_stats",
+  map_stats: "map_veto",
+  h2h: "h2h",
+  news: "news",
+  final: "round_economy"
+};
+
+export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manual_real_pack", analystSampleEnabled = false, matchOptions = [] }: { defaultMatchId?: string; initialTemplate?: keyof typeof manualEnrichmentTemplates; analystSampleEnabled?: boolean; matchOptions?: MatchOption[] }) {
   const [selectedMatchId, setSelectedMatchId] = useState(defaultMatchId ?? "pandascore_match_1474573");
-  const [template, setTemplate] = useState<keyof typeof manualEnrichmentTemplates>("manual_real_pack");
-  const initial = useMemo(() => buildPayload("manual_real_pack", selectedMatchId), [selectedMatchId]);
+  const [template, setTemplate] = useState<keyof typeof manualEnrichmentTemplates>(initialTemplate);
+  const selectedOption = matchOptions.find((option) => option.matchId === selectedMatchId);
+  const initial = useMemo(() => buildPayload(initialTemplate, selectedMatchId, selectedOption), [initialTemplate, selectedMatchId, selectedOption]);
   const [payload, setPayload] = useState(initial);
   const [result, setResult] = useState<unknown>(null);
   const [loading, setLoading] = useState(false);
   const isSampleTemplate = template === "analyst_pack";
-  const selectedOption = matchOptions.find((option) => option.matchId === selectedMatchId);
   const resultRecord = result && typeof result === "object" ? result as Record<string, unknown> : null;
   const blockStatuses = Array.isArray(resultRecord?.blockStatuses) ? resultRecord.blockStatuses as Array<Record<string, unknown>> : [];
   const payloadRecord = useMemo(() => {
@@ -51,16 +74,22 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
     }
   }, [payload]);
   const metadata = (payloadRecord.metadata && typeof payloadRecord.metadata === "object" ? payloadRecord.metadata : payloadRecord) as Record<string, unknown>;
+  const coachWarnings = useMemo(() => coachManualPayload(payloadRecord), [payloadRecord]);
+  const validationCoachWarnings = blockStatuses.flatMap((status) => [
+    ...(Array.isArray(status.warnings) ? status.warnings.map(String) : []),
+    ...(Array.isArray(status.errors) ? status.errors.map(String) : [])
+  ]);
 
   function chooseTemplate(next: keyof typeof manualEnrichmentTemplates) {
     setTemplate(next);
-    setPayload(buildPayload(next, selectedMatchId));
+    setPayload(buildPayload(next, selectedMatchId, selectedOption));
     setResult(null);
   }
 
   function chooseMatch(next: string) {
     setSelectedMatchId(next);
-    setPayload(buildPayload(template, next));
+    const nextOption = matchOptions.find((option) => option.matchId === next);
+    setPayload(buildPayload(template, next, nextOption));
     setResult(null);
   }
 
@@ -178,10 +207,11 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
             )) : <option value={selectedMatchId}>{selectedMatchId}</option>}
           </select>
         </label>
-        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {builderSteps.map((step) => {
             const preview = stepPreview(step);
             const status = stepStatus(step);
+            const playbook = getPlaybookEntry(stepPlaybookType[step[0]]);
             return (
             <div key={step[0]} className="rounded border border-lab-border bg-lab-panel2 p-3">
               <div className="flex items-start justify-between gap-2">
@@ -189,6 +219,14 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
                 <span className={statusClass(status)}>{status}</span>
               </div>
               <p className="mt-2 text-xs text-lab-muted">{step[2]}</p>
+              <p className="mt-2 text-xs text-lab-cyan">{sourceHints[step[0]]}</p>
+              <div className="mt-2 rounded border border-lab-border bg-lab-panel p-2 text-xs text-lab-muted">
+                <p>Где взять: {playbook.sources.join(" · ")}</p>
+                <p>Насколько сложно: {playbook.difficulty}</p>
+                <p>Что даст: {playbook.whyItMatters}</p>
+                <p>Можно автоматически: {playbook.canAutomate}</p>
+                <p>Нужен API key: {playbook.requiresApiKey ? "да / или parsed demo" : "нет"}</p>
+              </div>
               <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-lab-muted">
                 <dt>Источник данных</dt><dd className="text-white">{String(resultRecord?.sourceMode ?? (template === "analyst_pack" ? "analyst_sample" : "manual_real"))}</dd>
                 <dt>sourceName</dt><dd className="text-white">{String(metadata.sourceName ?? "missing") || "missing"}</dd>
@@ -199,25 +237,14 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
                 <dt>Почему не используется</dt><dd className="text-white">{status === "missing" ? "нет данных" : status === "invalid" ? "проверка не прошла" : "-"}</dd>
                 <dt>Качество блока</dt><dd className="text-white">{preview?.quality !== undefined ? `${Math.round(Number(preview.quality) * 100)}/100` : step[0] === "final" && resultRecord?.manualRealPackQuality && typeof resultRecord.manualRealPackQuality === "object" ? `${String((resultRecord.manualRealPackQuality as Record<string, unknown>).score)}/100` : "n/a"}</dd>
               </dl>
+              {step[0] !== "final" ? (
+                <button type="button" onClick={() => chooseTemplate(step[0] as keyof typeof manualEnrichmentTemplates)} className="mt-3 rounded border border-lab-border px-3 py-1.5 text-xs text-lab-cyan hover:border-lab-cyan">
+                  Открыть шаблон шага
+                </button>
+              ) : null}
             </div>
           );})}
         </div>
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        {manualTemplateLabels.map(([key, label]) => (
-          <button key={key} type="button" onClick={() => chooseTemplate(key)} className={template === key ? "rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black" : "rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan"}>
-            {label}
-          </button>
-        ))}
-        <button
-          type="button"
-          disabled={!analystSampleEnabled}
-          onClick={() => chooseTemplate("analyst_pack")}
-          className={template === "analyst_pack" ? "rounded bg-violet-300 px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40" : "rounded border border-violet-400/50 px-3 py-1.5 text-sm text-violet-200 hover:border-violet-300 disabled:cursor-not-allowed disabled:opacity-40"}
-        >
-          Создать тестовый analyst pack
-        </button>
       </div>
 
       {!analystSampleEnabled ? (
@@ -236,13 +263,54 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
         </div>
       )}
 
-      <textarea
-        value={payload}
-        onChange={(event) => setPayload(event.target.value)}
-        spellCheck={false}
-        className="mt-3 min-h-[300px] w-full rounded border border-lab-border bg-lab-panel2 p-3 font-mono text-xs text-white outline-none focus:border-lab-cyan"
-      />
-      <p className="mt-2 text-xs text-lab-muted">Advanced JSON fallback. Wizard cards above are the primary workflow; textarea remains for batch import/export and precise analyst packs.</p>
+      <div className="mt-3 rounded border border-lab-cyan/30 bg-lab-panel2 p-3 text-sm text-lab-muted">
+        Черновик data pack: команды, active map pool и metadata уже подставлены для выбранного матча. Заполните только реальные числа и source metadata; пустой skeleton не меняет готовность прогноза.
+      </div>
+
+      <div className="mt-3 rounded border border-lab-green/50 bg-lab-panel2 p-3 text-sm text-lab-muted">
+        <p className="font-medium text-lab-green">Самый сильный бесплатный способ улучшить прогноз — загрузить parsed demo.</p>
+        <p className="mt-1">Сейчас доступен parsed_demo JSON. .dem parser будет добавлен позже.</p>
+        <button type="button" onClick={() => chooseTemplate("parsed_demo")} className="mt-2 rounded border border-lab-green/60 px-3 py-1.5 text-xs text-lab-green">
+          Загрузить parsed demo JSON
+        </button>
+      </div>
+
+      <div className="mt-3 rounded border border-lab-amber/50 bg-lab-panel2 p-3">
+        <h3 className="text-sm font-semibold text-lab-amber">Data Quality Coach</h3>
+        <p className="mt-1 text-xs text-lab-muted">Coach предупреждает до Apply: маленькая выборка, нет sourceName, данные устарели, confidence низкий, нет veto/map stats или L3 blocker.</p>
+        <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+          {[...new Set([...coachWarnings, ...validationCoachWarnings])].slice(0, 8).map((warning, index) => (
+            <li key={`coach-${index}-${warning.slice(0, 32)}`}>{warning}</li>
+          ))}
+          {coachWarnings.length === 0 && validationCoachWarnings.length === 0 ? <li>Критичных предупреждений по текущему payload пока нет.</li> : null}
+        </ul>
+      </div>
+
+      <details className="mt-3 rounded border border-lab-border bg-lab-panel2 p-3">
+        <summary className="cursor-pointer text-sm font-medium text-lab-cyan">Advanced JSON</summary>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {manualTemplateLabels.map(([key, label]) => (
+            <button key={key} type="button" onClick={() => chooseTemplate(key)} className={template === key ? "rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black" : "rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan"}>
+              {label}
+            </button>
+          ))}
+          <button
+            type="button"
+            disabled={!analystSampleEnabled}
+            onClick={() => chooseTemplate("analyst_pack")}
+            className={template === "analyst_pack" ? "rounded bg-violet-300 px-3 py-1.5 text-sm font-medium text-black disabled:opacity-40" : "rounded border border-violet-400/50 px-3 py-1.5 text-sm text-violet-200 hover:border-violet-300 disabled:cursor-not-allowed disabled:opacity-40"}
+          >
+            Создать тестовый analyst pack
+          </button>
+        </div>
+        <textarea
+          value={payload}
+          onChange={(event) => setPayload(event.target.value)}
+          spellCheck={false}
+          className="mt-3 min-h-[300px] w-full rounded border border-lab-border bg-lab-panel p-3 font-mono text-xs text-white outline-none focus:border-lab-cyan"
+        />
+        <p className="mt-2 text-xs text-lab-muted">Advanced JSON fallback. Forecast Wizard выше — основной workflow; JSON остаётся для batch import/export и точных analyst packs.</p>
+      </details>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" disabled={loading} onClick={() => send("validate")} className="rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan disabled:opacity-50">
           Проверить
@@ -274,8 +342,33 @@ export function ManualEnrichmentPanel({ defaultMatchId, analystSampleEnabled = f
   );
 }
 
-function buildPayload(template: keyof typeof manualEnrichmentTemplates, matchId?: string) {
-  return JSON.stringify({ ...manualEnrichmentTemplates[template], matchId: matchId ?? manualEnrichmentTemplates[template].matchId }, null, 2);
+function buildPayload(template: keyof typeof manualEnrichmentTemplates, matchId?: string, option?: MatchOption) {
+  const base = JSON.parse(JSON.stringify(manualEnrichmentTemplates[template])) as Record<string, unknown>;
+  const resolvedMatchId = matchId ?? String(base.matchId ?? "pandascore_match_1474573");
+  const teamA = option?.teamAName ?? "Team A";
+  const teamB = option?.teamBName ?? "Team B";
+  base.matchId = resolvedMatchId;
+  if (template === "manual_real_pack") {
+    base.rosters = { [teamA]: [], [teamB]: [] };
+    base.mapStats = activeMapPool.flatMap((mapName) => [
+      { team: teamA, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0, ctRoundWinRate: 0, tRoundWinRate: 0 },
+      { team: teamB, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0, ctRoundWinRate: 0, tRoundWinRate: 0 }
+    ]);
+    base.vetoHistory = activeMapPool.flatMap((mapName) => [
+      { team: teamA, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 },
+      { team: teamB, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 }
+    ]);
+  }
+  if (template === "roster") base.teams = { [teamA]: [], [teamB]: [] };
+  if (template === "map_stats") base.teams = activeMapPool.flatMap((mapName) => [
+    { team: teamA, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0 },
+    { team: teamB, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0 }
+  ]);
+  if (template === "veto_history") base.teams = activeMapPool.flatMap((mapName) => [
+    { team: teamA, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 },
+    { team: teamB, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 }
+  ]);
+  return JSON.stringify(base, null, 2);
 }
 
 function statusClass(status: string) {

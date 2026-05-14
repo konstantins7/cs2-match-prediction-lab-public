@@ -28,26 +28,26 @@ export default async function ModelLabPage() {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.4.1</p>
-        <h1 className="text-2xl font-semibold text-white">Model Lab</h1>
-        <p className="mt-1 text-sm text-lab-muted">Feature store, source coverage, readiness calibration и экспорт training dataset. Это исследовательский слой, не ML production.</p>
+        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.4.5</p>
+        <h1 className="text-2xl font-semibold text-white">Лаборатория модели</h1>
+        <p className="mt-1 text-sm text-lab-muted">Снимки признаков, покрытие источников, калибровка готовности прогноза и экспорт датасета для обучения. Это исследовательский слой, не ML production.</p>
       </header>
 
       <section className="grid gap-3 md:grid-cols-4">
-        <Stat label="Feature schema" value={FEATURE_SCHEMA_VERSION} />
-        <Stat label="Model version" value={FEATURE_MODEL_VERSION} />
-        <Stat label="Snapshots" value={snapshots.length} />
-        <Stat label="Dataset columns" value={TRAINING_DATASET_COLUMNS.length} />
+        <Stat label="Схема признаков" value={FEATURE_SCHEMA_VERSION} />
+        <Stat label="Версия модели" value={FEATURE_MODEL_VERSION} />
+        <Stat label="Снимки признаков" value={snapshots.length} />
+        <Stat label="Колонки датасета" value={TRAINING_DATASET_COLUMNS.length} />
       </section>
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-white">Export training dataset CSV</h2>
-            <p className="mt-1 text-sm text-lab-muted">Только finished matches с winnerTeamId, без analyst_sample, без leakage. Включает readinessLevel, cutoff, modelVersion и leakage flag.</p>
+            <h2 className="font-semibold text-white">Экспорт датасета для обучения CSV</h2>
+            <p className="mt-1 text-sm text-lab-muted">Только завершённые матчи с winnerTeamId, без analyst_sample и без утечки данных. Включает уровень готовности, cutoff, версию модели и leakage flag.</p>
           </div>
           <a className="rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan hover:bg-lab-cyan hover:text-black" href="/api/admin/model-lab/training-dataset">
-            Export CSV
+            Экспорт CSV
           </a>
         </div>
       </section>
@@ -55,19 +55,19 @@ export default async function ModelLabPage() {
       <SourceCoverageMatrix rows={coverageRows} />
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Feature Snapshot table</h2>
+        <h2 className="font-semibold text-white">Таблица снимков признаков</h2>
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
             <thead className="text-xs uppercase text-lab-muted">
               <tr>
-                <th className="py-2 pr-3">Match</th>
-                <th>Readiness</th>
-                <th>DQ</th>
+                <th className="py-2 pr-3">Матч</th>
+                <th>Готовность</th>
+                <th>Качество данных</th>
                 <th>Cutoff</th>
                 <th>Elo diff</th>
                 <th>Rank diff</th>
                 <th>Map/Veto</th>
-                <th>Leakage</th>
+                <th>Утечка данных</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-lab-border text-lab-muted">
@@ -80,7 +80,7 @@ export default async function ModelLabPage() {
                   <td>{snapshot.internalEloDiff.toFixed(1)}</td>
                   <td>{snapshot.valveRankDiff.toFixed(1)}</td>
                   <td>{snapshot.mapPoolAdvantage.toFixed(2)} / {snapshot.vetoAdvantage.toFixed(2)}</td>
-                  <td className={snapshot.dataLeakageCheckPassed ? "text-lab-green" : "text-lab-red"}>{snapshot.dataLeakageCheckPassed ? "passed" : "failed"}</td>
+                  <td className={snapshot.dataLeakageCheckPassed ? "text-lab-green" : "text-lab-red"}>{snapshot.dataLeakageCheckPassed ? "нет" : "есть"}</td>
                 </tr>
               ))}
             </tbody>
@@ -89,7 +89,7 @@ export default async function ModelLabPage() {
       </section>
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Calibration by readiness</h2>
+        <h2 className="font-semibold text-white">Калибровка по готовности прогноза</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-5">
           {calibration.map((row) => (
             <article key={row.readinessLevel} className="rounded border border-lab-border bg-lab-panel2 p-3">
@@ -98,7 +98,7 @@ export default async function ModelLabPage() {
                 <p className="mt-2 text-sm text-lab-muted">{row.message}</p>
               ) : (
                 <dl className="mt-2 space-y-1 text-sm text-lab-muted">
-                  <div><dt>Sample</dt><dd className="text-white">{row.sampleSize}</dd></div>
+                  <div><dt>Выборка</dt><dd className="text-white">{row.sampleSize}</dd></div>
                   <div><dt>Accuracy</dt><dd className="text-white">{Math.round((row.accuracy ?? 0) * 100)}%</dd></div>
                   <div><dt>Brier</dt><dd className="text-white">{row.brierScore?.toFixed(3)}</dd></div>
                   <div><dt>Log loss</dt><dd className="text-white">{row.logLoss?.toFixed(3)}</dd></div>
@@ -112,13 +112,13 @@ export default async function ModelLabPage() {
 
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded border border-lab-border bg-lab-panel p-4">
-          <h2 className="font-semibold text-white">Data leakage summary</h2>
+          <h2 className="font-semibold text-white">Сводка по утечке данных</h2>
           <div className="mt-3 space-y-2 text-sm text-lab-muted">
-            {leakageSummary.map((row) => <p key={String(row.dataLeakageCheckPassed)}>{row.dataLeakageCheckPassed ? "Passed" : "Failed"}: {row._count.dataLeakageCheckPassed}</p>)}
+            {leakageSummary.map((row) => <p key={String(row.dataLeakageCheckPassed)}>{row.dataLeakageCheckPassed ? "Без утечки" : "Есть утечка"}: {row._count.dataLeakageCheckPassed}</p>)}
           </div>
         </div>
         <div className="rounded border border-lab-border bg-lab-panel p-4">
-          <h2 className="font-semibold text-white">Model layer</h2>
+          <h2 className="font-semibold text-white">Слой модели</h2>
           <ul className="mt-3 space-y-2 text-sm text-lab-muted">
             <li>Internal Elo: реально пересчитывается после finished matches.</li>
             <li>Glicko-style uncertainty: эвристика. New/low-sample RD {lowSampleUncertainty.ratingDeviation}, stable RD {stableUncertainty.ratingDeviation}.</li>

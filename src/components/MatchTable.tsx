@@ -6,6 +6,7 @@ import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
+import { getBestNextAction, humanForecastStatus } from "@/lib/bestNextAction";
 
 export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
   return (
@@ -28,7 +29,9 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
           </tr>
         </thead>
         <tbody className="divide-y divide-lab-border">
-          {rows.map(({ match, prediction, priority }) => (
+          {rows.map(({ match, prediction, priority }) => {
+            const nextAction = getBestNextAction(prediction).primaryAction;
+            return (
             <tr key={match.id} className="hover:bg-lab-panel2/60">
               <td className="px-3 py-3 text-lab-muted">{formatDateTime(match.startTime)}</td>
               <td className="px-3 py-3">{match.eventName}</td>
@@ -49,6 +52,7 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                 <div className="flex flex-wrap gap-2">
                   <ReadinessBadge level={prediction.readiness.level} />
                   <RealForecastBadge isReady={prediction.realForecast.isReady} />
+                  <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-cyan">{humanForecastStatus(prediction)}</span>
                   <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
                   {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
                 </div>
@@ -71,11 +75,22 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                 <Link href={`/match/${match.id}`} className="text-lab-cyan hover:text-cyan-200">
                   Разбор
                 </Link>
+                <div>
+                  <Link href={actionHref(nextAction.href, match.id)} className="text-xs text-lab-amber hover:text-amber-200">
+                    {nextAction.label}
+                  </Link>
+                </div>
               </td>
             </tr>
-          ))}
+          );})}
         </tbody>
       </table>
     </div>
   );
+}
+
+function actionHref(href: string, matchId: string) {
+  if (!href.startsWith("/admin/research-queue")) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}matchId=${encodeURIComponent(matchId)}`;
 }

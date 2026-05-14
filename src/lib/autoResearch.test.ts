@@ -1,8 +1,15 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { friendlySourceError } from "./friendlyErrors";
+import { getBestNextAction, humanForecastStatus } from "./bestNextAction";
 import { GLOBAL_RESEARCH_PROGRESS_STEPS } from "./autoResearchShared";
 import { runOneClickGlobalRefreshWithDeps, type AutoResearchDeps } from "./autoResearchCore";
+import { AUTO_RESEARCH_ORCHESTRATOR_PLAN, getSourceSkipReason } from "./autoResearch/orchestrator";
+import { buildSourceSetupChecklist, isNoExtraApiMode } from "./sourceSetup";
+import { dataSourceRegistry } from "./config/dataSourceRegistry";
+import { dataAcquisitionPlaybook, getPlaybookEntriesForMissing } from "./dataAcquisitionPlaybook";
+import { coachManualPayload } from "./dataQualityCoach";
+import { detectManualNewsPlaceholder } from "./news/manualNews";
 
 function result(source: "pandascore" | "valve-rankings" | "cs-updates", status: "success" | "failed" | "blocked" | "disabled" = "success") {
   return {
@@ -18,22 +25,33 @@ function result(source: "pandascore" | "valve-rankings" | "cs-updates", status: 
 describe("MVP 0.4 auto research workflow", () => {
   it("global one-click sync calls expected pipeline functions in order", async () => {
     const calls: string[] = [];
+    const metrics = (after = false) => ({
+      matches: after ? 11 : 10,
+      readyForecasts: 0,
+      basicPreview: 4,
+      needsManualData: 6,
+      teamsWithRank: after ? 3 : 2,
+      L0_FIXTURE_ONLY: 2,
+      L1_BASIC_CONTEXT: 3,
+      L2_BASIC_PREDICTION: 1,
+      L3_ANALYTICAL: 0,
+      L4_DEEP: 0,
+      teamsWithRoster: 0,
+      matchesWithMapVeto: 0,
+      researchTasks: 6,
+      sourceSetupNeeded: 3
+    });
     const deps: AutoResearchDeps = {
       getMetrics: async () => {
         calls.push("metrics");
-        return { matches: calls.length > 1 ? 11 : 10, readyForecasts: 0, basicPreview: 4, needsManualData: 6, teamsWithRank: calls.length > 1 ? 3 : 2 };
+        return metrics(calls.length > 1);
       },
-      syncPandaScore: async () => {
-        calls.push("pandascore");
-        return [result("pandascore")];
-      },
-      syncValveRankings: async () => {
-        calls.push("valve");
-        return result("valve-rankings");
-      },
-      syncCsUpdates: async () => {
-        calls.push("steam");
-        return result("cs-updates");
+      runOrchestrator: async () => {
+        calls.push("orchestrator");
+        return {
+          results: [result("pandascore"), result("valve-rankings"), result("cs-updates")],
+          reports: []
+        };
       },
       rebuildSnapshots: async () => {
         calls.push("snapshots");
@@ -49,21 +67,62 @@ describe("MVP 0.4 auto research workflow", () => {
       }
     };
     const output = await runOneClickGlobalRefreshWithDeps(deps);
-    expect(calls).toEqual(["metrics", "pandascore", "valve", "steam", "snapshots", "predictions", "research", "metrics"]);
+    expect(calls).toEqual(["metrics", "orchestrator", "snapshots", "predictions", "research", "metrics"]);
     expect(output.summary.updatedMatches).toBe(1);
     expect(output.summary.newMatches).toBe(1);
+    expect(output.summary.succeeded).toContain("получить матчи");
+    expect(output.summary.unavailable).toContain("получить player stats");
   });
 
   it("progress states render in Russian", () => {
     expect(GLOBAL_RESEARCH_PROGRESS_STEPS).toEqual([
       "Получаю матчи",
       "Обновляю рейтинги",
-      "Проверяю обновления CS2",
-      "Сопоставляю команды",
-      "Пересобираю аналитику",
+      "Проверяю патчи CS2",
+      "Проверяю составы",
+      "Проверяю игроков",
+      "Проверяю новости",
+      "Пересобираю признаки",
       "Пересчитываю прогнозы",
+      "Обновляю задачи",
       "Готово"
     ]);
+  });
+
+  it("orchestrator includes enabled-source order and optional providers", () => {
+    expect(AUTO_RESEARCH_ORCHESTRATOR_PLAN.map((job) => `${job.dataType}:${job.source}`)).toEqual(expect.arrayContaining([
+      "fixture:pandascore",
+      "ranking:valve-rankings",
+      "patch/meta:cs-updates",
+      "roster:liquipedia",
+      "player stats:faceit",
+      "map/veto:grid"
+    ]));
+  });
+
+  it("source budget manager blocks over-limit calls without crashing", () => {
+    const now = new Date("2026-05-13T10:00:00Z");
+    const job = { dataType: "fixture", source: "pandascore", jobType: "upcoming_matches" } as const;
+    const status = {
+      source: "pandascore",
+      label: "PandaScore",
+      priority: 3,
+      enabled: true,
+      configured: true,
+      status: "idle",
+      capabilities: [],
+      message: "ok",
+      requiredEnv: []
+    } as never;
+    const reason = getSourceSkipReason(job, status, {
+      source: "pandascore",
+      requestsUsed: 60,
+      requestsRemaining: 0,
+      resetAt: new Date("2026-05-13T11:00:00Z"),
+      nextAllowedSyncAt: null,
+      status: "idle"
+    }, now);
+    expect(reason).toBe("Лимит источника достигнут, попробуйте позже.");
   });
 
   it("friendly source errors hide technical details", () => {
@@ -81,7 +140,7 @@ describe("MVP 0.4 auto research workflow", () => {
   });
 
   it("match-specific prepare does not run broad source sync", () => {
-    const source = readFileSync("src/lib/autoResearch.ts", "utf8");
+    const source = readFileSync("src/lib/autoResearch/index.ts", "utf8");
     const prepareBody = source.slice(source.indexOf("export async function prepareMatchForecast"));
     expect(prepareBody).not.toContain("syncPandaScoreFreeFixtures(");
     expect(prepareBody).not.toContain("syncValveRankings(");
@@ -93,11 +152,146 @@ describe("MVP 0.4 auto research workflow", () => {
     const oneClick = readFileSync("src/components/OneClickResearchButton.tsx", "utf8");
     const statusPanel = readFileSync("src/components/MatchForecastStatusPanel.tsx", "utf8");
     const matchDetail = readFileSync("src/components/MatchDetailTabs.tsx", "utf8");
+    const home = readFileSync("src/app/page.tsx", "utf8");
     expect(oneClick).toContain("Обновить всё доступное автоматически");
+    expect(oneClick).toContain("Автоматически удалось");
+    expect(oneClick).toContain("Не удалось автоматически");
     expect(oneClick).toContain("Обновить страницу");
     expect(oneClick).toContain("router.refresh()");
-    expect(statusPanel).toContain("Что сделать дальше");
+    expect(statusPanel).toContain("Лучшее следующее действие");
     expect(statusPanel).toContain("/admin/research-queue?matchId=");
+    expect(home).toContain("ForecastCommandCenter");
     expect(matchDetail).not.toContain("Модель склоняется");
+  });
+
+  it("source setup checklist explains provider value and no-API mode is informational", () => {
+    const items = buildSourceSetupChecklist(false, false);
+    expect(items.find((item) => item.id === "grid")?.value).toContain("round/player/economy");
+    expect(items.find((item) => item.id === "liquipedia")?.value).toContain("составы");
+    expect(isNoExtraApiMode(items)).toBeTypeOf("boolean");
+  });
+
+  it("source registry keeps manual-only and future providers safe", () => {
+    const hltv = dataSourceRegistry.find((item) => item.id === "hltv_manual_top50");
+    const telegram = dataSourceRegistry.find((item) => item.id === "telegram_manual");
+    expect(hltv?.legalMode).toBe("manual_reference");
+    expect(hltv?.forbiddenActions).toContain("HLTV scraping");
+    expect(telegram?.legalMode).toBe("manual_reference");
+    expect(telegram?.forbiddenActions).toContain("Telegram scraping");
+    expect(AUTO_RESEARCH_ORCHESTRATOR_PLAN.map((job) => job.source)).not.toContain("abios");
+    expect(dataSourceRegistry.filter((item) => item.accessType === "trial" || item.accessType === "paid_future").every((item) => item.legalMode === "disabled")).toBe(true);
+  });
+
+  it("best next action and human status prefer user-readable forecast work", () => {
+    const prediction = {
+      sourceLevel: "Basic free data",
+      realForecast: { isReady: false },
+      readiness: {
+        level: "L1_BASIC_CONTEXT",
+        missingCriticalData: ["player roster missing"]
+      }
+    } as never;
+    const action = getBestNextAction(prediction, [{ task: "Bind roster", status: "open" } as never]);
+    expect(action.primaryAction.label).toBe("Добавить составы");
+    expect(action.secondaryActions.length).toBeLessThanOrEqual(2);
+    expect(humanForecastStatus(prediction)).toBe("Нужен состав");
+  });
+
+  it("technical pages remain accessible but are not the main route", () => {
+    const layout = readFileSync("src/app/layout.tsx", "utf8");
+    expect(layout).toContain("Расширенно");
+    expect(layout).toContain("/admin/backtesting");
+    expect(layout).toContain("/admin/data-quality");
+    expect(layout).toContain("const advancedNav");
+  });
+
+  it("product UX hides technical tasks and makes forecast wizard primary", () => {
+    const commandCenter = readFileSync("src/components/ForecastCommandCenter.tsx", "utf8");
+    const concierge = readFileSync("src/components/ForecastConciergePanel.tsx", "utf8");
+    const researchQueue = readFileSync("src/app/admin/research-queue/page.tsx", "utf8");
+    const manualPanel = readFileSync("src/components/ManualEnrichmentPanel.tsx", "utf8");
+    const sources = readFileSync("src/app/admin/sources/page.tsx", "utf8");
+    const matchDetail = readFileSync("src/components/MatchDetailTabs.tsx", "utf8");
+    expect(commandCenter).toContain("Реальные прогнозы готовы");
+    expect(commandCenter).toContain("Базовые прогнозы");
+    expect(commandCenter).toContain("Нужно одно действие");
+    expect(concierge).toContain("Что сайт смог получить автоматически");
+    expect(concierge).toContain("Лучшее следующее действие");
+    expect(concierge).toContain("Где взять недостающие данные");
+    expect(matchDetail).toContain("ForecastConciergePanel");
+    expect(researchQueue).toContain("Топ-10 приоритетных матчей");
+    expect(researchQueue).toContain("Показать все технические задачи");
+    expect(manualPanel).toContain("Шаг 1 — Добавьте составы");
+    expect(manualPanel).toContain("Data Quality Coach");
+    expect(manualPanel).toContain("Advanced JSON");
+    expect(manualPanel).toContain("Самый сильный бесплатный способ улучшить прогноз");
+    expect(manualPanel).toContain("Где взять: parsed demo, FACEIT, GRID, manual analyst sheet.");
+    expect(sources).toContain("Как получить больше данных");
+    expect(sources).toContain("Provider roadmap");
+    expect(sources).toContain("Сайт работает в basic free mode");
+  });
+
+  it("data acquisition playbook explains sources by data type", () => {
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "roster")?.sources).toEqual(["LiquipediaDB", "official team page", "manual source"]);
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "player_stats")?.sources).toContain("GRID");
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "map_veto")?.sources).toContain("manual history");
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "h2h")?.sources).toContain("PandaScore past");
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "news")?.sources).toContain("Telegram insider manual note");
+    expect(dataAcquisitionPlaybook.find((entry) => entry.dataType === "round_economy")?.sources).toEqual(["parsed demo", "GRID"]);
+    expect(getPlaybookEntriesForMissing(["missing player stats", "missing map/veto"]).map((entry) => entry.dataType)).toEqual(["player_stats", "map_veto"]);
+  });
+
+  it("data quality coach warns about weak manual data", () => {
+    const warnings = coachManualPayload({
+      type: "manual_real_pack",
+      metadata: {
+        sourceName: "",
+        collectedAt: "2026-01-01T00:00:00Z",
+        period: "last_90_days",
+        sampleSize: 0,
+        confidence: 0.3
+      },
+      rosters: { G2: [] },
+      playerStats: [],
+      mapStats: [],
+      vetoHistory: []
+    });
+    expect(warnings.join(" ")).toContain("Нет sourceName");
+    expect(warnings.join(" ")).toContain("Маленькая выборка");
+    expect(warnings.join(" ")).toContain("Confidence низкий");
+    expect(warnings.join(" ")).toContain("Данные старше 90 дней");
+    expect(warnings.join(" ")).toContain("Нет map stats");
+    expect(warnings.join(" ")).toContain("Нет veto");
+    expect(warnings.join(" ")).toContain("Readiness не поднимется до L3");
+  });
+
+  it("forecast autopilot and provider probe UI contracts are present", () => {
+    const route = readFileSync("src/app/api/admin/sync/route.ts", "utf8");
+    const autopilot = readFileSync("src/components/ForecastAutopilotButton.tsx", "utf8");
+    const probe = readFileSync("src/lib/providerCapabilityProbe.ts", "utf8");
+    expect(route).toContain("forecast_autopilot");
+    expect(route).toContain("provider_capability_probe");
+    expect(autopilot).toContain("Быстро");
+    expect(autopilot).toContain("Глубже");
+    expect(autopilot).toContain("Максимум");
+    expect(autopilot).toContain("useState<ForecastAutopilotMode>(\"fast\")");
+    expect(probe).toContain("Central Data");
+    expect(probe).toContain("Series State");
+    expect(probe).toContain("File Download");
+    expect(probe).toContain("Series Events");
+    expect(probe).toContain(".dem parser worker not available");
+  });
+
+  it("placeholder manual news is rejected before it can become active real news", () => {
+    const detected = detectManualNewsPlaceholder({
+      sourceName: "Official team site",
+      title: "Roster update",
+      summary: "Short official note",
+      affectedTeam: "Team Name",
+      url: "https://www.hltv.org/news/..."
+    });
+    expect(detected.isPlaceholder).toBe(true);
+    expect(detected.reasons.join(" ")).toContain("placeholder news value");
+    expect(detected.reasons.join(" ")).toContain("template URL");
   });
 });

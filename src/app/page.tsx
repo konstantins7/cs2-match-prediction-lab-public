@@ -1,7 +1,11 @@
 import Link from "next/link";
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
+import { ForecastAutopilotButton } from "@/components/ForecastAutopilotButton";
+import { ForecastCommandCenter } from "@/components/ForecastCommandCenter";
+import { ForecastConciergePanel } from "@/components/ForecastConciergePanel";
 import { MatchCard } from "@/components/MatchCard";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
+import { getAutoResearchMetrics } from "@/lib/autoResearch";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -21,12 +25,13 @@ const filters = [
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [upcoming, live, finished, status, readinessDistribution] = await Promise.all([
+  const [upcoming, live, finished, status, readinessDistribution, commandMetrics] = await Promise.all([
     getCalculatedMatches({ status: "upcoming", limit: 6, focus: "pro" }),
     getCalculatedMatches({ status: "live", limit: 3, focus: "pro" }),
     getCalculatedMatches({ status: "finished", limit: 3, focus: "pro" }),
     getDashboardDataStatus(),
-    getReadinessDistribution()
+    getReadinessDistribution(),
+    getAutoResearchMetrics()
   ]);
   const fullStatus = { ...status, readinessDistribution };
 
@@ -40,7 +45,7 @@ export default async function HomePage() {
         </p>
         <div className="mt-5 grid gap-3 md:grid-cols-4">
           {[
-            ["Шаг 1", "Обновить матчи и аналитику"],
+            ["Шаг 1", "Обновить всё доступное автоматически"],
             ["Шаг 2", "Выбрать матч"],
             ["Шаг 3", "Подготовить прогноз"],
             ["Шаг 4", "Если данных мало — создать data pack"]
@@ -61,6 +66,19 @@ export default async function HomePage() {
       </section>
 
       <OneClickResearchButton />
+
+      <section className="rounded border border-lab-border bg-lab-panel p-4">
+        <h2 className="font-semibold text-white">Basic free mode</h2>
+        <p className="mt-1 text-sm text-lab-muted">
+          Сайт работает в basic free mode. Это нормально. Для аналитического прогноза добавьте data pack, parsed demo или подключите API.
+        </p>
+      </section>
+
+      <ForecastAutopilotButton />
+
+      <ForecastConciergePanel mode="home" metrics={commandMetrics} />
+
+      <ForecastCommandCenter metrics={commandMetrics} />
 
       <DashboardStatusStrip status={fullStatus} />
 

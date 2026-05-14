@@ -38,7 +38,7 @@ export const gridAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "partial",
-      notes: "GRID adapter is configured but MVP 0.4.1 keeps endpoint-specific detailed ingestion behind access/manual mapping."
+      notes: "GRID adapter is configured but MVP 0.4.5 keeps endpoint-specific detailed ingestion behind access/manual mapping."
     });
   }
 };

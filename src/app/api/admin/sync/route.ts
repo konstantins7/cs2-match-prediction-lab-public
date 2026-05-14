@@ -10,7 +10,9 @@ import {
 import type { SourceJobType, SourceName } from "@/lib/sources/types";
 import { redactString } from "@/lib/security/redaction";
 import { confirmRankMatch, rejectRankMatch } from "@/lib/data/rankMatching";
-import { prepareMatchForecast, runOneClickGlobalRefresh } from "@/lib/autoResearch";
+import { prepareMatchForecast, runForecastAutopilot, runOneClickGlobalRefresh } from "@/lib/autoResearch";
+import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
+import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
 
@@ -20,6 +22,7 @@ type SyncRequest = {
   jobType?: SourceJobType;
   payload?: string;
   matchId?: string;
+  mode?: ForecastAutopilotMode;
 };
 
 export async function POST(request: Request) {
@@ -27,6 +30,14 @@ export async function POST(request: Request) {
     const body = (await request.json()) as SyncRequest;
     if (body.action === "one_click_global_refresh") {
       const result = await runOneClickGlobalRefresh();
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "forecast_autopilot") {
+      const result = await runForecastAutopilot(body.mode ?? "fast", body.matchId);
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "provider_capability_probe") {
+      const result = await probeProviderCapabilities();
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "prepare_match") {

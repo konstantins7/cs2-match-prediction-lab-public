@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { GLOBAL_RESEARCH_PROGRESS_STEPS, type OneClickResult } from "@/lib/autoResearchShared";
+import { ForecastCommandCenter } from "./ForecastCommandCenter";
 
 type ApiResponse = {
   ok: boolean;
@@ -13,9 +14,11 @@ type ApiResponse = {
 const labels = [
   ["matches", "Матчей"],
   ["readyForecasts", "Готовых прогнозов"],
-  ["basicPreview", "Basic preview"],
+  ["basicPreview", "Слабый/basic preview"],
   ["needsManualData", "Матчей с нехваткой данных"],
-  ["teamsWithRank", "Команд с рейтингом"]
+  ["teamsWithRank", "Команд с рейтингом"],
+  ["teamsWithRoster", "Команд с составами"],
+  ["matchesWithMapVeto", "Матчей с map/veto"]
 ] as const;
 
 export function OneClickResearchButton({ compact = false }: { compact?: boolean }) {
@@ -83,6 +86,22 @@ export function OneClickResearchButton({ compact = false }: { compact?: boolean 
           {result && (
             <div className="space-y-3">
               <p className="text-sm text-lab-green">Готово. Данные страницы обновлены через router.refresh().</p>
+              <ForecastCommandCenter metrics={result.summary.after} compact />
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="rounded border border-lab-green/50 p-3">
+                  <p className="text-sm font-medium text-lab-green">Автоматически удалось</p>
+                  <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+                    {result.summary.succeeded.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                </div>
+                <div className="rounded border border-lab-amber/50 p-3">
+                  <p className="text-sm font-medium text-lab-amber">Не удалось автоматически</p>
+                  <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+                    {result.summary.unavailable.map((item) => <li key={item}>{item}</li>)}
+                  </ul>
+                  <p className="mt-2 text-xs text-lab-muted">{result.summary.unavailableReason}</p>
+                </div>
+              </div>
               <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-5">
                 {labels.map(([key, label]) => (
                   <DiffStat key={key} label={label} before={result.summary.before[key]} after={result.summary.after[key]} />

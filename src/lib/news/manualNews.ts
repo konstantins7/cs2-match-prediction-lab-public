@@ -48,6 +48,32 @@ function asDate(value: unknown, fallback = new Date()) {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
+export function detectManualNewsPlaceholder(raw: Record<string, unknown>) {
+  const values = [
+    raw.title,
+    raw.summary,
+    raw.sourceName,
+    raw.affectedTeam,
+    raw.affectedPlayer,
+    raw.sourceUrl,
+    raw.url,
+    raw.hltvUrl,
+    raw.telegramPostUrl
+  ].filter((value): value is string => typeof value === "string").map((value) => value.trim().toLowerCase());
+  const placeholders = ["roster update", "short official note", "official team site", "team name", "example"];
+  const reasons: string[] = [];
+  for (const placeholder of placeholders) {
+    if (values.some((value) => value === placeholder || value.includes(placeholder))) reasons.push(`placeholder news value: ${placeholder}`);
+  }
+  if (!asString(raw.sourceName)) reasons.push("sourceName is empty.");
+  if (!asString(raw.summary)) reasons.push("summary is empty.");
+  if (values.some((value) => value === "https://www.hltv.org/news/..." || value === "https://t.me/..." || value.endsWith("/..."))) reasons.push("template URL detected.");
+  return {
+    isPlaceholder: reasons.length > 0,
+    reasons: [...new Set(reasons)]
+  };
+}
+
 export function tierFromSourceType(sourceType: string, sourceTier?: string) {
   const explicit = asString(sourceTier).toLowerCase();
   if (explicit.includes("official")) return "official";
@@ -140,6 +166,12 @@ export async function upsertNewsSource(raw: Record<string, unknown>) {
 }
 
 export async function saveManualNewsItem(params: SaveManualNewsParams) {
+  if (params.sourceMode !== "analyst_sample") {
+    const placeholder = detectManualNewsPlaceholder(params.raw);
+    if (placeholder.isPlaceholder) {
+      throw new Error(`Похоже, что это шаблон, а не реальные новости. ${placeholder.reasons.join(" ")}`);
+    }
+  }
   const source = await upsertNewsSource(params.raw);
   const preview = buildNewsItemPreview(params.raw, params);
   const sourceMode = params.sourceMode ?? (preview.sourceType === "hltv_manual_reference" || preview.sourceType.includes("telegram") ? "manual_reference" : "manual_real");

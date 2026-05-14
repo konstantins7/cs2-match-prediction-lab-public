@@ -17,6 +17,8 @@ import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
+import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
+import { ForecastConciergePanel } from "./ForecastConciergePanel";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
@@ -56,6 +58,8 @@ export function MatchDetailTabs({
   return (
     <div className="space-y-5">
       <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
+      <ForecastAutopilotButton matchId={input.match.id} compact />
+      <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button

@@ -43,16 +43,16 @@ const sourceModeByCoverageSource: Record<CoverageSource, string[]> = {
 };
 
 const labels: Record<SourceDataType, string> = {
-  fixture: "Fixture",
-  ranking: "Ranking",
-  roster: "Roster",
-  player_stats: "Player stats",
-  map_stats: "Map stats",
+  fixture: "Базовые данные матча",
+  ranking: "Рейтинг",
+  roster: "Состав",
+  player_stats: "Статистика игроков",
+  map_stats: "Статистика карт",
   veto: "Veto",
   h2h: "H2H",
-  news: "News",
-  round_economy: "Round/economy",
-  patch_meta: "Patch/meta"
+  news: "Новости",
+  round_economy: "Раунды/экономика",
+  patch_meta: "Патчи/meta"
 };
 
 function statusForSource(statuses: SourceStatus[] | undefined, source: CoverageSource) {

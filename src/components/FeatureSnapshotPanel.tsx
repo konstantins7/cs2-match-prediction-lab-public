@@ -54,8 +54,8 @@ export function FeatureSnapshotPanel({ snapshot }: { snapshot?: FeatureSnapshotV
   if (!snapshot) {
     return (
       <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Feature Snapshot</h2>
-        <p className="mt-2 text-sm text-lab-muted">Feature snapshot ещё не создан. Запустите snapshots/predictions pipeline или “Подготовить прогноз”.</p>
+        <h2 className="font-semibold text-white">Снимок признаков</h2>
+        <p className="mt-2 text-sm text-lab-muted">Снимок признаков ещё не создан. Запустите snapshots/predictions pipeline или “Подготовить прогноз”.</p>
       </section>
     );
   }
@@ -65,33 +65,33 @@ export function FeatureSnapshotPanel({ snapshot }: { snapshot?: FeatureSnapshotV
     <section className="rounded border border-lab-border bg-lab-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="font-semibold text-white">Feature Snapshot</h2>
-          <p className="mt-1 text-sm text-lab-muted">Persistent feature store с cutoff, lineage и leakage check.</p>
+          <h2 className="font-semibold text-white">Снимок признаков</h2>
+          <p className="mt-1 text-sm text-lab-muted">Persistent feature store с cutoff, lineage и проверкой утечки данных.</p>
         </div>
         <span className={snapshot.dataLeakageCheckPassed ? "rounded border border-lab-green/60 px-2 py-1 text-xs text-lab-green" : "rounded border border-lab-red/60 px-2 py-1 text-xs text-lab-red"}>
-          Leakage check: {snapshot.dataLeakageCheckPassed ? "passed" : "failed"}
+          Утечка данных: {snapshot.dataLeakageCheckPassed ? "нет" : "есть"}
         </span>
       </div>
       <dl className="mt-3 grid gap-3 text-sm md:grid-cols-4">
-        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Schema</dt><dd className="mt-1 text-white">{snapshot.featureSchemaVersion}</dd></div>
+        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Схема</dt><dd className="mt-1 text-white">{snapshot.featureSchemaVersion}</dd></div>
         <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Cutoff</dt><dd className="mt-1 text-white">{new Date(snapshot.featureCutoffTime).toLocaleString("ru-RU")}</dd></div>
-        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Source confidence</dt><dd className="mt-1 text-white">{Math.round(snapshot.sourceConfidence * 100)}%</dd></div>
-        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Sample size score</dt><dd className="mt-1 text-white">{Math.round(snapshot.sampleSizeScore * 100)}%</dd></div>
+        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Уверенность источников</dt><dd className="mt-1 text-white">{Math.round(snapshot.sourceConfidence * 100)}%</dd></div>
+        <div className="rounded border border-lab-border bg-lab-panel2 p-3"><dt className="text-lab-muted">Оценка выборки</dt><dd className="mt-1 text-white">{Math.round(snapshot.sampleSizeScore * 100)}%</dd></div>
       </dl>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         <div>
-          <h3 className="text-sm font-semibold text-white">Top contributing features</h3>
+          <h3 className="text-sm font-semibold text-white">Главные признаки</h3>
           <div className="mt-2 space-y-2 text-sm text-lab-muted">
             {features.length ? features.map(([label, value]) => (
               <p key={label} className="flex justify-between gap-3 rounded border border-lab-border bg-lab-panel2 px-3 py-2">
                 <span>{label}</span>
                 <span className={Number(value) >= 0 ? "text-lab-green" : "text-lab-red"}>{Number(value).toFixed(3)}</span>
               </p>
-            )) : <p>Нет ненулевых feature signals.</p>}
+            )) : <p>Нет ненулевых сигналов признаков.</p>}
           </div>
         </div>
         <div>
-          <h3 className="text-sm font-semibold text-white">Missing features</h3>
+          <h3 className="text-sm font-semibold text-white">Недостающие признаки</h3>
           <ul className="mt-2 space-y-2 text-sm text-lab-muted">
             {missing.length ? missing.slice(0, 10).map((item) => <li key={item}>{item}</li>) : <li>Критичных пропусков нет.</li>}
           </ul>

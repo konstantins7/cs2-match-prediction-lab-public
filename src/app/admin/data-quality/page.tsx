@@ -15,15 +15,15 @@ export default async function DataQualityPage() {
   const sorted = rows.sort((a, b) => a.prediction.dataQualityScore - b.prediction.dataQualityScore);
   const researchSummary = summarizeResearchQueue(researchRows);
   const groups = [
-    ["Fixture only", rows.filter((row) => row.prediction.probabilityCap?.reasons.some((reason) => reason.includes("Fixture-only"))).length],
-    ["Missing rank", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("unranked") || warning.includes("ranking baseline"))).length],
-    ["Missing team form", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("Нет свежей формы"))).length],
-    ["Missing player roster", rows.filter((row) => row.prediction.riskBreakdown.missingData.some((item) => item.includes("player roster"))).length],
-    ["Missing player stats", rows.filter((row) => row.prediction.warnings.some((warning) => warning.toLowerCase().includes("player"))).length],
-    ["Missing map/veto", rows.filter((row) => row.prediction.warnings.some((warning) => warning.toLowerCase().includes("map") || warning.toLowerCase().includes("veto"))).length],
-    ["Missing H2H", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("H2H"))).length],
-    ["Source conflict", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("sourceConflict"))).length],
-    ["Needs review", rows.filter((row) => row.match.needsReview).length]
+    ["Только базовые данные", rows.filter((row) => row.prediction.probabilityCap?.reasons.some((reason) => reason.includes("Fixture-only"))).length],
+    ["Нет рейтинга", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("unranked") || warning.includes("ranking baseline"))).length],
+    ["Нет формы команды", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("Нет свежей формы"))).length],
+    ["Нет состава", rows.filter((row) => row.prediction.riskBreakdown.missingData.some((item) => item.includes("player roster"))).length],
+    ["Нет player stats", rows.filter((row) => row.prediction.warnings.some((warning) => warning.toLowerCase().includes("player"))).length],
+    ["Нет map/veto", rows.filter((row) => row.prediction.warnings.some((warning) => warning.toLowerCase().includes("map") || warning.toLowerCase().includes("veto"))).length],
+    ["Нет H2H", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("H2H"))).length],
+    ["Конфликт источников", rows.filter((row) => row.prediction.warnings.some((warning) => warning.includes("sourceConflict"))).length],
+    ["Нужно проверить", rows.filter((row) => row.match.needsReview).length]
   ] as const;
   return (
     <div className="space-y-5">
@@ -45,16 +45,16 @@ export default async function DataQualityPage() {
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold text-white">Research Queue summary</h2>
+            <h2 className="font-semibold text-white">Сводка задач по прогнозам</h2>
             <p className="mt-1 text-sm text-lab-muted">Матчи ниже L3 Analytical и общий объём ручного добора данных.</p>
           </div>
-          <Link href="/admin/research-queue" className="text-sm text-lab-cyan">Открыть Research Queue</Link>
+          <Link href="/admin/research-queue" className="text-sm text-lab-cyan">Открыть задачи по прогнозам</Link>
         </div>
         <div className="mt-3 grid gap-3 md:grid-cols-4">
-          <SummaryStat label="Below analytical" value={researchSummary.matchesBelowAnalytical} />
-          <SummaryStat label="Tasks total" value={researchSummary.tasksTotal} />
-          <SummaryStat label="High priority" value={researchSummary.highPriority} />
-          <SummaryStat label="Blocked" value={researchSummary.blocked} />
+          <SummaryStat label="Ниже аналитического" value={researchSummary.matchesBelowAnalytical} />
+          <SummaryStat label="Всего задач" value={researchSummary.tasksTotal} />
+          <SummaryStat label="Высокий приоритет" value={researchSummary.highPriority} />
+          <SummaryStat label="Заблокировано" value={researchSummary.blocked} />
         </div>
       </section>
       <div className="grid gap-3">

@@ -22,6 +22,8 @@ export type ResearchTask = {
 export type ResearchQueueRow = {
   matchId: string;
   matchLabel: string;
+  teamAName: string;
+  teamBName: string;
   eventName: string;
   startTime: Date | string;
   readinessLevel: PredictionReadiness["level"];

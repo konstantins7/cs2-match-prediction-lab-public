@@ -6,6 +6,7 @@ import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { formatDateTime } from "@/lib/format";
 import { getResearchQueueRows, knownTeamMatchingIssues, refreshResearchPack, summarizeResearchQueue } from "@/lib/researchQueue";
+import { getPlaybookEntriesForMissing } from "@/lib/dataAcquisitionPlaybook";
 
 export const dynamic = "force-dynamic";
 
@@ -16,7 +17,7 @@ async function createResearchPackAction(formData: FormData) {
   revalidatePath("/admin/research-queue");
 }
 
-type Search = { matchId?: string };
+type Search = { matchId?: string; template?: string };
 
 export default async function ResearchQueuePage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
@@ -24,17 +25,19 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
   const summary = summarizeResearchQueue(rows);
   const analystSampleEnabled = process.env.ENABLE_ANALYST_SAMPLE === "true";
   const selectedMatchId = params.matchId ?? rows[0]?.matchId ?? "pandascore_match_1474573";
-  const options = rows.map((row) => ({ matchId: row.matchId, label: `${row.matchLabel} · ${formatDateTime(row.startTime)}`, tasks: row.tasks }));
+  const initialTemplate = params.template === "parsed_demo" ? "parsed_demo" : "manual_real_pack";
+  const options = rows.map((row) => ({ matchId: row.matchId, label: `${row.matchLabel} · ${formatDateTime(row.startTime)}`, teamAName: row.teamAName, teamBName: row.teamBName, tasks: row.tasks }));
   if (selectedMatchId && !options.some((option) => option.matchId === selectedMatchId)) {
-    options.unshift({ matchId: selectedMatchId, label: selectedMatchId, tasks: [] });
+    options.unshift({ matchId: selectedMatchId, label: selectedMatchId, teamAName: "Team A", teamBName: "Team B", tasks: [] });
   }
   const groups = buildTaskGroups(rows);
+  const priorityRows = buildPriorityRows(rows).slice(0, 10);
 
   return (
     <div className="space-y-5">
       <div>
-        <h1 className="text-2xl font-semibold text-white">Мои задачи по прогнозам</h1>
-        <p className="mt-1 text-sm text-lab-muted">Что нужно добрать, чтобы матчи перешли от базового preview к аналитическому прогнозу.</p>
+        <h1 className="text-2xl font-semibold text-white">Матчи, где одно действие даст максимальный прирост</h1>
+        <p className="mt-1 text-sm text-lab-muted">По умолчанию показаны top-10 routes, а не task flood. Полные технические задачи спрятаны ниже в расширенном блоке.</p>
       </div>
 
       <section className="grid gap-3 md:grid-cols-4">
@@ -44,7 +47,7 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         <Stat label="Нужен ручной ввод" value={summary.requiresManualInput} />
       </section>
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {groups.map((group) => (
           <div key={group.title} className="rounded border border-lab-border bg-lab-panel p-3">
             <div className="flex items-center justify-between gap-3">
@@ -63,28 +66,59 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         ))}
       </section>
 
-      <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Known team matching issues</h2>
-        <div className="mt-3 grid gap-2 md:grid-cols-3">
-          {knownTeamMatchingIssues.map((name) => (
-            <div key={name} className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm">
-              <p className="font-medium text-white">{name}</p>
-              <p className="mt-1 text-xs text-lab-muted">normalized: {name.toLowerCase().replace(/[^a-z0-9]+/g, "")}</p>
-              <p className="mt-1 text-xs text-lab-amber">status: review if rank missing</p>
-            </div>
+      <section className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
+        <h2 className="font-semibold text-white">Топ-10 приоритетных матчей</h2>
+        <p className="mt-1 text-sm text-lab-muted">Один матч — одно главное действие, где взять данные и ожидаемый прирост readiness.</p>
+        <div className="mt-3 grid gap-3">
+          {priorityRows.length === 0 ? (
+            <p className="text-sm text-lab-muted">Очередь пуста или все выбранные матчи готовы.</p>
+          ) : priorityRows.map((row) => (
+            <article key={`priority-${row.matchId}`} className="rounded border border-lab-border bg-lab-panel2 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h3 className="font-medium text-white">{row.matchLabel}</h3>
+                  <p className="mt-1 text-sm text-lab-muted">{row.eventName} · {formatDateTime(row.startTime)} · DQ {row.dataQualityScore}/100</p>
+                  <p className="mt-2 text-sm text-lab-cyan">Primary action: {taskLabel(row.nextBestAction)}</p>
+                  <p className="mt-1 text-xs text-lab-muted">{row.missingCriticalData.slice(0, 3).join(", ") || "Критичных пропусков нет."}</p>
+                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                    {getPlaybookEntriesForMissing(row.missingCriticalData).slice(0, 2).map((entry) => (
+                      <div key={`${row.matchId}-${entry.dataType}`} className="rounded border border-lab-border bg-lab-panel p-2 text-xs text-lab-muted">
+                        <p className="text-white">{entry.label}</p>
+                        <p>Где взять: {entry.sources.join(" · ")}</p>
+                        <p>Сложность: {entry.difficulty}</p>
+                        <p>Что даст: {entry.whyItMatters}</p>
+                        <p>Можно автоматически: {entry.canAutomate}</p>
+                        <p>Нужен API key: {entry.requiresApiKey ? "да / или parsed demo" : "нет"}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <SourceModeBadge sourceMode={row.sourceMode} />
+                  <ReadinessBadge level={row.readinessLevel} />
+                  <Link href={`/match/${row.matchId}`} className="text-sm text-lab-cyan">Матч</Link>
+                  <Link href={`/admin/research-queue?matchId=${row.matchId}`} className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">
+                    Открыть wizard
+                  </Link>
+                </div>
+              </div>
+            </article>
           ))}
         </div>
       </section>
 
       <ManualEnrichmentPanel
         defaultMatchId={selectedMatchId}
+        initialTemplate={initialTemplate}
         analystSampleEnabled={analystSampleEnabled}
         matchOptions={options}
       />
 
       <ManualNewsImportPanel defaultMatchId={selectedMatchId} />
 
-      <div className="grid gap-4">
+      <details className="rounded border border-lab-border bg-lab-panel p-4">
+        <summary className="cursor-pointer font-semibold text-lab-cyan">Показать все технические задачи</summary>
+        <div className="mt-4 grid gap-4">
         {rows.length === 0 ? (
           <div className="rounded border border-lab-border bg-lab-panel p-4 text-sm text-lab-muted">Все выбранные матчи уже L3+ или очередь пуста.</div>
         ) : rows.map((row) => (
@@ -142,7 +176,21 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
             </div>
           </article>
         ))}
-      </div>
+        </div>
+      </details>
+
+      <details className="rounded border border-lab-border bg-lab-panel p-4">
+        <summary className="cursor-pointer font-semibold text-lab-cyan">Advanced: known team matching issues</summary>
+        <div className="mt-3 grid gap-2 md:grid-cols-3">
+          {knownTeamMatchingIssues.map((name) => (
+            <div key={name} className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm">
+              <p className="font-medium text-white">{name}</p>
+              <p className="mt-1 text-xs text-lab-muted">normalized: {name.toLowerCase().replace(/[^a-z0-9]+/g, "")}</p>
+              <p className="mt-1 text-xs text-lab-amber">status: review if rank missing</p>
+            </div>
+          ))}
+        </div>
+      </details>
     </div>
   );
 }
@@ -176,8 +224,8 @@ function buildTaskGroups(rows: Awaited<ReturnType<typeof getResearchQueueRows>>)
       rows: rows.filter((row) => new Date(row.startTime).getTime() - now < 24 * 60 * 60 * 1000)
     },
     {
-      title: "Нужны данные для L3",
-      rows: rows.filter((row) => row.readinessLevel !== "L3_ANALYTICAL" && row.readinessLevel !== "L4_DEEP")
+      title: "Не хватает одного главного действия",
+      rows: rows.filter((row) => row.nextBestAction && row.readinessLevel !== "L3_ANALYTICAL" && row.readinessLevel !== "L4_DEEP")
     },
     {
       title: "Нужно подтвердить команды/rank",
@@ -196,10 +244,27 @@ function buildTaskGroups(rows: Awaited<ReturnType<typeof getResearchQueueRows>>)
       rows: rows.filter((row) => row.sourceMode === "analyst_sample")
     },
     {
-      title: "Готово к прогнозу",
+      title: "Готовые к реальному прогнозу",
       rows: rows.filter((row) => row.readinessLevel === "L3_ANALYTICAL" || row.readinessLevel === "L4_DEEP")
+    },
+    {
+      title: "Требуют API/источник",
+      rows: rows.filter((row) => row.tasks.some((task) => task.task === "Connect GRID/Liquipedia" && task.status !== "done"))
     }
   ];
+}
+
+function buildPriorityRows(rows: Awaited<ReturnType<typeof getResearchQueueRows>>) {
+  const now = Date.now();
+  return [...rows].sort((a, b) => {
+    const aSoon = new Date(a.startTime).getTime() - now < 24 * 60 * 60 * 1000 ? 0 : 1;
+    const bSoon = new Date(b.startTime).getTime() - now < 24 * 60 * 60 * 1000 ? 0 : 1;
+    if (aSoon !== bSoon) return aSoon - bSoon;
+    const aHigh = a.tasks.some((task) => task.priority === "high" && task.status !== "done") ? 0 : 1;
+    const bHigh = b.tasks.some((task) => task.priority === "high" && task.status !== "done") ? 0 : 1;
+    if (aHigh !== bHigh) return aHigh - bHigh;
+    return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();
+  });
 }
 
 function Stat({ label, value }: { label: string; value: number }) {

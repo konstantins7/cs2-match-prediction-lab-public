@@ -4,6 +4,7 @@ import { ReadinessBadge } from "./ReadinessBadge";
 import { RealForecastBadge } from "./RealForecastBadge";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import type { ResearchTask } from "@/lib/researchQueueCore";
+import { getBestNextAction } from "@/lib/bestNextAction";
 import { readinessRu } from "@/lib/russianLabels";
 
 function fallbackActions(prediction: PredictionOutput) {
@@ -19,6 +20,7 @@ function fallbackActions(prediction: PredictionOutput) {
 export function MatchForecastStatusPanel({ input, prediction, researchTasks }: { input: PredictionInput; prediction: PredictionOutput; researchTasks: ResearchTask[] }) {
   const openTasks = researchTasks.filter((task) => task.status !== "done" && task.status !== "skipped");
   const nextActions = openTasks.length ? openTasks.map((task) => taskLabel(task.task)) : fallbackActions(prediction);
+  const bestAction = getBestNextAction(prediction, researchTasks);
   const reasons = prediction.realForecast.isReady
     ? ["Есть достаточно данных для аналитического режима.", "Прогноз использует не sample-only источник."]
     : prediction.realForecast.reasons.length
@@ -53,9 +55,14 @@ export function MatchForecastStatusPanel({ input, prediction, researchTasks }: {
           </ul>
         </div>
         <div className="rounded border border-lab-border bg-lab-panel2 p-3">
-          <p className="text-xs uppercase text-lab-muted">Что сделать дальше</p>
+          <p className="text-xs uppercase text-lab-muted">Лучшее следующее действие</p>
+          <Link href={actionHref(bestAction.primaryAction.href, input.match.id)} className="mt-2 inline-flex rounded bg-lab-cyan px-3 py-2 text-sm font-semibold text-black">
+            {bestAction.primaryAction.label}
+          </Link>
+          <p className="mt-2 text-xs text-lab-muted">{bestAction.primaryAction.reason}</p>
+          <p className="mt-4 text-xs uppercase text-lab-muted">Дополнительно</p>
           <ul className="mt-2 space-y-1 text-sm text-lab-muted">
-            {nextActions.slice(0, 3).map((action, index) => <li key={`forecast-action-${index}-${action.slice(0, 24)}`}>{action}</li>)}
+            {bestAction.secondaryActions.length ? bestAction.secondaryActions.map((action) => <li key={action.label}>{action.label}</li>) : nextActions.slice(0, 2).map((action, index) => <li key={`forecast-action-${index}-${action.slice(0, 24)}`}>{action}</li>)}
           </ul>
         </div>
       </div>
@@ -64,6 +71,9 @@ export function MatchForecastStatusPanel({ input, prediction, researchTasks }: {
         <PrepareForecastButton matchId={input.match.id} />
         <Link href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}`} className="rounded border border-lab-border px-4 py-2 text-sm font-semibold text-lab-cyan hover:border-lab-cyan">
           Создать data pack
+        </Link>
+        <Link href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}&template=parsed_demo`} className="rounded border border-lab-border px-4 py-2 text-sm font-semibold text-lab-cyan hover:border-lab-cyan">
+          Загрузить parsed demo JSON
         </Link>
       </div>
     </section>
@@ -84,4 +94,12 @@ function taskLabel(value: string) {
     "Connect GRID/Liquipedia": "Подключить GRID/Liquipedia при доступе"
   };
   return labels[value] ?? value;
+}
+
+function actionHref(href: string, matchId: string) {
+  if (!href.startsWith("/admin/research-queue")) {
+    return href;
+  }
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}matchId=${encodeURIComponent(matchId)}`;
 }

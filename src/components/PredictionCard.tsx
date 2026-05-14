@@ -7,6 +7,7 @@ import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
+import { getBestNextAction } from "@/lib/bestNextAction";
 
 export function PredictionCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
@@ -23,6 +24,7 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
     .filter((factor) => Math.abs(factor.impact) > 1)
     .sort((a, b) => Math.abs(b.impact * b.weight * b.confidence) - Math.abs(a.impact * a.weight * a.confidence))
     .slice(0, 3);
+  const nextAction = getBestNextAction(prediction).primaryAction;
   return (
     <article className="rounded border border-lab-border bg-lab-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -73,6 +75,15 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
       <Link href={`/match/${match.id}`} className="mt-4 inline-flex rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black hover:bg-cyan-300">
         Полный разбор
       </Link>
+      <Link href={actionHref(nextAction.href, match.id)} className="ml-2 mt-4 inline-flex rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">
+        {nextAction.label}
+      </Link>
     </article>
   );
+}
+
+function actionHref(href: string, matchId: string) {
+  if (!href.startsWith("/admin/research-queue")) return href;
+  const separator = href.includes("?") ? "&" : "?";
+  return `${href}${separator}matchId=${encodeURIComponent(matchId)}`;
 }
