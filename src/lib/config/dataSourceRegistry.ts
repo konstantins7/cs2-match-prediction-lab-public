@@ -108,9 +108,9 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "manual_reference",
     priority: 8,
     userActionRequired: "Импортировать CSV/JSON вручную.",
-    setupInstructions: "Использовать только как manual reference import.",
-    limitations: "Не автоматический источник.",
-    forbiddenActions: ["HLTV scraping", "automatic crawling"]
+    setupInstructions: "Использовать только как manual reference import. Third-party scraper actors, including Apify HLTV actors, are not connected to the app.",
+    limitations: "Не автоматический источник; пользователь сам вносит rank/teamName/hltvReferenceUrl/rankingDate.",
+    forbiddenActions: ["HLTV scraping", "automatic crawling", "Apify HLTV actor sync", "Apify token storage"]
   },
   {
     id: "telegram_manual",

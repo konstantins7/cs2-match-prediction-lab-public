@@ -62,6 +62,9 @@ export default async function SourcesPage() {
       <section id="source-playbook" className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Как получить больше данных</h2>
         <p className="mt-1 text-sm text-lab-muted">Подключайте только разрешённые источники. HLTV и Telegram — manual reference only, без scraping.</p>
+        <p className="mt-2 rounded border border-lab-amber/40 bg-lab-panel2 p-3 text-sm text-lab-amber">
+          HLTV ranking: manual import only. Automated HLTV scraping disabled by policy. Apify HLTV scraper actors are not connected to this app.
+        </p>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {sourceSetup.filter((item) => !item.advancedOnly).map((item) => (
             <article key={item.id} className="rounded border border-lab-border bg-lab-panel2 p-3">

@@ -174,10 +174,18 @@ describe("MVP 0.4 auto research workflow", () => {
   it("source registry keeps manual-only and future providers safe", () => {
     const hltv = dataSourceRegistry.find((item) => item.id === "hltv_manual_top50");
     const telegram = dataSourceRegistry.find((item) => item.id === "telegram_manual");
+    const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
+    const sourceIndex = readFileSync("src/lib/sources/index.ts", "utf8");
     expect(hltv?.legalMode).toBe("manual_reference");
     expect(hltv?.forbiddenActions).toContain("HLTV scraping");
+    expect(hltv?.forbiddenActions).toContain("Apify HLTV actor sync");
+    expect(hltv?.setupInstructions).toContain("Third-party scraper actors");
     expect(telegram?.legalMode).toBe("manual_reference");
     expect(telegram?.forbiddenActions).toContain("Telegram scraping");
+    expect(packageJson.dependencies?.["apify-client"]).toBeUndefined();
+    expect(packageJson.devDependencies?.["apify-client"]).toBeUndefined();
+    expect(sourceIndex.toLowerCase()).not.toContain("apify");
+    expect(sourceIndex.toLowerCase()).not.toContain("hltv");
     expect(AUTO_RESEARCH_ORCHESTRATOR_PLAN.map((job) => job.source)).not.toContain("abios");
     expect(dataSourceRegistry.filter((item) => item.accessType === "trial" || item.accessType === "paid_future").every((item) => item.legalMode === "disabled")).toBe(true);
   });
@@ -227,8 +235,21 @@ describe("MVP 0.4 auto research workflow", () => {
     expect(manualPanel).toContain("Самый сильный бесплатный способ улучшить прогноз");
     expect(manualPanel).toContain("Где взять: parsed demo, FACEIT, GRID, manual analyst sheet.");
     expect(sources).toContain("Как получить больше данных");
+    expect(sources).toContain("HLTV ranking: manual import only. Automated HLTV scraping disabled by policy.");
+    expect(sources).toContain("Apify HLTV scraper actors are not connected");
     expect(sources).toContain("Provider roadmap");
     expect(sources).toContain("Сайт работает в basic free mode");
+  });
+
+  it("manual HLTV rank matching is needs-review first and does not create duplicate teams", () => {
+    const scheduler = readFileSync("src/lib/sources/sourceScheduler.ts", "utf8");
+    const start = scheduler.indexOf("async function reconcileHltvManualRankingRecord");
+    const end = scheduler.indexOf("function classifyPatchType");
+    const body = scheduler.slice(start, end);
+    expect(body).toContain("prisma.entityMatchCandidate.create");
+    expect(body).toContain('status: "needs_review"');
+    expect(body).toContain("return { created: 0, updated: 0, needsReview: 1 }");
+    expect(body).not.toContain("prisma.team.create");
   });
 
   it("data acquisition playbook explains sources by data type", () => {

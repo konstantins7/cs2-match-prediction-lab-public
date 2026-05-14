@@ -163,6 +163,8 @@ rank,teamName,hltvReferenceUrl,rankingDate
 
 Low-confidence matching создаёт `EntityMatchCandidate needs_review`; дубли команд автоматически не создаются.
 
+Third-party HLTV scraper actors, including Apify HLTV Team Ranking actors, are not connected to the app under the current policy. If a user runs external tooling outside the app, only the resulting manually reviewed CSV/JSON may be pasted into the HLTV manual reference import; the app does not store Apify tokens and does not call Apify or HLTV for this source.
+
 ## Analyst Data Pack Validation
 
 MVP 0.4.6 сохраняет controlled analyst workflow. Sample pack остаётся dev-only proof-flow, а manual real pack — отдельный путь для вручную проверенных реальных данных по одному выбранному матчу: research queue -> validate -> preview -> apply -> snapshots -> prediction audit -> readiness before/after.

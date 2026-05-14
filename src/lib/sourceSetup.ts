@@ -72,7 +72,7 @@ function sourceValue(id: string) {
     liquipedia: "Даст составы, турниры, историю, roster changes. Лимит 60 requests/hour.",
     faceit: "Даст player/team context, competitions и FACEIT statistics.",
     parsed_demo: "Даст player stats, map stats, round/economy, pistol/overtime без платных API.",
-    hltv_manual_top50: "Улучшит ranking и Pro Focus. Только manual CSV/JSON, без scraping.",
+    hltv_manual_top50: "Улучшит ranking и Pro Focus. Только manual CSV/JSON, без scraping и без Apify sync.",
     abios: "Trial/future provider. Не используется как основной free source.",
     gamescorekeeper: "Paid/future provider. Не используется как основной free source.",
     datasportsgroup: "Paid/future provider. Не используется как основной free source."
