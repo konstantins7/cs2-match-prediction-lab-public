@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { RankMatchingPanel } from "@/components/RankMatchingPanel";
 import { ProviderCapabilityProbePanel } from "@/components/ProviderCapabilityProbePanel";
+import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPanel";
 import { SourceSyncPanel } from "@/components/SourceSyncPanel";
 import { SourceCoverageMatrix } from "@/components/SourceCoverageMatrix";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
@@ -42,6 +43,7 @@ export default async function SourcesPage() {
   const coverageMatrix = buildSourceCoverageMatrix(undefined, statuses);
   const sourceSetup = buildSourceSetupChecklist(coverage.hltvManualMatchedTeams > 0, dataStatus.teamsWithPlayerRoster > 0 || dataStatus.matchesEnoughForBasicPrediction > 0);
   const noExtraApiMode = isNoExtraApiMode(sourceSetup);
+  const faceitStatus = statuses.find((status) => status.source === "faceit");
 
   return (
     <div className="space-y-5">
@@ -99,6 +101,36 @@ export default async function SourcesPage() {
       </section>
 
       <ProviderCapabilityProbePanel />
+
+      <section className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
+        <h2 className="font-semibold text-white">FACEIT Context Enrichment</h2>
+        <p className="mt-1 text-sm text-lab-muted">
+          FACEIT работает только server-side и только как optional player/team/competition context. Selected-match enrichment использует explicit known IDs; search/crawl отключены.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Capability</p>
+            <p>key configured: {faceitStatus?.configured ? "yes" : "no"}</p>
+            <p>enabled: {faceitStatus?.enabled ? "yes" : "no"}</p>
+            <p>reachable/status: {sourceStatusLabel(faceitStatus?.status ?? "idle")}</p>
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Context unlocked</p>
+            <p>team context: explicit ID only</p>
+            <p>player context: explicit ID only</p>
+            <p>stats: explicit player context only</p>
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Last enrichment</p>
+            <p>last sync: {faceitStatus?.lastSyncedAt ?? "never"}</p>
+            <p>records fetched: {faceitStatus?.recordsFetched ?? 0}</p>
+            <p>needs review: {faceitStatus?.needsReviewCount ?? 0}</p>
+          </div>
+        </div>
+        <div className="mt-4">
+          <FaceitManualIdImportPanel compact />
+        </div>
+      </section>
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Provider roadmap</h2>

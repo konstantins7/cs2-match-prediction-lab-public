@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { SourceStatus } from "@/lib/sources/types";
+import { FaceitManualIdImportPanel } from "./FaceitManualIdImportPanel";
 import { ManualNewsImportPanel } from "./ManualNewsImportPanel";
 
 type Action = {
@@ -106,6 +107,8 @@ export function SourceSyncPanel({ statuses }: { statuses: SourceStatus[] }) {
       </section>
 
       <ManualNewsImportPanel />
+
+      <FaceitManualIdImportPanel />
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Manual JSON/CSV fallback</h2>

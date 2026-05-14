@@ -10,7 +10,7 @@ function authHeaders() {
   return {
     Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
     Accept: "application/json",
-    "User-Agent": "CS2MatchPredictionLab/0.4.6 local research analytics"
+    "User-Agent": "CS2MatchPredictionLab/0.4.7 local research analytics"
   };
 }
 
@@ -32,7 +32,7 @@ export const faceitAdapter: SourceAdapter = {
       enabled,
       configured,
       message: enabled
-        ? "FACEIT optional Data API is configured for documented v4 championship/team/player routes."
+        ? "FACEIT optional Data API is configured for documented v4 routes. Selected-match enrichment uses explicit known IDs only."
         : "Disabled: FACEIT is optional and not a full Tier-1 pro CS2 source.",
       endpointsAvailable: [
         "GET /championships?game=cs2&type=upcoming",
@@ -73,7 +73,7 @@ export const faceitAdapter: SourceAdapter = {
         jobType: context.jobType,
         records: [],
         status: "partial",
-        notes: `FACEIT job ${context.jobType} requires explicit IDs/search context; no broad sync was run.`
+        notes: `FACEIT job ${context.jobType} requires explicit known IDs and selected-match context; no search or broad sync was run.`
       });
     } catch (error) {
       return failedResult(source, context.jobType, error instanceof Error ? error.message : "FACEIT optional sync failed.");

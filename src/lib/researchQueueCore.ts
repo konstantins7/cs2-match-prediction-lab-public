@@ -3,7 +3,7 @@ import type { PredictionInput, PredictionReadiness } from "./prediction/types";
 
 export type ResearchTaskStatus = "open" | "in_progress" | "done" | "skipped" | "blocked";
 export type ResearchTaskPriority = "high" | "medium" | "low";
-export type ResearchTaskActionState = "Available" | "Coming soon" | "Requires API key" | "Requires manual input" | "Blocked by needs_review";
+export type ResearchTaskActionState = "Available" | "Coming soon" | "Requires API key" | "Requires manual input" | "Blocked by needs_review" | "Optional";
 
 export type ResearchTask = {
   id: string;
@@ -93,6 +93,7 @@ export function buildResearchQueueForMatch(input: PredictionInput, readiness: Pr
   const vetoReady = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
   const h2hReady = input.h2h.length > 0;
   const newsReady = input.news.length > 0 || input.rosterEventsA.length > 0 || input.rosterEventsB.length > 0;
+  const faceitContextReady = (input.faceitContextRecords?.length ?? 0) > 0;
 
   tasks.push(makeTask(matchId, {
     task: "Confirm rank/team match",
@@ -181,6 +182,17 @@ export function buildResearchQueueForMatch(input: PredictionInput, readiness: Pr
     sourceSuggestion: "Manual news/roster events JSON с reliability.",
     actionType: "import_news_json",
     actionState: newsReady ? "Available" : "Requires manual input"
+  }));
+
+  tasks.push(makeTask(matchId, {
+    task: "Confirm FACEIT IDs",
+    status: faceitContextReady ? "done" : "open",
+    priority: "low",
+    reason: "FACEIT optional context помогает player/team context, но не заменяет manual_real, parsed_demo или GRID.",
+    expectedImpact: "Улучшает player/team context и confidence explanation; не поднимает матч до full L3 само по себе.",
+    sourceSuggestion: "Manual FACEIT ID import: entityType,name,faceitId. Без automatic search или broad crawl.",
+    actionType: "confirm_faceit_ids",
+    actionState: faceitContextReady ? "Available" : "Optional"
   }));
 
   if (readinessBelowAnalytical(readiness)) {

@@ -83,4 +83,14 @@ describe("research queue", () => {
     expect(tasks.find((task) => task.task === "Import map stats")?.status).toBe("done");
     expect(tasks.find((task) => task.task === "Import veto history")?.status).toBe("done");
   });
+
+  it("adds optional FACEIT ID confirmation without treating it as an L3 blocker", () => {
+    const input = createPredictionFixture({ faceitContextRecords: [] });
+    const prediction = calculatePrediction(input);
+    const tasks = buildResearchQueueForMatch(input, prediction.readiness);
+    const faceitTask = tasks.find((task) => task.task === "Confirm FACEIT IDs");
+    expect(faceitTask?.priority).toBe("low");
+    expect(faceitTask?.actionState).toBe("Optional");
+    expect(faceitTask?.expectedImpact).toContain("не поднимает матч до full L3");
+  });
 });

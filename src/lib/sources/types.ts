@@ -46,7 +46,9 @@ export type SourceJobType =
   | "manual_import"
   | "hltv_manual_ranking_import"
   | "manual_news_import"
-  | "parsed_demo_import";
+  | "parsed_demo_import"
+  | "faceit_manual_id_import"
+  | "faceit_match_enrichment";
 
 export type SourceCapability =
   | "schedule"

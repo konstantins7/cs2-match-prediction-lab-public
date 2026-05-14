@@ -226,6 +226,7 @@ function buildRiskBreakdown(input: PredictionInput, factors: PredictionFactorOut
     confidenceDrivers: [
       ...(dataQuality >= 70 ? ["Хорошее покрытие данных и sample size."] : []),
       ...(input.match.format !== "BO1" ? ["Формат BO3/BO5 снижает случайность одной карты."] : []),
+      ...((input.faceitContextRecords?.length ?? 0) > 0 ? ["FACEIT optional context подтверждён для выбранного матча; это улучшает только context confidence."] : []),
       ...factors.filter((factor) => factor.confidence > 0.75).slice(0, 4).map((factor) => `${factor.factorName}: высокая уверенность фактора.`)
     ],
     confidenceReducers: [
@@ -255,7 +256,8 @@ function confidenceScore(input: PredictionInput, factors: PredictionFactorOutput
     factors.filter((factor) => factor.confidence < 0.55).length * 1.8 +
     risk.riskReasons.length * 1.2 +
     risk.conflictingFactors.length * 4;
-  let score = 34 + averageFactorConfidence * 38 + dataQuality * 0.18 + spread * 0.18 + stability * 6 - volatilityPenalty;
+  const faceitContextBonus = Math.min(2, (input.faceitContextRecords?.length ?? 0) * 0.35);
+  let score = 34 + averageFactorConfidence * 38 + dataQuality * 0.18 + spread * 0.18 + stability * 6 + faceitContextBonus - volatilityPenalty;
   if (input.match.format === "BO1") score = Math.min(score, 75);
   if (dataQuality < 50 || input.match.dataQualityScore < 50) score = Math.min(score, 65);
   if (rosterAgeDays(input) < 45) score = Math.min(score, 70);

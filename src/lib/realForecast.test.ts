@@ -71,9 +71,9 @@ function parsedDemoFixture(overrides: Record<string, unknown> = {}) {
 }
 
 describe("real forecast readiness", () => {
-it("keeps package version at 0.4.6", () => {
+it("keeps package version at 0.4.7", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
-  expect(pkg.version).toBe("0.4.6");
+  expect(pkg.version).toBe("0.4.7");
 });
 
   it("does not promote sample-only L3 to a real forecast", () => {
@@ -100,6 +100,24 @@ it("keeps package version at 0.4.6", () => {
     expect(prediction.readiness.level).toBe("L3_ANALYTICAL");
     expect(prediction.realForecast.isReady).toBe(false);
     expect(prediction.realForecast.reasons).toContain("Нет validated manual_real / parsed_demo / GRID analytical source.");
+  });
+
+  it("does not let FACEIT optional context become Real Forecast Ready by itself", () => {
+    const base = createPredictionFixture();
+    const prediction = calculatePrediction(createPredictionFixture({
+      faceitContextRecords: [{
+        id: "faceit_context",
+        source: "faceit",
+        entityType: "faceit_player_context",
+        entityId: "teamA_p1",
+        rawJson: JSON.stringify({ sourceMode: "faceit_optional", matchId: base.match.id, payload: { nickname: "A1" } }),
+        fetchedAt: "2026-05-01T00:00:00Z",
+        sourceConfidence: 0.5
+      }]
+    }));
+    expect(prediction.realForecast.isReady).toBe(false);
+    expect(prediction.realForecast.reasons).toContain("Нет validated manual_real / parsed_demo / GRID analytical source.");
+    expect(prediction.riskBreakdown.confidenceDrivers.join(" ")).toContain("FACEIT optional context");
   });
 
   it("allows validated manual_real L3 to become Real Forecast Ready", () => {

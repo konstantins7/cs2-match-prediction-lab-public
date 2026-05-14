@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FaceitEnrichMatchButton } from "./FaceitEnrichMatchButton";
 import { PrepareForecastButton } from "./PrepareForecastButton";
 import { ReadinessBadge } from "./ReadinessBadge";
 import { RealForecastBadge } from "./RealForecastBadge";
@@ -69,6 +70,7 @@ export function MatchForecastStatusPanel({ input, prediction, researchTasks }: {
 
       <div className="mt-4 flex flex-wrap items-start gap-3">
         <PrepareForecastButton matchId={input.match.id} />
+        <FaceitEnrichMatchButton matchId={input.match.id} />
         <Link href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}`} className="rounded border border-lab-border px-4 py-2 text-sm font-semibold text-lab-cyan hover:border-lab-cyan">
           Создать data pack
         </Link>
@@ -90,6 +92,7 @@ function taskLabel(value: string) {
     "Import veto history": "Добавить veto history",
     "Add H2H": "Добавить H2H",
     "Add news/roster events": "Добавить новости / roster events",
+    "Confirm FACEIT IDs": "Подтвердить FACEIT IDs",
     "Import parsed demo JSON": "Импортировать parsed demo JSON",
     "Connect GRID/Liquipedia": "Подключить GRID/Liquipedia при доступе"
   };

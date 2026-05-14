@@ -84,9 +84,9 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "api",
     priority: 6,
     userActionRequired: "Получить developer API key и добавить FACEIT_API_KEY в .env.",
-    setupInstructions: "Используется как optional player/team context source.",
-    limitations: "Не заменяет official pro match telemetry.",
-    forbiddenActions: ["logging API keys"]
+    setupInstructions: "Используется как optional selected-match player/team context source по known FACEIT IDs.",
+    limitations: "Не заменяет official pro match telemetry, manual_real, parsed_demo, GRID, map/veto или deep data.",
+    forbiddenActions: ["logging API keys", "broad FACEIT crawl", "player search by nickname", "team search by name"]
   },
   {
     id: "parsed_demo",

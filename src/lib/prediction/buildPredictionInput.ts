@@ -8,6 +8,20 @@ export async function getDefaultModelWeights(): Promise<ModelWeights> {
   return parseWeights(preset?.weightsJson);
 }
 
+function faceitContextPassesCutoff(rawJson: string, cutoff: Date) {
+  try {
+    const raw = JSON.parse(rawJson) as Record<string, unknown>;
+    const payload = raw.payload && typeof raw.payload === "object" ? raw.payload as Record<string, unknown> : {};
+    const value = raw.sourceDate ?? raw.date ?? raw.updatedAt ?? raw.updated_at ?? payload.sourceDate ?? payload.date ?? payload.updatedAt ?? payload.updated_at;
+    if (!value) return true;
+    const parsed = new Date(String(value));
+    if (Number.isNaN(parsed.getTime())) return true;
+    return parsed.getTime() <= cutoff.getTime();
+  } catch {
+    return true;
+  }
+}
+
 export async function buildPredictionInput(matchId: string, modelWeights?: Partial<ModelWeights>): Promise<PredictionInput> {
   const match = await prisma.match.findUnique({ where: { id: matchId } });
   if (!match) throw new Error(`Match not found: ${matchId}`);
@@ -230,6 +244,18 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
         },
         select: { id: true, source: true, entityType: true, entityId: true, rawJson: true, fetchedAt: true, sourceConfidence: true }
       });
+  const faceitContextRecordsRaw = await prisma.externalSourceRecord.findMany({
+    where: {
+      source: "faceit",
+      OR: [
+        { externalId: { startsWith: `match:${match.id}:` } },
+        { rawJson: { contains: `"matchId":"${match.id}"` } }
+      ]
+    },
+    select: { id: true, source: true, entityType: true, entityId: true, rawJson: true, fetchedAt: true, sourceConfidence: true },
+    orderBy: { fetchedAt: "desc" }
+  });
+  const faceitContextRecords = faceitContextRecordsRaw.filter((record) => faceitContextPassesCutoff(record.rawJson, cutoff));
 
   const input: PredictionInput = {
     match,
@@ -269,7 +295,8 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     teamStyleB,
     dataWindows,
     sourceConflicts,
-    manualSourceRecords
+    manualSourceRecords,
+    faceitContextRecords
   };
   return { ...input, dataCoverage: buildDataCoverage(input, coverageMeta) };
 }

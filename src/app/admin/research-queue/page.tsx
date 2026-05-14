@@ -1,6 +1,7 @@
 import { revalidatePath } from "next/cache";
 import Link from "next/link";
 import { ManualEnrichmentPanel } from "@/components/ManualEnrichmentPanel";
+import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPanel";
 import { ManualNewsImportPanel } from "@/components/ManualNewsImportPanel";
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
@@ -114,6 +115,8 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         matchOptions={options}
       />
 
+      <FaceitManualIdImportPanel compact />
+
       <ManualNewsImportPanel defaultMatchId={selectedMatchId} />
 
       <details className="rounded border border-lab-border bg-lab-panel p-4">
@@ -210,6 +213,7 @@ function taskLabel(value: string) {
     "Add insider signal if relevant": "Добавить insider signal вручную",
     "Add HLTV manual reference": "Добавить HLTV manual reference",
     "Add Telegram insider manual note": "Добавить Telegram insider note",
+    "Confirm FACEIT IDs": "Подтвердить FACEIT IDs",
     "Import parsed demo JSON": "Импортировать parsed demo JSON",
     "Connect GRID/Liquipedia": "Подключить GRID/Liquipedia"
   };

@@ -658,6 +658,7 @@ export type PredictionInput = {
   dataWindows: PredictionDataWindowEntity[];
   sourceConflicts: SourceConflictEntity[];
   manualSourceRecords?: SourceRecordEntity[];
+  faceitContextRecords?: SourceRecordEntity[];
   dataCoverage?: DataCoverage;
 };
 

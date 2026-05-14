@@ -22,8 +22,8 @@ export const telegramNewsAdapter: SourceAdapter = {
       enabled,
       configured: enabled,
       message: enabled
-        ? "Telegram news sync skeleton is enabled, but MVP 0.4.6 supports only official API/bot/user-approved sources. No scraping/private channels."
-        : "Disabled by default. Telegram insider signals are manual/reference-only in MVP 0.4.6.",
+        ? "Telegram news sync skeleton is enabled, but MVP 0.4.7 supports only official API/bot/user-approved sources. No scraping/private channels."
+        : "Disabled by default. Telegram insider signals are manual/reference-only in MVP 0.4.7.",
       endpointsAvailable: enabled ? ["manual://telegram-insider-note"] : [],
       endpointsBlocked: ["HTML/channel scraping", "private channels", "ML training/fine-tuning use"]
     });
@@ -37,7 +37,7 @@ export const telegramNewsAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "blocked",
-      errors: ["Telegram automatic collection is not implemented in MVP 0.4.6. Use official API/bot/user-approved manual imports only."],
+      errors: ["Telegram automatic collection is not implemented in MVP 0.4.7. Use official API/bot/user-approved manual imports only."],
       notes: "No Telegram scraping, no private channels, no ML training/fine-tuning use.",
       method: "DISABLED",
       endpoint: "manual://telegram-news"

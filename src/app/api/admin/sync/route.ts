@@ -12,6 +12,7 @@ import { redactString } from "@/lib/security/redaction";
 import { confirmRankMatch, rejectRankMatch } from "@/lib/data/rankMatching";
 import { prepareMatchForecast, runForecastAutopilot, runOneClickGlobalRefresh } from "@/lib/autoResearch";
 import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
+import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,15 @@ export async function POST(request: Request) {
     if (body.action === "provider_capability_probe") {
       const result = await probeProviderCapabilities();
       return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "faceit_manual_id_import") {
+      const result = await importFaceitManualIds(body.payload);
+      return NextResponse.json({ ok: result.errors.length === 0 || result.aliasesCreated + result.aliasesUpdated + result.candidatesCreated + result.candidatesUpdated > 0, result });
+    }
+    if (body.action === "faceit_enrich_match") {
+      if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
+      const result = await enrichFaceitContextForMatch(body.matchId);
+      return NextResponse.json({ ok: result.errors.length === 0 || result.recordsFetched > 0 || result.candidatesNeedingReview > 0, result });
     }
     if (body.action === "prepare_match") {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });

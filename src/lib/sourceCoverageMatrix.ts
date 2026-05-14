@@ -71,6 +71,30 @@ function latestSync(status: SourceStatus | undefined) {
 
 function inputCoverage(input: PredictionInput | undefined, dataType: SourceDataType, source: CoverageSource) {
   if (!input) return { available: false, used: false, quality: 0, note: "No match input selected." };
+  if (source === "FACEIT") {
+    const records = input.faceitContextRecords ?? [];
+    const teamContext = records.some((record) => record.entityType === "faceit_team_context");
+    const playerContext = records.some((record) => record.entityType === "faceit_player_context");
+    const statsContext = records.some((record) => record.entityType === "faceit_player_stats_context");
+    if (dataType === "roster") {
+      const available = teamContext || playerContext;
+      return {
+        available,
+        used: available,
+        quality: available ? 0.38 : 0,
+        note: available ? "FACEIT team/player context present; confidence-only, not roster replacement." : "FACEIT IDs not confirmed for this match."
+      };
+    }
+    if (dataType === "player_stats") {
+      const available = playerContext || statsContext;
+      return {
+        available,
+        used: available,
+        quality: statsContext ? 0.42 : available ? 0.32 : 0,
+        note: statsContext ? "FACEIT stats context present; weak confidence evidence only." : available ? "FACEIT player context present; stats not available." : "FACEIT player context missing."
+      };
+    }
+  }
   if (dataType === "fixture") {
     const used = source === "PandaScore" && input.match.sourceMode === "pandascore_free";
     return {

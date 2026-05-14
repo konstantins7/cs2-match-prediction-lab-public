@@ -100,7 +100,7 @@ async function faceitCapability(): Promise<ProviderCapability> {
       headers: {
         Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
         Accept: "application/json",
-        "User-Agent": "CS2MatchPredictionLab/0.4.6 local research analytics"
+        "User-Agent": "CS2MatchPredictionLab/0.4.7 local research analytics"
       }
     });
     if (!response.ok) {
@@ -119,11 +119,11 @@ async function faceitCapability(): Promise<ProviderCapability> {
       reachable: true,
       unlocked: [
         "competitions endpoint reachable",
-        "players route configured with explicit player/search context",
+        "players route configured with explicit known player IDs only",
         "teams route configured with explicit team context",
-        "player stats capability requires explicit match/player context"
+        "player stats capability requires explicit known player context"
       ],
-      blocked: ["no broad FACEIT crawl; explicit IDs/context required"],
+      blocked: ["no broad FACEIT crawl", "no FACEIT player search by nickname", "no FACEIT team search by name", "explicit IDs/context required"],
       friendlyMessage: "FACEIT API reachable. Используется как optional player/team/competition context, не Tier-1 deep source."
     };
   } catch {
