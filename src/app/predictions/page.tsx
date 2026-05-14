@@ -1,5 +1,6 @@
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { PredictionCard } from "@/components/PredictionCard";
+import { PageHeader } from "@/components/ui";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -18,10 +19,11 @@ export default async function PredictionsPage({ searchParams }: { searchParams: 
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Прогнозы</h1>
-        <p className="mt-1 text-sm text-lab-muted">Каждая карточка пересчитана live через buildPredictionInput + calculatePrediction. Скрыты lower-tier матчи. Переключите All real, чтобы увидеть всё.</p>
-      </div>
+      <PageHeader
+        eyebrow="Forecast board"
+        title="Прогнозы"
+        description="Карточки показывают readiness, глубину данных, risk/confidence и одно главное действие. Lower-tier матчи скрыты из основного фокуса, но доступны фильтрами."
+      />
       <DashboardStatusStrip status={{ ...status, readinessDistribution }} />
       <div className="flex flex-wrap gap-2">
         {[

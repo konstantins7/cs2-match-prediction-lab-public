@@ -1,4 +1,3 @@
-import Link from "next/link";
 import type { CalculatedMatch } from "@/lib/data/matches";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { ProbabilityBar } from "./ProbabilityBar";
@@ -8,6 +7,8 @@ import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 import { getBestNextAction } from "@/lib/bestNextAction";
+import { ActionButton, DataDepthMeter } from "@/components/ui";
+import { deriveDataDepth } from "@/lib/ui/forecastUx";
 
 export function PredictionCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
@@ -25,8 +26,12 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
     .sort((a, b) => Math.abs(b.impact * b.weight * b.confidence) - Math.abs(a.impact * a.weight * a.confidence))
     .slice(0, 3);
   const nextAction = getBestNextAction(prediction).primaryAction;
+  const depth = deriveDataDepth(row.input, prediction);
+  const missingBlocks = prediction.readiness.missingCriticalData.length
+    ? prediction.readiness.missingCriticalData.slice(0, 2)
+    : ["Критичных пропусков нет"];
   return (
-    <article className="rounded border border-lab-border bg-lab-panel p-4">
+    <article className="rounded-2xl border border-white/10 bg-lab-panel/85 p-4 shadow-[0_0_34px_rgba(8,13,22,0.38)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-sm text-lab-muted">{match.eventName}</p>
@@ -52,6 +57,15 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
       <div className="mt-4">
         <ProbabilityBar teamAName={match.teamA.name} teamBName={match.teamB.name} teamAProbability={prediction.teamAProbability} teamBProbability={prediction.teamBProbability} />
       </div>
+      <div className="mt-4 grid gap-3 md:grid-cols-[0.85fr_1.15fr]">
+        <DataDepthMeter depth={depth} />
+        <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+          <p className="text-xs uppercase tracking-wide text-lab-amber">Чего не хватает</p>
+          <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+            {missingBlocks.map((item) => <li key={`${match.id}-missing-${item}`}>{item}</li>)}
+          </ul>
+        </div>
+      </div>
       <div className="mt-4 grid gap-3 md:grid-cols-2">
         <div>
           <p className="text-xs uppercase tracking-wide text-lab-green">Главные причины</p>
@@ -72,12 +86,10 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
           </ul>
         </div>
       </div>
-      <Link href={`/match/${match.id}`} className="mt-4 inline-flex rounded bg-lab-cyan px-3 py-1.5 text-sm font-medium text-black hover:bg-cyan-300">
-        Полный разбор
-      </Link>
-      <Link href={actionHref(nextAction.href, match.id)} className="ml-2 mt-4 inline-flex rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">
-        {nextAction.label}
-      </Link>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <ActionButton href={`/match/${match.id}`}>Разбор</ActionButton>
+        <ActionButton href={actionHref(nextAction.href, match.id)} tone="ghost">Добавить данные</ActionButton>
+      </div>
     </article>
   );
 }

@@ -12,8 +12,9 @@
 
 body {
   margin: 0;
-  background: #0d0f12;
+  background: #070a0f;
   color: #edf1f5;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
 }
 
 a {
@@ -26,4 +27,16 @@ input,
 select,
 textarea {
   font: inherit;
+}
+
+::selection {
+  background: rgba(56, 189, 248, 0.28);
+}
+
+summary {
+  list-style: none;
+}
+
+summary::-webkit-details-marker {
+  display: none;
 }

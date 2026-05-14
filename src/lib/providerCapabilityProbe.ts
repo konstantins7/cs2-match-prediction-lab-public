@@ -100,7 +100,7 @@ async function faceitCapability(): Promise<ProviderCapability> {
       headers: {
         Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
         Accept: "application/json",
-        "User-Agent": "CS2MatchPredictionLab/0.4.7 local research analytics"
+        "User-Agent": "CS2MatchPredictionLab/0.5.0 local research analytics"
       }
     });
     if (!response.ok) {
@@ -196,3 +196,4 @@ export function optionalApiActive() {
     (envPresent("LIQUIPEDIA_API_KEY") && envFlag("ENABLE_LIQUIPEDIA_SYNC")) ||
     (envPresent("FACEIT_API_KEY") && envFlag("ENABLE_FACEIT_SYNC"));
 }
+

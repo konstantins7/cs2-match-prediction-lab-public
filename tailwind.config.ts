@@ -10,16 +10,18 @@ const config: Config = {
     extend: {
       colors: {
         lab: {
-          bg: "#0d0f12",
-          panel: "#15181d",
-          panel2: "#1b2027",
-          border: "#2b313a",
+          bg: "#070a0f",
+          panel: "#0f1620",
+          panel2: "#141d29",
+          border: "#263243",
           text: "#edf1f5",
           muted: "#9aa6b2",
           cyan: "#38bdf8",
           violet: "#a78bfa",
+          blue: "#3b82f6",
           green: "#22c55e",
-          amber: "#f59e0b",
+          amber: "#facc15",
+          orange: "#fb923c",
           red: "#ef4444"
         }
       }

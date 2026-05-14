@@ -56,7 +56,7 @@ describe("FACEIT context enrichment safety", () => {
     const researchQueue = readFileSync("src/lib/researchQueueCore.ts", "utf8");
     expect(statusPanel).toContain("FaceitEnrichMatchButton");
     expect(manualPanel).toContain("Manual FACEIT ID Import");
-    expect(sourcesPage).toContain("search/crawl отключены");
+    expect(sourcesPage).toContain("массовый crawl и поиск по nickname/name отключены");
     expect(coverage).toContain("FACEIT team/player context present");
     expect(coverage).toContain("weak confidence evidence only");
     expect(researchQueue).toContain("Confirm FACEIT IDs");

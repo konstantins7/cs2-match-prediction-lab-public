@@ -207,10 +207,12 @@ describe("MVP 0.4 auto research workflow", () => {
 
   it("technical pages remain accessible but are not the main route", () => {
     const layout = readFileSync("src/app/layout.tsx", "utf8");
-    expect(layout).toContain("Расширенно");
-    expect(layout).toContain("/admin/backtesting");
-    expect(layout).toContain("/admin/data-quality");
-    expect(layout).toContain("const advancedNav");
+    const appShell = readFileSync("src/components/ui/index.tsx", "utf8");
+    expect(layout).toContain("AppShell");
+    expect(appShell).toContain("Расширенно");
+    expect(appShell).toContain("/admin/backtesting");
+    expect(appShell).toContain("/admin/data-quality");
+    expect(appShell).toContain("advancedNav");
   });
 
   it("product UX hides technical tasks and makes forecast wizard primary", () => {
@@ -235,9 +237,9 @@ describe("MVP 0.4 auto research workflow", () => {
     expect(manualPanel).toContain("Самый сильный бесплатный способ улучшить прогноз");
     expect(manualPanel).toContain("Где взять: parsed demo, FACEIT, GRID, manual analyst sheet.");
     expect(sources).toContain("Как получить больше данных");
-    expect(sources).toContain("HLTV ranking: manual import only. Automated HLTV scraping disabled by policy.");
-    expect(sources).toContain("Apify HLTV scraper actors are not connected");
-    expect(sources).toContain("Provider roadmap");
+    expect(sources).toContain("HLTV ranking: только ручной импорт.");
+    expect(sources).toContain("Apify HLTV scraper actors не подключены");
+    expect(sources).toContain("Карта источников");
     expect(sources).toContain("Сайт работает в basic free mode");
   });
 

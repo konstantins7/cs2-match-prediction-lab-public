@@ -5,9 +5,11 @@ import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPane
 import { ManualNewsImportPanel } from "@/components/ManualNewsImportPanel";
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
+import { ActionButton, DataDepthMeter, PageHeader, StatCard } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { getResearchQueueRows, knownTeamMatchingIssues, refreshResearchPack, summarizeResearchQueue } from "@/lib/researchQueue";
 import { getPlaybookEntriesForMissing } from "@/lib/dataAcquisitionPlaybook";
+import type { DataDepth } from "@/lib/ui/forecastUx";
 
 export const dynamic = "force-dynamic";
 
@@ -36,16 +38,17 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Матчи, где одно действие даст максимальный прирост</h1>
-        <p className="mt-1 text-sm text-lab-muted">По умолчанию показаны top-10 routes, а не task flood. Полные технические задачи спрятаны ниже в расширенном блоке.</p>
-      </div>
+      <PageHeader
+        eyebrow="Forecast routes"
+        title="Маршруты к прогнозу"
+        description="По умолчанию показаны top-10 матчей, где одно действие даст максимальный прирост. Полный task flood спрятан в Advanced."
+      />
 
       <section className="grid gap-3 md:grid-cols-4">
-        <Stat label="Ниже L3" value={summary.matchesBelowAnalytical} />
-        <Stat label="Задачи" value={summary.tasksTotal} />
-        <Stat label="Высокий приоритет" value={summary.highPriority} />
-        <Stat label="Нужен ручной ввод" value={summary.requiresManualInput} />
+        <StatCard label="Ниже L3" value={summary.matchesBelowAnalytical} tone="amber" />
+        <StatCard label="Задачи" value={summary.tasksTotal} tone="cyan" />
+        <StatCard label="Высокий приоритет" value={summary.highPriority} tone="red" />
+        <StatCard label="Нужен ручной ввод" value={summary.requiresManualInput} tone="violet" />
       </section>
 
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -67,23 +70,30 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         ))}
       </section>
 
-      <section className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
+      <section className="rounded-2xl border border-lab-cyan/35 bg-lab-panel/85 p-4 shadow-[0_0_40px_rgba(56,189,248,0.08)]">
         <h2 className="font-semibold text-white">Топ-10 приоритетных матчей</h2>
         <p className="mt-1 text-sm text-lab-muted">Один матч — одно главное действие, где взять данные и ожидаемый прирост readiness.</p>
         <div className="mt-3 grid gap-3">
           {priorityRows.length === 0 ? (
             <p className="text-sm text-lab-muted">Очередь пуста или все выбранные матчи готовы.</p>
           ) : priorityRows.map((row) => (
-            <article key={`priority-${row.matchId}`} className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <article key={`priority-${row.matchId}`} className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
+                <div className="min-w-0 flex-1">
                   <h3 className="font-medium text-white">{row.matchLabel}</h3>
                   <p className="mt-1 text-sm text-lab-muted">{row.eventName} · {formatDateTime(row.startTime)} · DQ {row.dataQualityScore}/100</p>
-                  <p className="mt-2 text-sm text-lab-cyan">Primary action: {taskLabel(row.nextBestAction)}</p>
-                  <p className="mt-1 text-xs text-lab-muted">{row.missingCriticalData.slice(0, 3).join(", ") || "Критичных пропусков нет."}</p>
-                  <div className="mt-2 grid gap-2 md:grid-cols-2">
+                  <p className="mt-2 text-sm text-lab-cyan">Главное действие: {taskLabel(row.nextBestAction)}</p>
+                  <p className="mt-1 text-xs text-lab-muted">Ожидаемый прирост: {expectedGain(row.readinessLevel, row.nextBestAction)}</p>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-[280px_1fr]">
+                    <DataDepthMeter depth={routeDepth(row.readinessLevel, row.missingCriticalData)} />
+                    <div className="rounded-xl border border-white/10 bg-lab-panel/80 p-3">
+                      <p className="text-xs uppercase text-lab-muted">Чего не хватает</p>
+                      <p className="mt-1 text-sm text-lab-muted">{row.missingCriticalData.slice(0, 2).join(", ") || "Критичных пропусков нет."}</p>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-2 md:grid-cols-2">
                     {getPlaybookEntriesForMissing(row.missingCriticalData).slice(0, 2).map((entry) => (
-                      <div key={`${row.matchId}-${entry.dataType}`} className="rounded border border-lab-border bg-lab-panel p-2 text-xs text-lab-muted">
+                      <div key={`${row.matchId}-${entry.dataType}`} className="rounded-xl border border-white/10 bg-lab-panel p-3 text-xs text-lab-muted">
                         <p className="text-white">{entry.label}</p>
                         <p>Где взять: {entry.sources.join(" · ")}</p>
                         <p>Сложность: {entry.difficulty}</p>
@@ -97,10 +107,8 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
                 <div className="flex flex-wrap items-center gap-2">
                   <SourceModeBadge sourceMode={row.sourceMode} />
                   <ReadinessBadge level={row.readinessLevel} />
-                  <Link href={`/match/${row.matchId}`} className="text-sm text-lab-cyan">Матч</Link>
-                  <Link href={`/admin/research-queue?matchId=${row.matchId}`} className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-cyan hover:border-lab-cyan">
-                    Открыть wizard
-                  </Link>
+                  <ActionButton href={`/match/${row.matchId}`} tone="ghost">Матч</ActionButton>
+                  <ActionButton href={`/admin/research-queue?matchId=${row.matchId}`}>Открыть wizard</ActionButton>
                 </div>
               </div>
             </article>
@@ -120,7 +128,7 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
       <ManualNewsImportPanel defaultMatchId={selectedMatchId} />
 
       <details className="rounded border border-lab-border bg-lab-panel p-4">
-        <summary className="cursor-pointer font-semibold text-lab-cyan">Показать все технические задачи</summary>
+        <summary className="cursor-pointer font-semibold text-lab-cyan">Advanced: Показать все технические задачи</summary>
         <div className="mt-4 grid gap-4">
         {rows.length === 0 ? (
           <div className="rounded border border-lab-border bg-lab-panel p-4 text-sm text-lab-muted">Все выбранные матчи уже L3+ или очередь пуста.</div>
@@ -271,11 +279,18 @@ function buildPriorityRows(rows: Awaited<ReturnType<typeof getResearchQueueRows>
   });
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
-  return (
-    <div className="rounded border border-lab-border bg-lab-panel p-3">
-      <p className="text-xs uppercase text-lab-muted">{label}</p>
-      <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
-    </div>
-  );
+function routeDepth(readinessLevel: string, missing: string[]): DataDepth {
+  if (readinessLevel === "L4_DEEP") return { level: 5, label: "Demo/round/economy", description: "Есть глубокий demo или round/economy слой." };
+  if (readinessLevel === "L3_ANALYTICAL") return { level: 4, label: "Карты/veto", description: "Есть аналитический слой карт, veto и игроков." };
+  if (!missing.some((item) => item.toLowerCase().includes("player") || item.toLowerCase().includes("roster"))) return { level: 3, label: "Составы/player stats", description: "Базовый аналитический контекст уже есть." };
+  if (readinessLevel === "L1_BASIC_CONTEXT" || readinessLevel === "L2_BASIC_PREDICTION") return { level: 2, label: "Рейтинг/basic history", description: "Есть ranking или basic history, но не хватает depth." };
+  return { level: 1, label: "Базовые данные матча", description: "Есть только fixture и расписание." };
+}
+
+function expectedGain(readinessLevel: string, action: string) {
+  if (readinessLevel === "L0_FIXTURE_ONLY") return "переход к слабому/basic signal";
+  if (action.includes("veto") || action.includes("map")) return "приблизит матч к L3";
+  if (action.includes("player") || action.includes("roster") || action.includes("Bind")) return "закроет player/team context";
+  if (action.includes("FACEIT")) return "улучшит context, но не заменит deep data";
+  return "снизит uncertainty и risk";
 }

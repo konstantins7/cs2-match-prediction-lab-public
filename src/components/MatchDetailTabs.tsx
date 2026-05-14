@@ -19,6 +19,7 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
+import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
@@ -27,8 +28,9 @@ import { formatDateTime } from "@/lib/format";
 import type { MatchPriorityResult } from "@/lib/proFocus";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 import type { ResearchTask } from "@/lib/researchQueueCore";
+import { buildConfidenceRiskExplanation, buildForecastStory } from "@/lib/ui/forecastUx";
 
-const tabs = ["Overview", "Factor Breakdown", "Maps & Veto", "Opponent Matchup", "Players", "News & Events", "Head-to-Head", "Risk & Confidence", "Explanation"] as const;
+const tabs = ["Обзор", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
 
 export function MatchDetailTabs({
   input,
@@ -45,7 +47,7 @@ export function MatchDetailTabs({
   featureSnapshot?: FeatureSnapshotView | null;
   sourceCoverageRows?: SourceCoverageRow[];
 }) {
-  const [active, setActive] = useState<(typeof tabs)[number]>("Overview");
+  const [active, setActive] = useState<(typeof tabs)[number]>("Обзор");
   const hasVetoHistory = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
   const winner = prediction.predictedWinnerId === input.teamA.id ? input.teamA.name : input.teamB.name;
   const dataLimited =
@@ -73,7 +75,7 @@ export function MatchDetailTabs({
         ))}
       </div>
 
-      {active === "Overview" && (
+      {active === "Обзор" && (
         <section className="space-y-4">
           {input.match.sourceMode === "analyst_sample" ? (
             <div className="rounded border border-violet-400/60 bg-violet-950/20 p-4">
@@ -87,6 +89,8 @@ export function MatchDetailTabs({
               <p className="mt-2 text-sm text-lab-muted">{prediction.realForecast.sampleOnlyWarning}</p>
             </div>
           ) : null}
+          <ForecastStory story={buildForecastStory(input, prediction)} />
+          <ConfidenceRiskExplainer view={buildConfidenceRiskExplanation(prediction)} />
           <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
             <div className="rounded border border-lab-border bg-lab-panel p-5">
               <p className="text-sm uppercase tracking-wide text-lab-cyan">{input.match.eventName}</p>
@@ -182,14 +186,14 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "Factor Breakdown" && (
+      {active === "Факторы" && (
         <section className="space-y-4">
           <FactorContributionChart factors={prediction.factors} />
           <FactorBreakdownTable factors={prediction.factors} teamAName={input.teamA.name} teamBName={input.teamB.name} />
         </section>
       )}
 
-      {active === "Maps & Veto" && (
+      {active === "Карты и Veto" && (
         <section className="space-y-4">
           <MapPoolMatrix input={input} />
           {hasVetoHistory ? (
@@ -204,7 +208,7 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "Players" && (
+      {active === "Игроки" && (
         <section className="grid gap-4">
           <h2 className="text-xl font-semibold text-white">{input.teamA.name}</h2>
           <PlayerFormTable players={input.playersA} stats={input.playerStatsA} />
@@ -213,7 +217,7 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "Opponent Matchup" && (
+      {active === "Matchup" && (
         <section className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
             <MatchupCard title={input.teamA.name} profile={input.opponentMatchupA} style={input.teamStyleA} />
@@ -254,9 +258,9 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "News & Events" && <NewsImpactPanel news={input.news} />}
+      {active === "Новости и события" && <NewsImpactPanel news={input.news} />}
 
-      {active === "Head-to-Head" && (
+      {active === "H2H" && (
         <section className="rounded border border-lab-border bg-lab-panel p-4">
           <h2 className="font-semibold text-white">Head-to-Head</h2>
           <div className="mt-3 space-y-2 text-sm text-lab-muted">
@@ -267,7 +271,7 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "Risk & Confidence" && (
+      {active === "Risk и confidence" && (
         <section className="space-y-4">
           <DataQualityPanel input={input} prediction={prediction} />
           {priority && priority.hiddenReasons.length > 0 && (
@@ -287,7 +291,7 @@ export function MatchDetailTabs({
         </section>
       )}
 
-      {active === "Explanation" && (
+      {active === "Объяснение" && (
         <section className="rounded border border-lab-border bg-lab-panel p-5">
           <h2 className="text-xl font-semibold text-white">Человеческое объяснение</h2>
           <p className="mt-3 leading-7 text-lab-muted">{prediction.explanation}</p>
@@ -303,7 +307,7 @@ function ForecastReportBuilder({ input, prediction, featureSnapshot }: { input: 
     const missing = prediction.readiness.missingCriticalData.length ? prediction.readiness.missingCriticalData : prediction.realForecast.reasons;
     return (
       <section className="rounded border border-lab-amber/60 bg-lab-panel p-4">
-        <h2 className="font-semibold text-lab-amber">Forecast not ready</h2>
+        <h2 className="font-semibold text-lab-amber">Прогноз не готов</h2>
         <p className="mt-2 text-sm text-lab-muted">Workflow готов. Первый настоящий прогноз не получен, потому что real data pack не предоставлен или не хватает validated real coverage.</p>
         <ul className="mt-3 space-y-1 text-sm text-lab-muted">
           {missing.slice(0, 6).map((item, index) => <li key={`forecast-not-ready-${index}-${item.slice(0, 24)}`}>{item}</li>)}
@@ -311,17 +315,17 @@ function ForecastReportBuilder({ input, prediction, featureSnapshot }: { input: 
         <div className="mt-4 flex flex-wrap gap-2">
           <a href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}&template=parsed_demo`} className="rounded border border-lab-green/60 px-3 py-1.5 text-sm text-lab-green">Загрузить parsed_demo JSON</a>
           <a href={`/admin/research-queue?matchId=${encodeURIComponent(input.match.id)}`} className="rounded border border-lab-cyan/60 px-3 py-1.5 text-sm text-lab-cyan">Создать manual_real data pack</a>
-          <a href="/admin/sources" className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan">Проверить provider capabilities</a>
+          <a href="/admin/sources" className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan">Проверить источники</a>
         </div>
       </section>
     );
   }
 
   const reportSections = [
-    ["Match Summary", `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)} · ${input.match.format}`],
-    ["Data Sources", prediction.sourceLevel],
-    ["Data Coverage", input.dataCoverage?.known.join(", ") || "Coverage metadata unavailable"],
-    ["Feature Snapshot", featureSnapshot ? `${featureSnapshot.modelVersion} · ${featureSnapshot.featureSchemaVersion}` : "Feature snapshot pending"],
+    ["Матч", `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)} · ${input.match.format}`],
+    ["Источники данных", prediction.sourceLevel],
+    ["Покрытие данных", input.dataCoverage?.known.join(", ") || "Coverage metadata unavailable"],
+    ["Снимок признаков", featureSnapshot ? `${featureSnapshot.modelVersion} · ${featureSnapshot.featureSchemaVersion}` : "Feature snapshot pending"],
     ["Team Strength", prediction.factors.find((factor) => factor.factorName.includes("Team Strength"))?.explanation ?? "Team strength included in model factors."],
     ["Player Form", `${input.playerStatsA.length}/${input.playerStatsB.length} player stat rows`],
     ["Map Pool", `${input.mapStatsA.length}/${input.mapStatsB.length} map stat rows`],
@@ -337,7 +341,7 @@ function ForecastReportBuilder({ input, prediction, featureSnapshot }: { input: 
 
   return (
     <section className="rounded border border-lab-green/50 bg-lab-panel p-4">
-      <h2 className="font-semibold text-lab-green">Full Forecast Report</h2>
+      <h2 className="font-semibold text-lab-green">Полный отчёт прогноза</h2>
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {reportSections.map(([title, body]) => (
           <article key={title} className="rounded border border-lab-border bg-lab-panel2 p-3">

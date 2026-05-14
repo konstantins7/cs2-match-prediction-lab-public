@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { buildPredictionInput, calculatePrediction } from "@/lib/predictionEngine";
-import type { PredictionOutput } from "@/lib/predictionEngine";
+import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import { calculateMatchPriority, isDefaultProFocus, type MatchPriorityResult, type RankSnapshotLike } from "@/lib/proFocus";
 
 export type MatchFocusFilter =
@@ -64,6 +64,7 @@ type MatchRow = {
 
 export type CalculatedMatch = {
   match: MatchRow;
+  input: PredictionInput;
   prediction: PredictionOutput;
   priority: MatchPriorityResult;
 };
@@ -178,11 +179,15 @@ export async function getCalculatedMatches(options: {
   }).slice(0, options.limit);
 
   const calculated = await Promise.all(
-    prioritySorted.map(async ({ match, priority }) => ({
-      match,
-      priority,
-      prediction: calculatePrediction(await buildPredictionInput(match.id))
-    }))
+    prioritySorted.map(async ({ match, priority }) => {
+      const input = await buildPredictionInput(match.id);
+      return {
+        match,
+        input,
+        priority,
+        prediction: calculatePrediction(input)
+      };
+    })
   );
 
   if (options.highConfidence) {

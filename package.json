@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "0.4.7",
+  "version": "0.5.0",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {

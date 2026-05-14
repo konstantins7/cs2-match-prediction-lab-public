@@ -75,8 +75,9 @@ export const liquipediaAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "partial",
-      notes: "LiquipediaDB access is configured, but MVP 0.4.7 keeps query-specific ingestion conservative to avoid abusive access.",
+      notes: "LiquipediaDB access is configured, but MVP 0.5.0 keeps query-specific ingestion conservative to avoid abusive access.",
       rateLimitRemaining: hourlyLimit - 1
     });
   }
 };
+

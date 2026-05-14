@@ -5,22 +5,13 @@ import { ForecastCommandCenter } from "@/components/ForecastCommandCenter";
 import { ForecastConciergePanel } from "@/components/ForecastConciergePanel";
 import { MatchCard } from "@/components/MatchCard";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
+import { ActionButton, InfoBanner, PageHeader, StatCard } from "@/components/ui";
 import { getAutoResearchMetrics } from "@/lib/autoResearch";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
-
-const filters = [
-  ["Топовые матчи", "/matches"],
-  ["Top 50", "/matches?focus=top50"],
-  ["Top 100", "/matches?focus=top100"],
-  ["Watchlist", "/matches?focus=watchlist"],
-  ["Известные турниры", "/matches?focus=known"],
-  ["All real", "/matches?focus=all_real"],
-  ["Низший тир / академки", "/matches?focus=lower_tier"],
-  ["Отдельный контур", "/matches?focus=separate_circuit"],
-  ["Sample / Dev only", "/matches?focus=sample"]
-];
+import { buildSourceSetupChecklist, isNoExtraApiMode } from "@/lib/sourceSetup";
+import { getBestNextAction } from "@/lib/bestNextAction";
 
 export const dynamic = "force-dynamic";
 
@@ -34,47 +25,52 @@ export default async function HomePage() {
     getAutoResearchMetrics()
   ]);
   const fullStatus = { ...status, readinessDistribution };
+  const sourceSetup = buildSourceSetupChecklist(false, status.teamsWithPlayerRoster > 0 || status.matchesEnoughForBasicPrediction > 0);
+  const noExtraApiMode = isNoExtraApiMode(sourceSetup);
+  const globalAction = upcoming[0] ? getBestNextAction(upcoming[0].prediction).primaryAction : null;
 
   return (
     <div className="space-y-6">
-      <section className="rounded border border-lab-border bg-lab-panel p-5">
-        <p className="text-sm uppercase tracking-wide text-lab-cyan">Research dashboard</p>
-        <h1 className="mt-2 text-3xl font-semibold text-white">CS2 Match Prediction Lab</h1>
-        <p className="mt-2 max-w-3xl text-sm text-lab-muted">
-          Вероятностная аналитика официальных CS2 матчей. Сайт честно показывает, когда есть только базовые free data, а когда прогноз готов к анализу.
-        </p>
-        <div className="mt-5 grid gap-3 md:grid-cols-4">
-          {[
-            ["Шаг 1", "Обновить всё доступное автоматически"],
-            ["Шаг 2", "Выбрать матч"],
-            ["Шаг 3", "Подготовить прогноз"],
-            ["Шаг 4", "Если данных мало — создать data pack"]
-          ].map(([step, text]) => (
-            <div key={step} className="rounded border border-lab-border bg-lab-panel2 p-3">
-              <p className="text-xs uppercase text-lab-cyan">{step}</p>
-              <p className="mt-1 text-sm text-white">{text}</p>
-            </div>
-          ))}
-        </div>
-        <div className="mt-4 flex flex-wrap gap-2">
-          {filters.map(([filter, href]) => (
-            <Link key={filter} href={href} className="rounded border border-lab-border px-3 py-1.5 text-sm text-lab-muted hover:border-lab-cyan hover:text-white">
-              {filter}
-            </Link>
-          ))}
-        </div>
+      <PageHeader
+        eyebrow="Dark Esport Dashboard"
+        title="CS2 Match Prediction Lab"
+        description="Командный центр для объяснимой CS2-аналитики: видно, какие прогнозы готовы, где только basic signal и какое одно действие сильнее всего улучшит матч."
+        actions={
+          <>
+            <ActionButton href="#forecast-autopilot">Получить лучший возможный прогноз сейчас</ActionButton>
+            <ActionButton href="#auto-refresh" tone="violet">Обновить всё доступное автоматически</ActionButton>
+          </>
+        }
+      />
+
+      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Реальные прогнозы готовы" value={commandMetrics.readyForecasts} detail="Можно открывать полный разбор" tone="green" />
+        <StatCard label="Базовые прогнозы" value={commandMetrics.basicPreview} detail="Есть signal, но deep data ограничены" tone="cyan" />
+        <StatCard label="Нужно одно действие" value={commandMetrics.needsManualData} detail="Лучший путь через data pack или demo" tone="amber" />
+        <StatCard label="Нужно подключить источник" value={commandMetrics.sourceSetupNeeded} detail="GRID/Liquipedia/FACEIT optional" tone="violet" />
+        <StatCard label="Нужно загрузить demo" value={Math.max(0, commandMetrics.needsManualData - commandMetrics.matchesWithMapVeto)} detail="Самый сильный free deep path" tone="blue" />
       </section>
 
-      <OneClickResearchButton />
+      {noExtraApiMode ? (
+        <InfoBanner title="Эти данные недоступны в basic free mode" tone="cyan">
+          Сайт работает в basic free mode. Это нормально: автоматически доступны матчи, рейтинги, патчи и basic history. Для аналитического прогноза добавьте data pack, parsed demo или подключите API.
+        </InfoBanner>
+      ) : null}
 
-      <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Basic free mode</h2>
-        <p className="mt-1 text-sm text-lab-muted">
-          Сайт работает в basic free mode. Это нормально. Для аналитического прогноза добавьте data pack, parsed demo или подключите API.
-        </p>
+      {globalAction ? (
+        <InfoBanner title="Следующее лучшее действие" tone="violet">
+          <Link href={globalAction.href} className="font-semibold text-white hover:text-lab-cyan">{globalAction.label}</Link>
+          <span className="ml-2">{globalAction.reason}</span>
+        </InfoBanner>
+      ) : null}
+
+      <section id="auto-refresh">
+        <OneClickResearchButton />
       </section>
 
-      <ForecastAutopilotButton />
+      <section id="forecast-autopilot">
+        <ForecastAutopilotButton />
+      </section>
 
       <ForecastConciergePanel mode="home" metrics={commandMetrics} />
 
@@ -84,7 +80,7 @@ export default async function HomePage() {
 
       <section>
         <div className="mb-3 flex items-center justify-between">
-          <h2 className="text-xl font-semibold text-white">Топовые матчи</h2>
+          <h2 className="text-xl font-semibold text-white">Лучшие матчи для анализа</h2>
           <Link href="/matches?status=upcoming&focus=all_real" className="text-sm text-lab-cyan">Все матчи</Link>
         </div>
         {upcoming.length > 0 ? (
@@ -104,13 +100,13 @@ export default async function HomePage() {
 
       <section className="grid gap-6 lg:grid-cols-2">
         <div>
-          <h2 className="mb-3 text-xl font-semibold text-white">Live Matches</h2>
+          <h2 className="mb-3 text-xl font-semibold text-white">Live matches</h2>
           <div className="grid gap-4">
             {live.map((row) => <MatchCard key={row.match.id} row={row} />)}
           </div>
         </div>
         <div>
-          <h2 className="mb-3 text-xl font-semibold text-white">Finished Matches</h2>
+          <h2 className="mb-3 text-xl font-semibold text-white">Finished matches</h2>
           <div className="grid gap-4">
             {finished.map((row) => <MatchCard key={row.match.id} row={row} />)}
           </div>

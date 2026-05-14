@@ -2,6 +2,7 @@ import Link from "next/link";
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { MatchTable } from "@/components/MatchTable";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
+import { PageHeader } from "@/components/ui";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -42,10 +43,11 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
 
   return (
     <div className="space-y-5">
-      <div>
-        <h1 className="text-2xl font-semibold text-white">Матчи</h1>
-        <p className="mt-1 text-sm text-lab-muted">По умолчанию включены Топовые матчи. Lower-tier, академки и отдельный контур остаются в БД и доступны через фильтры.</p>
-      </div>
+      <PageHeader
+        eyebrow="Match center"
+        title="Матчи"
+        description="По умолчанию включены топовые матчи. Lower-tier, академки и отдельный контур остаются доступны через фильтры, но не подмешиваются в основной путь."
+      />
       <DashboardStatusStrip status={fullStatus} />
       <OneClickResearchButton compact />
       <div className="flex flex-wrap gap-2">
