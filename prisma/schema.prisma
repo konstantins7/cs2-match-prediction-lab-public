@@ -1,0 +1,1018 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Team {
+  id                    String   @id @default(cuid())
+  name                  String
+  slug                  String   @unique
+  country               String
+  region                String
+  hltvReferenceUrl      String?
+  liquipediaReferenceUrl String?
+  pandaScoreId          String?
+  gridId                String?
+  valveRank             Int?
+  hltvRank              Int?
+  internalElo           Float
+  topRankCategory       String
+  sourceMode            String   @default("demo")
+  sourceConfidence      Float    @default(0.5)
+  needsReview           Boolean  @default(false)
+  isAcademyTeam         Boolean  @default(false)
+  parentOrgName         String?
+  teamPriority          Int      @default(0)
+  visibilityTier        String   @default("notable")
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  players               Player[]
+  rankSnapshots         TeamRankSnapshot[]
+  teamFormSnapshots     TeamFormSnapshot[]
+  basicResultSnapshots  TeamBasicResultSnapshot[]
+  teamMapStats          TeamMapStat[]
+  vetoPatterns          VetoPattern[] @relation("VetoTeam")
+  opponentVetoPatterns  VetoPattern[] @relation("VetoOpponent")
+  newsItems             NewsItem[]
+  newsImpactSnapshots   NewsImpactSnapshot[]
+  rosterVersions        TeamRosterVersion[]
+  chemistrySnapshots    TeamChemistrySnapshot[]
+  rosterEvents          RosterEvent[]
+  matchesAsTeamA        Match[] @relation("MatchTeamA")
+  matchesAsTeamB        Match[] @relation("MatchTeamB")
+  matchesWon            Match[] @relation("MatchWinner")
+  valveRosterHints      ValveRosterHint[]
+}
+
+model Player {
+  id                    String   @id @default(cuid())
+  nickname              String
+  realName              String?
+  teamId                String?
+  role                  String
+  country               String
+  age                   Int?
+  isActive              Boolean  @default(true)
+  joinedAt              DateTime?
+  leftAt                DateTime?
+  hltvReferenceUrl      String?
+  liquipediaReferenceUrl String?
+  sourceMode            String   @default("demo")
+  sourceConfidence      Float    @default(0.5)
+  needsReview           Boolean  @default(false)
+  matchId               String?
+  importBatchId         String?
+  sourceRecordId        String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  team                  Team? @relation(fields: [teamId], references: [id])
+  statSnapshots         PlayerStatSnapshot[]
+  newsItems             NewsItem[]
+  teamHistory           PlayerTeamHistory[]
+  roleSnapshots         PlayerRoleSnapshot[]
+  rosterEvents          RosterEvent[]
+}
+
+model Match {
+  id               String   @id @default(cuid())
+  source           String
+  sourceMatchId    String?
+  eventName        String
+  eventTier        String
+  stage            String
+  startTime        DateTime
+  status           String
+  format           String
+  isOfficial       Boolean  @default(true)
+  isLan            Boolean  @default(false)
+  teamAId          String
+  teamBId          String
+  winnerTeamId     String?
+  matchUrl         String?
+  dataQualityScore Float    @default(70)
+  sourceMode       String   @default("demo")
+  sourceConfidence Float    @default(0.5)
+  needsReview      Boolean  @default(false)
+  isPinned         Boolean  @default(false)
+  manualPriority   Int?
+  manualVisibility String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  teamA            Team @relation("MatchTeamA", fields: [teamAId], references: [id])
+  teamB            Team @relation("MatchTeamB", fields: [teamBId], references: [id])
+  winnerTeam       Team? @relation("MatchWinner", fields: [winnerTeamId], references: [id])
+  maps             MatchMap[]
+  predictions      Prediction[]
+  h2hEntries       HeadToHead[]
+  audits           PredictionAudit[]
+  researchPacks    ResearchPack[]
+  featureSnapshots MatchFeatureSnapshot[]
+  newsImpactSnapshots NewsImpactSnapshot[]
+
+  @@index([status, startTime])
+  @@index([teamAId])
+  @@index([teamBId])
+}
+
+model ResearchPack {
+  id             String   @id @default(cuid())
+  matchId        String   @unique
+  readinessLevel String
+  checklistJson  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  match          Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([readinessLevel])
+}
+
+model ValveRosterHint {
+  id               String   @id @default(cuid())
+  teamId           String?
+  source           String   @default("valve_rankings")
+  sourceRecordId   String?
+  rankingDate      DateTime
+  rosterJson       String
+  rosterConfidence Float    @default(0.35)
+  notes            String?
+  createdAt        DateTime @default(now())
+
+  team             Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([teamId, rankingDate])
+  @@index([sourceRecordId])
+}
+
+model TeamRankSnapshot {
+  id          String   @id @default(cuid())
+  teamId      String
+  source      String
+  rank        Int
+  points      Float?
+  region      String?
+  rankingDate DateTime
+  rankCategory String
+  confidence  Float
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  team        Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, source, rankingDate])
+  @@index([source, rank])
+}
+
+model TournamentProfile {
+  id                String   @id @default(cuid())
+  source            String
+  externalId        String
+  name              String
+  organizer         String?
+  tier              String
+  importanceScore   Int
+  isKnownTournament Boolean  @default(false)
+  isQualifier       Boolean  @default(false)
+  isAcademy         Boolean  @default(false)
+  isRegional        Boolean  @default(false)
+  isSeparateCircuit Boolean  @default(false)
+  isOnline          Boolean  @default(false)
+  isLan             Boolean  @default(false)
+  confidence        Float
+  notes             String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@unique([source, externalId])
+  @@index([name])
+  @@index([tier])
+}
+
+model MatchMap {
+  id                 String   @id @default(cuid())
+  matchId            String
+  mapName            String
+  mapOrder           Int
+  pickedByTeamId     String?
+  bannedByTeamId     String?
+  teamAScore         Int?
+  teamBScore         Int?
+  winnerTeamId       String?
+  wentOvertime       Boolean  @default(false)
+  overtimeCount      Int      @default(0)
+  regulationScore    String?
+  teamACTRoundsWon   Int?
+  teamATRoundsWon    Int?
+  teamBCTRoundsWon   Int?
+  teamBTRoundsWon    Int?
+
+  match              Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+}
+
+model PlayerStatSnapshot {
+  id                    String   @id @default(cuid())
+  playerId              String
+  teamId                String
+  period                String
+  maps                  Int
+  rounds                Int
+  kd                    Float
+  kdDiff                Int
+  rating                Float
+  adr                   Float
+  kast                  Float
+  impact                Float
+  openingKillRating     Float
+  clutchScore           Float
+  volatilityScore       Float
+  pressureScore         Float
+  trendScore            Float
+  ratingTrend           Float
+  kdTrend               Float
+  adrTrend              Float
+  openingDuelTrend      Float
+  clutchTrend           Float
+  pressurePerformance   Float
+  mapSpecificPerformance Float
+  roleImpact            Float
+  starDependency        Float
+  worstPlayerLiability  Float
+  lanRating             Float
+  onlineRating          Float
+  source                String
+  sourceMode            String   @default("partial")
+  sourceUrl             String?
+  matchId               String?
+  importBatchId         String?
+  sourceRecordId        String?
+  collectedAt           DateTime?
+  sourceDate            DateTime?
+  dataRole              String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
+  isActive              Boolean  @default(true)
+  createdAt             DateTime @default(now())
+
+  player                Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([teamId])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
+}
+
+model TeamFormSnapshot {
+  id                           String   @id @default(cuid())
+  teamId                       String
+  period                       String
+  matchesPlayed                Int
+  mapsPlayed                   Int
+  matchWinRate                 Float
+  mapWinRate                   Float
+  roundWinRate                 Float
+  vsTop10WinRate               Float
+  vsTop20WinRate               Float
+  vsTop50WinRate               Float
+  vsTop100WinRate              Float
+  winVsTop10                   Float
+  winVsTop20                   Float
+  winVsTop50                   Float
+  winVsTop100                  Float
+  lossVsLowerRanked            Float
+  opponentStrengthAdjustedForm Float
+  currentStreak                Int
+  formScore                    Float
+  volatilityScore              Float
+  matchesLast7Days             Int
+  mapsLast7Days                Int
+  travelRiskScore              Float
+  timezoneShiftHours           Float
+  fatigueScore                 Float
+  lanWinRate                   Float
+  onlineWinRate                Float
+  motivationScore              Float
+  rosterStabilityScore         Float
+  closeOutRate                 Float
+  mapPointConversion           Float
+  leadProtectionScore          Float
+  lostFromWinningPositionRate  Float
+  deciderCollapseRate          Float
+  seriesCloseOutRate           Float
+  comebackFrom3RoundDeficit    Float
+  comebackFrom5RoundDeficit    Float
+  badHalfRecovery              Float
+  lostPistolRecovery           Float
+  lostOwnPickRecovery          Float
+  source                       String   @default("generated")
+  sourceMode                   String   @default("partial")
+  matchId                      String?
+  importBatchId                String?
+  sourceRecordId               String?
+  isActive                     Boolean  @default(true)
+  collectedAt                  DateTime?
+  sourceDate                   DateTime?
+  dataRole                     String   @default("historical_team_form")
+  dataLeakageCheckPassed       Boolean  @default(true)
+  createdAt                    DateTime @default(now())
+
+  team                         Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
+}
+
+model TeamBasicResultSnapshot {
+  id                  String   @id @default(cuid())
+  teamId              String
+  period              String
+  matchesPlayed       Int
+  wins                Int
+  losses              Int
+  winRate             Float
+  vsRankedWins        Int
+  vsRankedLosses      Int
+  averageOpponentRank Float?
+  lastMatchAt         DateTime?
+  source              String
+  dataQuality         Float
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  team                Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, period, source])
+  @@index([teamId, period])
+}
+
+model TeamMapStat {
+  id                        String   @id @default(cuid())
+  teamId                    String
+  mapName                   String
+  period                    String
+  mapsPlayed                Int
+  winRate                   Float
+  pickRate                  Float
+  banRate                   Float
+  firstPickRate             Float
+  deciderRate               Float
+  ctRoundWinRate            Float
+  tRoundWinRate             Float
+  pistolWinRate             Float
+  conversionAfterPistolWin  Float
+  forceBuyWinRate           Float
+  antiEcoLossRate           Float
+  overtimeWinRate           Float
+  multipleOvertimeWinRate   Float
+  overtimeFrequency         Float
+  pressureRoundWinRate      Float
+  clutchInOvertimeScore     Float
+  closingScore              Float
+  comebackScore             Float
+  ecoRecoveryScore          Float
+  resetResistanceScore      Float
+  recentTrend               Float
+  openingRoundPerformance   Float
+  sampleQuality             Float
+  source                    String
+  sourceMode                String   @default("partial")
+  sourceUrl                 String?
+  matchId                   String?
+  importBatchId             String?
+  sourceRecordId            String?
+  collectedAt               DateTime?
+  sourceDate                DateTime?
+  dataRole                  String   @default("pre_match_evidence")
+  dataLeakageCheckPassed    Boolean  @default(true)
+  isActive                  Boolean  @default(true)
+  createdAt                 DateTime @default(now())
+
+  team                      Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, mapName])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
+}
+
+model VetoPattern {
+  id              String   @id @default(cuid())
+  teamId          String
+  opponentTeamId  String?
+  format          String
+  period          String
+  mapName         String
+  pickProbability Float
+  banProbability  Float
+  punishProbability Float
+  weaknessScore   Float
+  comfortScore    Float
+  confidenceScore Float
+  source          String   @default("unknown")
+  sourceMode      String   @default("partial")
+  matchId         String?
+  importBatchId   String?
+  sourceRecordId  String?
+  collectedAt     DateTime?
+  sourceDate      DateTime?
+  dataRole        String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+
+  team            Team @relation("VetoTeam", fields: [teamId], references: [id], onDelete: Cascade)
+  opponentTeam    Team? @relation("VetoOpponent", fields: [opponentTeamId], references: [id])
+
+  @@index([teamId, mapName])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
+}
+
+model HeadToHead {
+  id                    String   @id @default(cuid())
+  teamAId               String
+  teamBId               String
+  matchId               String
+  date                  DateTime
+  format                String
+  winnerTeamId          String?
+  teamARosterSimilarity Float
+  teamBRosterSimilarity Float
+  relevanceScore        Float
+  notes                 String?
+  source                String   @default("unknown")
+  sourceMode            String   @default("partial")
+  importBatchId         String?
+  sourceRecordId        String?
+  collectedAt           DateTime?
+  sourceDate            DateTime?
+  dataRole              String   @default("pre_match_evidence")
+  dataLeakageCheckPassed Boolean @default(true)
+  isActive              Boolean  @default(true)
+
+  match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([teamAId, teamBId])
+  @@index([matchId, source])
+  @@index([importBatchId])
+  @@index([dataRole])
+  @@index([dataLeakageCheckPassed])
+}
+
+model NewsItem {
+  id                 String   @id @default(cuid())
+  sourceId           String?
+  teamId             String?
+  playerId           String?
+  title              String
+  summary            String
+  source             String
+  url                String?
+  publishedAt        DateTime
+  collectedAt        DateTime?
+  reliability        String
+  eventType          String
+  sourceTier         String   @default("unknown")
+  sentiment          String
+  impactDirection    String   @default("neutral")
+  impactScore        Float
+  maxAllowedImpact   Float
+  riskScore          Float    @default(0)
+  confidence         Float    @default(0.5)
+  isRumor            Boolean  @default(false)
+  isOfficial         Boolean  @default(false)
+  isConfirmed        Boolean  @default(false)
+    expiresAt          DateTime?
+    sourceMode         String   @default("manual_real")
+    sourceDate         DateTime?
+    dataRole           String   @default("pre_match_evidence")
+    dataLeakageCheckPassed Boolean @default(true)
+    rawJson            String   @default("{}")
+  matchId            String?
+  importBatchId      String?
+  sourceRecordId     String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime? @updatedAt
+
+  newsSource         NewsSource? @relation(fields: [sourceId], references: [id], onDelete: SetNull)
+  team               Team? @relation(fields: [teamId], references: [id])
+  player             Player? @relation(fields: [playerId], references: [id])
+
+  @@index([sourceId])
+  @@index([teamId])
+  @@index([playerId])
+  @@index([matchId, source])
+  @@index([importBatchId])
+    @@index([sourceMode, sourceTier])
+    @@index([expiresAt])
+    @@index([dataRole])
+    @@index([dataLeakageCheckPassed])
+}
+
+model NewsSource {
+  id              String   @id @default(cuid())
+  name            String
+  sourceType      String
+  sourceTier      String
+  url             String?
+  handle          String?
+  platform        String?
+  reliabilityBase Float    @default(0.5)
+  isOfficial      Boolean  @default(false)
+  isInsider       Boolean  @default(false)
+  isManualOnly    Boolean  @default(true)
+  scrapingAllowed Boolean  @default(false)
+  apiAllowed      Boolean  @default(false)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  items           NewsItem[]
+
+  @@index([sourceType, sourceTier])
+  @@index([name])
+}
+
+model NewsImpactSnapshot {
+  id              String   @id @default(cuid())
+  matchId         String
+  teamId          String?
+  newsItemIdsJson String
+  totalImpact     Float
+  totalRisk       Float
+  confirmedImpact Float
+  rumorImpact     Float
+  confidence      Float
+  warningsJson    String
+  createdAt       DateTime @default(now())
+
+  match           Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  team            Team? @relation(fields: [teamId], references: [id], onDelete: SetNull)
+
+  @@index([matchId, createdAt])
+  @@index([teamId])
+}
+
+model Prediction {
+  id                  String   @id @default(cuid())
+  matchId             String
+  modelVersion        String
+  teamAProbability    Float
+  teamBProbability    Float
+  predictedWinnerId   String?
+  confidenceScore     Float
+  riskLevel           String
+  dataQualityScore    Float
+  explanation         String
+  warningsJson        String
+  createdAt           DateTime @default(now())
+
+  match               Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  factors             PredictionFactor[]
+  audits              PredictionAudit[]
+
+  @@index([matchId])
+}
+
+model PredictionFactor {
+  id                    String @id @default(cuid())
+  predictionId          String
+  factorName            String
+  factorGroup           String
+  teamAValue            Float
+  teamBValue            Float
+  rawDifference         Float
+  normalizedDifference  Float
+  weight                Float
+  impact                Float
+  confidence            Float
+  explanation           String
+
+  prediction            Prediction @relation(fields: [predictionId], references: [id], onDelete: Cascade)
+
+  @@index([predictionId])
+}
+
+model ModelWeightPreset {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  weightsJson String
+  isDefault   Boolean @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model SourceSyncLog {
+  id              String   @id @default(cuid())
+  source          String
+  status          String
+  startedAt       DateTime
+  finishedAt      DateTime?
+  recordsImported Int      @default(0)
+  errorsJson      String
+  notes           String?
+}
+
+model GameMetaVersion {
+  id            String   @id @default(cuid())
+  patchDate     DateTime
+  patchName     String
+  patchType     String
+  affectedAreas String
+  impactScore   Float
+  description   String
+  sourceUrl     String?
+  createdAt     DateTime @default(now())
+}
+
+model TeamRosterVersion {
+  id                    String   @id @default(cuid())
+  teamId                String
+  startedAt             DateTime
+  endedAt               DateTime?
+  playerIdsJson         String
+  coachId               String?
+  iglPlayerId           String?
+  mainLanguage          String
+  coreStabilityScore    Float
+  mapsPlayedTogether    Int
+  matchesPlayedTogether Int
+  createdAt             DateTime @default(now())
+
+  team                  Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  chemistrySnapshots    TeamChemistrySnapshot[]
+
+  @@index([teamId])
+}
+
+model PlayerTeamHistory {
+  id                String   @id @default(cuid())
+  playerId          String
+  teamId            String
+  joinedAt          DateTime
+  leftAt            DateTime?
+  role              String
+  mainPositionsJson String
+  mapsPlayed        Int
+  rating            Float
+  kd                Float
+  notes             String?
+
+  player            Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([teamId])
+}
+
+model PlayerRoleSnapshot {
+  id              String   @id @default(cuid())
+  playerId        String
+  teamId          String
+  date            DateTime
+  role            String
+  mapName         String
+  positionsJson   String
+  openingDuelRate Float
+  clutchRate      Float
+  adr             Float
+  rating          Float
+  kd              Float
+  source          String
+  sourceUrl       String?
+
+  player          Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, mapName])
+}
+
+model TeamChemistrySnapshot {
+  id                         String   @id @default(cuid())
+  teamId                     String
+  date                       DateTime
+  rosterVersionId            String
+  sharedExperienceScore      Float
+  languageCompatibilityScore Float
+  roleFitScore               Float
+  coreStabilityScore         Float
+  adaptationScore            Float
+  volatilityScore            Float
+  notes                      String?
+
+  team                       Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  rosterVersion              TeamRosterVersion @relation(fields: [rosterVersionId], references: [id], onDelete: Cascade)
+
+  @@index([teamId])
+}
+
+model RosterEvent {
+  id               String   @id @default(cuid())
+  teamId           String
+  playerId         String?
+  eventType        String
+  eventDate        DateTime
+  oldTeamId        String?
+  newTeamId        String?
+  oldRole          String?
+  newRole          String?
+  oldPositionsJson String?
+  newPositionsJson String?
+  expectedImpact   Float
+  confidence       Float
+  sourceUrl        String?
+  createdAt        DateTime @default(now())
+
+  team             Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  player           Player? @relation(fields: [playerId], references: [id])
+
+  @@index([teamId])
+  @@index([playerId])
+}
+
+model MapVersion {
+  id          String   @id @default(cuid())
+  mapName     String
+  versionName String
+  startedAt   DateTime
+  endedAt     DateTime?
+  changeType  String
+  impactScore Float
+  description String
+  sourceUrl   String?
+  createdAt   DateTime @default(now())
+
+  @@index([mapName])
+}
+
+model ActiveMapPoolVersion {
+  id        String   @id @default(cuid())
+  name      String
+  startedAt DateTime
+  endedAt   DateTime?
+  mapsJson  String
+  notes     String?
+  sourceUrl String?
+  createdAt DateTime @default(now())
+}
+
+model PredictionAudit {
+  id                    String   @id @default(cuid())
+  predictionId          String?
+  matchId               String
+  modelVersion          String
+  inputSnapshotJson     String
+  factorOutputJson      String
+  finalProbabilityJson  String
+  warningsJson          String
+  createdAt             DateTime @default(now())
+
+  prediction            Prediction? @relation(fields: [predictionId], references: [id], onDelete: SetNull)
+  match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+}
+
+model MatchFeatureSnapshot {
+  id                          String   @id @default(cuid())
+  matchId                     String
+  modelVersion                String
+  featureSchemaVersion        String
+  readinessLevel              String
+  sourceMode                  String
+  dataQualityScore            Float
+  featureCutoffTime           DateTime
+  dataLeakageCheckPassed      Boolean  @default(true)
+  featureSourcesJson          String
+  missingCriticalDataJson     String
+  sourceConfidence            Float
+  sampleSizeScore             Float
+  valveRankDiff               Float
+  hltvManualRankDiff          Float
+  internalEloDiff             Float
+  ratingUncertaintyDiff       Float
+  recentWinRateDiff           Float
+  opponentAdjustedFormDiff    Float
+  currentRosterFormDiff       Float
+  avgPlayerRatingDiff         Float
+  kdDiff                      Float
+  adrDiff                     Float
+  kastDiff                    Float
+  impactDiff                  Float
+  starPlayerDiff              Float
+  awpImpactDiff               Float
+  worstPlayerLiabilityDiff    Float
+  mapPoolAdvantage            Float
+  vetoAdvantage               Float
+  deciderAdvantage            Float
+  mapSampleConfidence         Float
+  punishRisk                  Float
+  pistolAdvantage             Float
+  forceBuyAdvantage           Float
+  economyRecoveryAdvantage    Float
+  closingAdvantage            Float
+  overtimeAdvantage           Float
+  rosterStabilityDiff         Float
+  newsImpactDiff              Float
+  fatigueDiff                 Float
+  lanOnlineDiff               Float
+  patchRelevance              Float
+  createdAt                   DateTime @default(now())
+
+  match                       Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId, createdAt])
+  @@index([readinessLevel])
+  @@index([modelVersion, featureSchemaVersion])
+  @@index([dataLeakageCheckPassed])
+}
+
+model ExternalSourceRecord {
+  id               String   @id @default(cuid())
+  source           String
+  externalId       String
+  entityType       String
+  entityId         String?
+  rawJson          String
+  fetchedAt        DateTime
+  hash             String
+  sourceConfidence Float    @default(0.5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([source, entityType, externalId])
+  @@index([entityType, entityId])
+  @@index([source, fetchedAt])
+}
+
+model DataSyncJob {
+  id                 String   @id @default(cuid())
+  source             String
+  jobType            String
+  status             String
+  startedAt          DateTime
+  finishedAt         DateTime?
+  recordsFetched     Int      @default(0)
+  recordsCreated     Int      @default(0)
+  recordsUpdated     Int      @default(0)
+  errorsJson         String
+  notes              String?
+  recordsSkipped     Int      @default(0)
+  lastEndpoint       String?
+  lastMethod         String?
+  lastError          String?
+  lastRawSampleJson  String?
+  needsReviewCount   Int      @default(0)
+  lastSyncedAt       DateTime?
+  cursor             String?
+  since              DateTime?
+  nextAllowedSyncAt  DateTime?
+  rateLimitRemaining Int?
+  failureCount       Int      @default(0)
+  createdAt          DateTime @default(now())
+
+  @@index([source, jobType, startedAt])
+  @@index([status])
+}
+
+model SourceHealth {
+  id                 String   @id @default(cuid())
+  source             String   @unique
+  status             String
+  lastSuccessAt      DateTime?
+  lastFailureAt      DateTime?
+  failureCount       Int      @default(0)
+  rateLimitRemaining Int?
+  notes              String?
+  lastEndpoint       String?
+  lastMethod         String?
+  lastError          String?
+  lastRawSampleJson  String?
+  lastRecordsFetched Int      @default(0)
+  lastRecordsCreated Int      @default(0)
+  lastRecordsUpdated Int      @default(0)
+  lastRecordsSkipped Int      @default(0)
+  needsReviewCount   Int      @default(0)
+  lastSyncedAt       DateTime?
+  cursor             String?
+  since              DateTime?
+  nextAllowedSyncAt  DateTime?
+  updatedAt          DateTime @updatedAt
+  createdAt          DateTime @default(now())
+}
+
+model OpponentMatchupProfile {
+  id                   String   @id @default(cuid())
+  teamId               String
+  opponentTeamId       String
+  period               String
+  rosterSimilarity     Float
+  matchesPlayed        Int
+  mapsPlayed           Int
+  matchWinRate         Float
+  mapWinRate           Float
+  averageRoundDiff     Float
+  favoriteMapsJson     String
+  weakMapsJson         String
+  styleAdvantageScore  Float
+  awpMatchupScore      Float
+  entryMatchupScore    Float
+  vetoPunishScore      Float
+  overtimeMatchupScore Float
+  closingMatchupScore  Float
+  confidenceScore      Float
+  createdAt            DateTime @default(now())
+
+  @@index([teamId, opponentTeamId])
+  @@index([period])
+}
+
+model TeamStyleSnapshot {
+  id                    String   @id @default(cuid())
+  teamId                String
+  period                String
+  aggressionScore       Float
+  defaultHeavyScore     Float
+  executeHeavyScore     Float
+  awpDependencyScore    Float
+  entryDependencyScore  Float
+  pistolDependencyScore Float
+  forceBuyStrength      Float
+  ctSideStrength        Float
+  tSideStrength         Float
+  retakeStrength        Float
+  clutchStrength        Float
+  tempoScore            Float
+  volatilityScore       Float
+  createdAt             DateTime @default(now())
+
+  @@index([teamId, period])
+}
+
+model PredictionDataWindow {
+  id                String   @id @default(cuid())
+  matchId           String
+  teamId            String
+  windowType        String
+  startedAt         DateTime
+  endedAt           DateTime
+  rosterVersionId   String?
+  gameMetaVersionId String?
+  mapPoolVersionId  String?
+  matchesCount      Int
+  mapsCount         Int
+  dataQualityScore  Float
+  relevanceScore    Float
+  summaryJson       String
+  createdAt         DateTime @default(now())
+
+  @@index([matchId, teamId])
+  @@index([windowType])
+}
+
+model EntityAlias {
+  id         String   @id @default(cuid())
+  entityType String
+  entityId   String
+  source     String
+  externalId String
+  alias      String
+  confidence Float
+  createdAt  DateTime @default(now())
+
+  @@unique([entityType, source, externalId])
+  @@index([entityType, entityId])
+  @@index([alias])
+}
+
+model EntityMatchCandidate {
+  id              String   @id @default(cuid())
+  source          String
+  entityType      String
+  externalId      String
+  externalName    String
+  matchedEntityId String?
+  confidence      Float
+  status          String
+  rawJson         String
+  createdAt       DateTime @default(now())
+
+  @@index([source, entityType, externalId])
+  @@index([status])
+}

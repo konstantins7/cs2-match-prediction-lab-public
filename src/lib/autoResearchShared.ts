@@ -1,0 +1,90 @@
+export const GLOBAL_RESEARCH_PROGRESS_STEPS = [
+  "Получаю матчи",
+  "Обновляю рейтинги",
+  "Проверяю патчи CS2",
+  "Проверяю составы",
+  "Проверяю игроков",
+  "Проверяю новости",
+  "Пересобираю признаки",
+  "Пересчитываю прогнозы",
+  "Обновляю задачи",
+  "Готово"
+] as const;
+
+export type AutoResearchMetrics = {
+  matches: number;
+  readyForecasts: number;
+  basicPreview: number;
+  needsManualData: number;
+  teamsWithRank: number;
+  L0_FIXTURE_ONLY: number;
+  L1_BASIC_CONTEXT: number;
+  L2_BASIC_PREDICTION: number;
+  L3_ANALYTICAL: number;
+  L4_DEEP: number;
+  teamsWithRoster: number;
+  matchesWithMapVeto: number;
+  researchTasks: number;
+  sourceSetupNeeded: number;
+};
+
+export type AutoResearchSourceReport = {
+  source: string;
+  dataType: string;
+  status: "success" | "partial" | "failed" | "blocked" | "disabled" | "skipped";
+  message: string;
+};
+
+export type AutoResearchSummary = {
+  before: AutoResearchMetrics;
+  after: AutoResearchMetrics;
+  diff: AutoResearchMetrics;
+  updatedMatches: number;
+  newMatches: number;
+  predictionsRecalculated: number;
+  sourceIssues: Array<{ source: string; status?: string; message: string }>;
+  succeeded: string[];
+  unavailable: string[];
+  unavailableReason: string;
+  sourceReports: AutoResearchSourceReport[];
+};
+
+export type OneClickResult = {
+  ok: boolean;
+  steps: string[];
+  summary: AutoResearchSummary;
+  errors: string[];
+};
+
+export type ForecastAutopilotMode = "fast" | "deeper" | "max";
+
+export type ForecastAutopilotState = "ready" | "basic" | "missing";
+
+export type ForecastAutopilotResult = {
+  ok: boolean;
+  mode: ForecastAutopilotMode;
+  state: ForecastAutopilotState;
+  message: string;
+  matchId?: string;
+  readinessLevel?: string;
+  realForecastReady: boolean;
+  primaryAction: {
+    label: string;
+    href: string;
+    reason: string;
+  };
+  secondaryActions: Array<{
+    label: string;
+    href: string;
+    reason: string;
+  }>;
+  succeeded: string[];
+  unavailable: string[];
+  sourceSuggestions: Array<{
+    label: string;
+    sources: string[];
+    actionLabel: string;
+    href: string;
+  }>;
+  oneClick: OneClickResult;
+};

@@ -1,0 +1,30 @@
+# dependencies
+node_modules
+
+# next
+.next
+out
+trace
+app-build-manifest.json
+build-manifest.json
+react-loadable-manifest.json
+routes-manifest.json
+prerender-manifest.json
+
+# prisma/sqlite
+dev.db
+dev.db-journal
+*.db
+*.db-journal
+
+# env
+.env
+.env*.local
+
+# misc
+.DS_Store
+coverage
+*.log
+dev-server.log
+dev-server.err.log
+tsconfig.tsbuildinfo
