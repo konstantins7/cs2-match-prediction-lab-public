@@ -5,6 +5,7 @@ import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPane
 import { ManualNewsImportPanel } from "@/components/ManualNewsImportPanel";
 import { ImportProfilesPanel } from "@/components/ImportProfilesPanel";
 import { ParsedDemoExportPanel } from "@/components/ParsedDemoExportPanel";
+import { AnalystSheetImportPanel } from "@/components/AnalystSheetImportPanel";
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { SourceHunterPanel } from "@/components/SourceHunterPanel";
@@ -151,6 +152,8 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         analystSampleEnabled={analystSampleEnabled}
         matchOptions={options}
       />
+
+      <AnalystSheetImportPanel defaultMatchId={selectedMatchId} compact />
 
       <ParsedDemoExportPanel defaultMatchId={selectedMatchId} compact />
 

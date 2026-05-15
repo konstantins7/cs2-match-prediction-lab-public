@@ -22,6 +22,7 @@ import { ForecastConciergePanel } from "./ForecastConciergePanel";
 import { DemoStatExportCta } from "./ImportProfilesPanel";
 import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
 import { ParsedDemoExportPanel } from "./ParsedDemoExportPanel";
+import { AnalystSheetImportPanel } from "./AnalystSheetImportPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
@@ -159,6 +160,7 @@ export function MatchDetailTabs({
           <DataCoveragePanel input={input} />
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
+          <AnalystSheetImportPanel defaultMatchId={input.match.id} />
           <DemoStatExportCta />
           <ParsedDemoExportPanel defaultMatchId={input.match.id} />
           <ManualEnrichmentPanel

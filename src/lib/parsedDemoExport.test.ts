@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PARSED_DEMO_EXPORT_PROFILE_NOTES, parsedDemoExportTemplate, parsedDemoSourceTools } from "./parsedDemoExportProfiles";
 
-describe("MVP 0.7.0 parsed demo export intake", () => {
+describe("MVP 0.7.1 parsed demo export intake", () => {
   it("defines the canonical JSON-first parsed_demo_export shape and supported profiles", () => {
     const template = parsedDemoExportTemplate("match_1", "demoparser");
     expect(template).toMatchObject({
