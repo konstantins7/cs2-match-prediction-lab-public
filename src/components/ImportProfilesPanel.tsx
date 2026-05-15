@@ -8,7 +8,7 @@ export function ImportProfilesPanel({ compact = false }: { compact?: boolean }) 
         <div>
           <h2 className="font-semibold text-white">Import profiles</h2>
           <p className="mt-1 text-sm text-lab-muted">
-            0.6.1 принимает JSON через существующие validated `manual_real` / `parsed_demo` flows. XLSX, SQL и raw .dem parser worker помечены как future/inactive.
+            0.7.0 принимает prepared JSON через dedicated parsed demo export intake и существующие validated `manual_real` / `parsed_demo` flows. XLSX, SQL и raw .dem parser worker помечены как future/inactive.
           </p>
         </div>
         <span className="rounded-full border border-lab-amber/35 bg-lab-amber/10 px-3 py-1 text-xs font-medium text-lab-amber">без новых парсеров</span>
@@ -28,7 +28,7 @@ export function DemoStatExportCta() {
     <section className="rounded-2xl border border-lab-green/35 bg-lab-panel/85 p-4">
       <h2 className="font-semibold text-white">Самый сильный бесплатный путь: загрузить demo/stat export</h2>
       <p className="mt-1 text-sm text-lab-muted">
-        Выберите JSON-first профиль и загрузите нормализованный результат в существующий parsed_demo/manual_real wizard. XLSX/SQL/raw .dem parser worker пока не включены.
+        Выберите JSON-first профиль и загрузите нормализованный результат в panel `Загрузить demo/stat export`. XLSX/SQL/raw .dem parser worker пока не включены.
       </p>
       <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {profiles.map((profile) => (

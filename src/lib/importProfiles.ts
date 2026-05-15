@@ -40,16 +40,16 @@ export const importProfiles: ImportProfile[] = [
     title: "Parsed Demo JSON",
     status: "active",
     expectedFormat: "JSON",
-    expectedJsonSchema: "{ type, matchId, sourceName, collectedAt, dataRole, playerStats, mapStats, roundEconomy, vetoHistory }",
-    requiredFields: ["matchId", "sourceName", "collectedAt", "dataRole", "playerStats or roundEconomy", "sampleSize > 0"],
-    optionalFields: ["pistol", "overtime", "clutch", "closing", "demo metadata"],
+    expectedJsonSchema: "{ type:'parsed_demo_export', sourceTool, matchId, dataRole, sourceName, collectedAt, period, sampleSize, confidence, teams, players, maps, rounds, economy }",
+    requiredFields: ["type=parsed_demo_export", "sourceTool", "matchId", "sourceName", "collectedAt", "period", "dataRole", "teams", "players", "sampleSize > 0", "confidence > 0"],
+    optionalFields: ["maps", "rounds", "economy", "pistol", "overtime", "vetoHistory", "h2h", "teamForms"],
     sourceMetadata: ["sourceName", "collectedAt", "demoId/sourceRecordId", "dataRole"],
     dataRole: "pre_match_evidence | historical_team_form | post_match_analysis | backtest_only",
     cutoffLeakageRules: ["target-match post-start payload cannot become pre-match evidence", "dataLeakageCheckPassed=false excludes forecast/training export"],
     validationChecklist: ["reject empty template", "reject future leakage", "validate maps", "validate numeric stats"],
     expectedImpact: "Strongest free deep path for player/map/round/economy evidence.",
-    mappingHints: ["Normalize parser output into existing parsed_demo/manual_real shape", "Keep import match-scoped"],
-    actionHref: "/admin/research-queue?template=parsed_demo"
+    mappingHints: ["Normalize parser output into parsed_demo_export canonical shape", "Keep import match-scoped", "Use /api/admin/parsed-demo-export/validate before apply"],
+    actionHref: "/admin/research-queue#parsed-demo-export-intake"
   },
   {
     id: "cs_demo_manager_json",
@@ -62,10 +62,10 @@ export const importProfiles: ImportProfile[] = [
     sourceMetadata: ["tool name/version", "exportedAt", "analyst sourceName"],
     dataRole: "historical_team_form | pre_match_evidence",
     cutoffLeakageRules: ["Exported data must predate target match startTime for pre-match use"],
-    validationChecklist: ["JSON only in 0.6.1", "XLSX parser future", "SQL import future", "map to existing validated intake"],
+    validationChecklist: ["JSON only in 0.7.0", "XLSX parser future/inactive", "SQL import future/inactive", "map to parsed_demo_export canonical shape"],
     expectedImpact: "Free tool path for player/map/demo analysis after manual normalization.",
     mappingHints: ["Convert export to parsed_demo JSON or manual_real_pack JSON", "Do not upload local DB files"],
-    actionHref: "/admin/research-queue?template=parsed_demo",
+    actionHref: "/admin/research-queue#parsed-demo-export-intake",
     futureParsers: ["XLSX parser", "SQL import"]
   },
   {
@@ -82,7 +82,7 @@ export const importProfiles: ImportProfile[] = [
     validationChecklist: ["JSON-first only", "no bundled parser worker", "numeric stats valid", "map names valid"],
     expectedImpact: "Instruction path to deep demo evidence without adding parser dependencies.",
     mappingHints: ["Normalize rounds/maps into parsed_demo JSON", "Keep target match leakage classification explicit"],
-    actionHref: "/admin/research-queue?template=parsed_demo",
+    actionHref: "/admin/research-queue#parsed-demo-export-intake",
     futureParsers: [".dem parser worker"]
   },
   {
@@ -96,10 +96,10 @@ export const importProfiles: ImportProfile[] = [
     sourceMetadata: ["parser", "parserVersion", "sourceName", "collectedAt"],
     dataRole: "historical_team_form | post_match_analysis | backtest_only",
     cutoffLeakageRules: ["Target-match post-start data is not pre-match evidence"],
-    validationChecklist: ["JSON-first only", "no raw .dem worker in 0.6.1", "validate numeric stats", "reject raw-only payload"],
+    validationChecklist: ["JSON-first only", "no raw .dem worker in 0.7.0", "validate numeric stats", "reject raw-only payload"],
     expectedImpact: "Free parser-output profile for round/player/map evidence.",
     mappingHints: ["Normalize to parsed_demo JSON before apply", "Do not add heavy dependencies"],
-    actionHref: "/admin/research-queue?template=parsed_demo",
+    actionHref: "/admin/research-queue#parsed-demo-export-intake",
     futureParsers: [".dem parser worker"]
   },
   {
@@ -116,7 +116,7 @@ export const importProfiles: ImportProfile[] = [
     validationChecklist: ["JSON-first only", "worker execution future/inactive", "validate maps and numeric events"],
     expectedImpact: "Future-friendly local parser output path for round/economy evidence.",
     mappingHints: ["Map worker output into parsed_demo JSON", "Keep importBatchId/sourceRecordId lineage"],
-    actionHref: "/admin/research-queue?template=parsed_demo",
+    actionHref: "/admin/research-queue#parsed-demo-export-intake",
     futureParsers: [".dem parser worker"]
   },
   {

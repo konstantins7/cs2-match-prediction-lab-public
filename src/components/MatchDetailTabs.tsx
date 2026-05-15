@@ -21,6 +21,7 @@ import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
 import { DemoStatExportCta } from "./ImportProfilesPanel";
 import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
+import { ParsedDemoExportPanel } from "./ParsedDemoExportPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
@@ -159,6 +160,7 @@ export function MatchDetailTabs({
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
           <DemoStatExportCta />
+          <ParsedDemoExportPanel defaultMatchId={input.match.id} />
           <ManualEnrichmentPanel
             defaultMatchId={input.match.id}
             initialTemplate="manual_real_pack"

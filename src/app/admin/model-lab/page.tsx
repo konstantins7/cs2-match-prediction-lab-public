@@ -28,7 +28,7 @@ export default async function ModelLabPage() {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.6.1</p>
+        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.7.0</p>
         <h1 className="text-2xl font-semibold text-white">Лаборатория модели</h1>
         <p className="mt-1 text-sm text-lab-muted">Снимки признаков, покрытие источников, калибровка готовности прогноза и экспорт датасета для обучения. Это исследовательский слой, не ML production.</p>
       </header>
