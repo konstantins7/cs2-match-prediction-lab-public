@@ -9,7 +9,7 @@ import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { getBestNextAction, humanForecastStatus } from "@/lib/bestNextAction";
 import { ActionButton, DataDepthMeter, StatusPill } from "@/components/ui";
-import { deriveDataDepth } from "@/lib/ui/forecastUx";
+import { deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
 
 export function MatchCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
@@ -19,6 +19,7 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
   const humanStatus = humanForecastStatus(prediction);
   const nextAction = getBestNextAction(prediction);
   const depth = deriveDataDepth(row.input, prediction);
+  const realDepth = deriveRealDataDepth(row.input, prediction);
   const missingBlocks = prediction.readiness.missingCriticalData.length
     ? prediction.readiness.missingCriticalData.slice(0, 2)
     : ["Критичных пропусков нет"];
@@ -65,8 +66,9 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
           {prediction.probabilityCap && <span className="rounded border border-lab-amber/60 px-2 py-1 text-xs text-lab-amber">Cap {prediction.probabilityCap.cap}/100</span>}
         </div>
       </div>
-      <div className="mt-4 grid gap-3 md:grid-cols-[0.9fr_1.1fr]">
-        <DataDepthMeter depth={depth} />
+      <div className="mt-4 grid gap-3 lg:grid-cols-[0.75fr_0.75fr_1fr]">
+        <DataDepthMeter depth={depth} title="Preview Data Depth" />
+        <DataDepthMeter depth={realDepth} title="Real Data Depth" />
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <p className="text-xs uppercase text-lab-muted">Чего не хватает</p>
           <ul className="mt-2 space-y-1 text-sm text-lab-muted">

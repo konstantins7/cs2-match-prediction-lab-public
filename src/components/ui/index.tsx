@@ -189,11 +189,11 @@ export function SourceStatusCard({ title, status, gives, configured, unavailable
   );
 }
 
-export function DataDepthMeter({ depth }: { depth: DataDepth }) {
+export function DataDepthMeter({ depth, title = "Глубина данных" }: { depth: DataDepth; title?: string }) {
   return (
     <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
       <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-lab-muted">Глубина данных</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-lab-muted">{title}</p>
         <span className="text-sm font-semibold text-white">{depth.level}/5</span>
       </div>
       <div className="mt-2 grid grid-cols-5 gap-1">

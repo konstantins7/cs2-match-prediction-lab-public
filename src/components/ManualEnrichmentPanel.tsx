@@ -5,6 +5,7 @@ import { manualEnrichmentTemplates } from "@/lib/manualEnrichmentTemplates";
 import { coachManualPayload } from "@/lib/dataQualityCoach";
 import { getPlaybookEntry, type AcquisitionDataType } from "@/lib/dataAcquisitionPlaybook";
 import type { ResearchTask } from "@/lib/researchQueueCore";
+import type { DataDepth } from "@/lib/ui/forecastUx";
 
 const manualTemplateLabels: Array<[keyof typeof manualEnrichmentTemplates, string]> = [
   ["manual_real_pack", "Ручной data pack"],
@@ -22,6 +23,13 @@ type MatchOption = {
   label: string;
   teamAName?: string;
   teamBName?: string;
+  startTime?: string | Date;
+  readinessLevel?: string;
+  realForecastReady?: boolean;
+  sourceLevel?: string;
+  previewDataDepth?: DataDepth;
+  realDataDepth?: DataDepth;
+  missingBlocks?: string[];
   tasks: ResearchTask[];
 };
 
@@ -30,10 +38,11 @@ const activeMapPool = ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Dust2"
 const builderSteps = [
   ["roster", "Шаг 1 — Добавьте составы", "состав -> открывает путь к L2/L3", "Bind roster"],
   ["player_stats", "Шаг 2 — Добавьте статистику игроков", "состав + player stats -> L2 strong / L3 weak", "Import player stats"],
-  ["map_stats", "Шаг 3 — Добавьте карты/veto", "состав + игроки + карты/veto -> L3 partial/full", "Import map stats"],
-  ["h2h", "Шаг 4 — Добавьте H2H", "H2H добавляет matchup context", "Add H2H"],
-  ["news", "Шаг 5 — Добавьте новости", "новости улучшают объяснение риска и уверенности", "Add news/roster events"],
-  ["final", "Шаг 6 — Проверить и применить", "Проверить -> применить -> snapshots -> predictions -> readiness before/after", "Recalculate predictions"]
+  ["map_stats", "Шаг 3 — Добавьте map stats", "карты -> L3 partial, veto нужен для полного real forecast gate", "Import map stats"],
+  ["veto_history", "Шаг 4 — Добавьте veto history", "veto history закрывает обязательный map/veto слой", "Import veto history"],
+  ["h2h", "Шаг 5 — Добавьте H2H", "H2H добавляет matchup context, но не является hard blocker", "Add H2H"],
+  ["news", "Шаг 6 — Добавьте новости / roster events", "новости улучшают объяснение риска и уверенности", "Add news/roster events"],
+  ["final", "Шаг 7 — Проверить и применить", "Проверить -> применить -> snapshots -> predictions -> readiness before/after", "Recalculate predictions"]
 ] as const;
 
 const sourceHints: Record<string, string> = {
@@ -74,6 +83,11 @@ export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manua
     }
   }, [payload]);
   const metadata = (payloadRecord.metadata && typeof payloadRecord.metadata === "object" ? payloadRecord.metadata : payloadRecord) as Record<string, unknown>;
+  const before = resultRecord?.before && typeof resultRecord.before === "object" ? resultRecord.before as Record<string, unknown> : null;
+  const afterPreview = resultRecord?.afterPreview && typeof resultRecord.afterPreview === "object" ? resultRecord.afterPreview as Record<string, unknown> : null;
+  const after = resultRecord?.after && typeof resultRecord.after === "object" ? resultRecord.after as Record<string, unknown> : null;
+  const selectedStart = selectedOption?.startTime ? new Date(selectedOption.startTime) : null;
+  const retrospective = selectedStart ? selectedStart.getTime() < Date.now() : null;
   const coachWarnings = useMemo(() => coachManualPayload(payloadRecord), [payloadRecord]);
   const validationCoachWarnings = blockStatuses.flatMap((status) => [
     ...(Array.isArray(status.warnings) ? status.warnings.map(String) : []),
@@ -188,9 +202,9 @@ export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manua
   return (
     <section className="rounded border border-lab-border bg-lab-panel p-4">
       <div>
-        <h2 className="font-semibold text-white">Ручное добавление данных</h2>
+        <h2 className="font-semibold text-white">Собрать первый реальный прогноз</h2>
         <p className="mt-1 text-sm text-lab-muted">
-          Основной workflow для manual_real: проходите шаги, проверяйте качество блока, затем нажимайте “Применить”. “Проверить” показывает предпросмотр без изменения БД. Пользователь отвечает за достоверность ручных данных.
+          Workflow для validated manual_real pack: проходите шаги, проверяйте качество блока, затем нажимайте “Применить”. “Проверить” показывает before/after preview без изменения БД. Пустой template, sample и данные после cutoff не становятся real forecast.
         </p>
       </div>
 
@@ -207,6 +221,20 @@ export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manua
             )) : <option value={selectedMatchId}>{selectedMatchId}</option>}
           </select>
         </label>
+        <div className="rounded border border-lab-cyan/30 bg-lab-panel2 p-3 text-sm text-lab-muted">
+          <h3 className="font-semibold text-white">Статус выбранного матча</h3>
+          <dl className="mt-2 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+            <div><dt className="text-xs uppercase text-lab-muted">matchId</dt><dd className="text-white">{selectedMatchId}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">startTime</dt><dd className="text-white">{selectedStart ? selectedStart.toISOString() : "unknown"}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">режим</dt><dd className={retrospective ? "text-lab-amber" : "text-lab-green"}>{retrospective === null ? "unknown" : retrospective ? "retrospective/backtest reconstruction" : "future pre-match forecast"}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">readiness</dt><dd className="text-white">{selectedOption?.readinessLevel ?? String(before?.readiness ?? "нажмите Проверить")}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">Real Forecast Ready</dt><dd className={selectedOption?.realForecastReady || before?.realForecastReady ? "text-lab-green" : "text-lab-amber"}>{String(selectedOption?.realForecastReady ?? before?.realForecastReady ?? false)}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">sourceLevel</dt><dd className="text-white">{selectedOption?.sourceLevel ?? "unknown"}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">Preview Data Depth</dt><dd className="text-white">{selectedOption?.previewDataDepth ? `${selectedOption.previewDataDepth.level}/5 · ${selectedOption.previewDataDepth.label}` : before?.previewDataDepth && typeof before.previewDataDepth === "object" ? `${String((before.previewDataDepth as Record<string, unknown>).level)}/5 · ${String((before.previewDataDepth as Record<string, unknown>).label)}` : "нажмите Проверить"}</dd></div>
+            <div><dt className="text-xs uppercase text-lab-muted">Real Data Depth</dt><dd className="text-white">{selectedOption?.realDataDepth ? `${selectedOption.realDataDepth.level}/5 · ${selectedOption.realDataDepth.label}` : before?.realDataDepth && typeof before.realDataDepth === "object" ? `${String((before.realDataDepth as Record<string, unknown>).level)}/5 · ${String((before.realDataDepth as Record<string, unknown>).label)}` : "нажмите Проверить"}</dd></div>
+          </dl>
+          <p className="mt-2 text-xs text-lab-muted">Для retrospective match данные могут быть pre-match evidence только если sourceDate/collectedAt не позже startTime.</p>
+        </div>
         <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
           {builderSteps.map((step) => {
             const preview = stepPreview(step);
@@ -264,7 +292,7 @@ export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manua
       )}
 
       <div className="mt-3 rounded border border-lab-cyan/30 bg-lab-panel2 p-3 text-sm text-lab-muted">
-        Черновик data pack: команды, active map pool и metadata уже подставлены для выбранного матча. Заполните только реальные числа и source metadata; пустой skeleton не меняет готовность прогноза.
+        Черновик data pack: команды и active map pool показаны в wizard, JSON содержит только безопасный skeleton. Заполните реальные числа и source metadata; пустой skeleton не меняет готовность прогноза. Active map pool: {activeMapPool.join(", ")}.
       </div>
 
       <div className="mt-3 rounded border border-lab-green/50 bg-lab-panel2 p-3 text-sm text-lab-muted">
@@ -328,6 +356,12 @@ export function ManualEnrichmentPanel({ defaultMatchId, initialTemplate = "manua
           Сбросить тестовые данные для выбранного матча
         </button>
       </div>
+      {(before || afterPreview || after) ? (
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <PreviewCard title="Before" snapshot={before} />
+          <PreviewCard title={after ? "After" : "After preview"} snapshot={after ?? afterPreview} />
+        </div>
+      ) : null}
       {Array.isArray(resultRecord?.whatStillMissing) && resultRecord.whatStillMissing.length ? (
         <div className="mt-3 rounded border border-lab-amber/60 bg-lab-panel2 p-3 text-sm text-lab-amber">
           Что ещё не хватает: {(resultRecord.whatStillMissing as string[]).join(", ")}
@@ -350,14 +384,9 @@ function buildPayload(template: keyof typeof manualEnrichmentTemplates, matchId?
   base.matchId = resolvedMatchId;
   if (template === "manual_real_pack") {
     base.rosters = { [teamA]: [], [teamB]: [] };
-    base.mapStats = activeMapPool.flatMap((mapName) => [
-      { team: teamA, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0, ctRoundWinRate: 0, tRoundWinRate: 0 },
-      { team: teamB, mapName, mapsPlayed: 0, winRate: 0, pickRate: 0, banRate: 0, ctRoundWinRate: 0, tRoundWinRate: 0 }
-    ]);
-    base.vetoHistory = activeMapPool.flatMap((mapName) => [
-      { team: teamA, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 },
-      { team: teamB, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 }
-    ]);
+    base.playerStats = [];
+    base.mapStats = [];
+    base.vetoHistory = [];
   }
   if (template === "roster") base.teams = { [teamA]: [], [teamB]: [] };
   if (template === "map_stats") base.teams = activeMapPool.flatMap((mapName) => [
@@ -369,6 +398,34 @@ function buildPayload(template: keyof typeof manualEnrichmentTemplates, matchId?
     { team: teamB, mapName, pickRate: 0, banRate: 0, deciderRate: 0, sampleSize: 0 }
   ]);
   return JSON.stringify(base, null, 2);
+}
+
+function PreviewCard({ title, snapshot }: { title: string; snapshot: Record<string, unknown> | null }) {
+  if (!snapshot) {
+    return (
+      <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+        {title}: нажмите “Проверить”, чтобы увидеть preview.
+      </div>
+    );
+  }
+  const previewDepth = snapshot.previewDataDepth && typeof snapshot.previewDataDepth === "object" ? snapshot.previewDataDepth as Record<string, unknown> : null;
+  const realDepth = snapshot.realDataDepth && typeof snapshot.realDataDepth === "object" ? snapshot.realDataDepth as Record<string, unknown> : null;
+  return (
+    <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+      <h3 className="font-semibold text-white">{title}</h3>
+      <dl className="mt-2 grid gap-2 md:grid-cols-2">
+        <div><dt className="text-xs uppercase text-lab-muted">readiness</dt><dd className="text-white">{String(snapshot.readiness ?? "unknown")}</dd></div>
+        <div><dt className="text-xs uppercase text-lab-muted">Real Forecast Ready</dt><dd className={snapshot.realForecastReady ? "text-lab-green" : "text-lab-amber"}>{String(snapshot.realForecastReady ?? false)}</dd></div>
+        <div><dt className="text-xs uppercase text-lab-muted">dataQuality</dt><dd className="text-white">{String(snapshot.dataQuality ?? "unknown")}</dd></div>
+        <div><dt className="text-xs uppercase text-lab-muted">confidence</dt><dd className="text-white">{String(snapshot.confidence ?? "unknown")}</dd></div>
+        <div><dt className="text-xs uppercase text-lab-muted">Preview Data Depth</dt><dd className="text-white">{previewDepth ? `${String(previewDepth.level)}/5 · ${String(previewDepth.label)}` : "unknown"}</dd></div>
+        <div><dt className="text-xs uppercase text-lab-muted">Real Data Depth</dt><dd className="text-white">{realDepth ? `${String(realDepth.level)}/5 · ${String(realDepth.label)}` : "unknown"}</dd></div>
+      </dl>
+      {Array.isArray(snapshot.missingBlocks) && snapshot.missingBlocks.length ? (
+        <p className="mt-2 text-xs text-lab-amber">Осталось: {snapshot.missingBlocks.slice(0, 4).join(", ")}</p>
+      ) : null}
+    </div>
+  );
 }
 
 function statusClass(status: string) {

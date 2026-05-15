@@ -248,9 +248,16 @@ export function detectManualRealPlaceholderPayload(payload: Record<string, unkno
   if (!Number.isFinite(Number(metadata.confidence))) reasons.push("confidence is missing.");
   if ((metadata.sampleSize ?? 0) <= 0) reasons.push("sampleSize is zero or missing.");
 
-  const arrays = collectArrays(payload);
   const type = typeof payload.type === "string" ? payload.type : "";
-  if (["manual_real_pack", "roster", "player_stats", "map_stats", "veto_history", "h2h", "news"].includes(type) && arrays.some((items) => items.length === 0)) {
+  const arrays = collectArrays(payload);
+  if (type === "manual_real_pack") {
+    const rosters = payload.rosters && typeof payload.rosters === "object" ? payload.rosters as Record<string, unknown> : {};
+    const rosterArrays = Object.values(rosters).filter(Array.isArray);
+    const requiredArrays = [payload.playerStats, payload.mapStats, payload.vetoHistory].filter(Array.isArray) as unknown[][];
+    if (!Object.keys(rosters).length || rosterArrays.some((items) => items.length === 0) || requiredArrays.some((items) => items.length === 0)) {
+      reasons.push("required manual_real_pack blocks are empty template/default data.");
+    }
+  } else if (["roster", "player_stats", "map_stats", "veto_history", "h2h", "news"].includes(type) && arrays.some((items) => items.length === 0)) {
     reasons.push("empty arrays are still template/default data.");
   }
 

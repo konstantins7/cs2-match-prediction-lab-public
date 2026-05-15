@@ -6,6 +6,7 @@ import { rebuildSnapshots, savePredictionAudit } from "./sources/sourceScheduler
 import { refreshResearchPack } from "./researchQueue";
 import { sourceModeForSource, type SourceName } from "./sources/types";
 import { saveManualNewsItem } from "./news/manualNews";
+import { deriveDataDepth, deriveRealDataDepth, type DataDepth } from "./ui/forecastUx";
 import {
   calculateManualBlockQuality,
   calculateManualRealPackQuality,
@@ -50,6 +51,19 @@ type Preview = {
     reasons: string[];
     warnings: string[];
   };
+  before?: EnrichmentSnapshot | null;
+  afterPreview?: EnrichmentSnapshot | null;
+};
+
+type EnrichmentSnapshot = {
+  readiness: string;
+  realForecastReady: boolean;
+  dataQuality: number;
+  confidence: number;
+  probability: string;
+  previewDataDepth: DataDepth;
+  realDataDepth: DataDepth;
+  missingBlocks: string[];
 };
 
 type EnrichmentMetadata = {
@@ -227,7 +241,8 @@ function manualPackSections(payload: Record<string, unknown>) {
     mapStats: rows(payload.mapStats ?? payload.teams),
     vetoHistory: rows(payload.vetoHistory),
     h2h: rows(payload.h2h ?? payload.entries),
-    news: rows(payload.news ?? payload.items)
+    news: rows(payload.news ?? payload.items),
+    teamForms: rows(payload.teamForms ?? payload.historicalTeamForm)
   };
 }
 
@@ -235,10 +250,10 @@ function blockMetadata(payload: Record<string, unknown>, block: ManualPackBlock)
   const sections = manualPackSections(payload);
   const sectionValue =
     block === "ranking" ? sections.ranking :
-    block === "roster" ? record((payload as Record<string, unknown>).roster) :
+    block === "roster" ? record((payload as Record<string, unknown>).rosterMetadata ?? (payload as Record<string, unknown>).roster) :
     block === "player_stats" ? record((payload as Record<string, unknown>).playerStatsMetadata) :
     block === "map_stats" ? record((payload as Record<string, unknown>).mapStatsMetadata) :
-    block === "veto_history" ? record((payload as Record<string, unknown>).vetoMetadata) :
+    block === "veto_history" ? record((payload as Record<string, unknown>).vetoMetadata ?? (payload as Record<string, unknown>).vetoHistoryMetadata) :
     block === "h2h" ? record((payload as Record<string, unknown>).h2hMetadata) :
     record((payload as Record<string, unknown>).newsMetadata);
   return {
@@ -300,6 +315,45 @@ function rate(value: unknown) {
 function positive(value: unknown) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0;
+}
+
+function manualPackSnapshotFrom(
+  base: EnrichmentSnapshot,
+  params: {
+    ok: boolean;
+    type: string;
+    sample: boolean;
+    manualRealPackQuality?: Preview["manualRealPackQuality"];
+    warnings: string[];
+    missing: string[];
+  }
+): EnrichmentSnapshot {
+  if (!params.ok || params.sample || params.type !== "manual_real_pack" || !params.manualRealPackQuality?.canReachL3) {
+    return {
+      ...base,
+      missingBlocks: params.missing.length ? params.missing : base.missingBlocks
+    };
+  }
+
+  const expectedDepth: DataDepth = {
+    level: 4,
+    label: "Карты/veto",
+    description: "Ожидается scoped manual_real coverage: составы, player stats, map stats и veto history."
+  };
+  return {
+    readiness: base.readiness === "L4_DEEP" ? "L4_DEEP" : "L3_ANALYTICAL",
+    realForecastReady: params.manualRealPackQuality.score >= 65 && !params.warnings.some((warning) => warning.toLowerCase().includes("leakage")),
+    dataQuality: Math.max(base.dataQuality, 60),
+    confidence: Math.max(base.confidence, 58),
+    probability: base.probability,
+    previewDataDepth: expectedDepth,
+    realDataDepth: expectedDepth,
+    missingBlocks: params.missing.filter((item) => !["bind roster", "import player stats", "import map stats", "import veto history"].includes(item))
+  };
+}
+
+function rowNickname(row: Record<string, unknown>) {
+  return typeof row.nickname === "string" ? row.nickname.trim() : typeof row.playerName === "string" ? row.playerName.trim() : "";
 }
 
 export async function validateManualEnrichment(text: string): Promise<Preview> {
@@ -368,6 +422,26 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     creates.push(`${sections.news.length} analyst_sample NewsItem records scoped to ${matchId}`);
   } else if (type === "manual_real_pack") {
     const sections = manualPackSections(payload);
+    const metadata = sourceMetadata(payload);
+    if (!metadata.sourceName || isPlaceholderText(metadata.sourceName)) errors.push("manual_real_pack sourceName is required and must not be a template value.");
+    if (!metadata.collectedAt) errors.push("manual_real_pack collectedAt is required.");
+    if (!metadata.period) errors.push("manual_real_pack period is required.");
+    if ((metadata.sampleSize ?? 0) <= 0) errors.push("manual_real_pack sampleSize must be > 0.");
+    if ((metadata.confidence ?? 0) <= 0) errors.push("manual_real_pack confidence must be > 0.");
+    if (looksLikeTemplateUrl(metadata.sourceUrl)) errors.push("manual_real_pack sourceUrl looks like a template URL.");
+    if (teams) {
+      const leakage = evaluatePreMatchLeakage({
+        dataRole: metadata.dataRole,
+        sourceDate: metadata.sourceDate,
+        collectedAt: metadata.collectedAtDate,
+        sourceMatchId: metadata.sourceMatchId,
+        targetMatchId: matchId,
+        targetStartTime: new Date(teams.match.startTime)
+      });
+      if (!leakage.passed) {
+        errors.push(...leakage.reasons.map((reason) => `manual_real_pack leakage: ${reason}`));
+      }
+    }
     const valuesValidByBlock: Record<ManualPackBlock, boolean> = {
       ranking: true,
       roster: true,
@@ -381,51 +455,107 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
       creates.push("manual_real ranking confirmation raw/reference");
     }
     if (!Object.keys(sections.rosters).length) valuesValidByBlock.roster = false;
+    const rosterPlayersByTeamId = new Map<string, string[]>();
     for (const [teamName, players] of Object.entries(sections.rosters)) {
-      if (!resolveTeamName(teams, teamName)) warnings.push(`Team ${teamName} is not matched for this match; needs_review candidate required.`);
+      const team = resolveTeamName(teams, teamName);
+      if (!team) {
+        errors.push(`Roster team ${teamName} must match one selected match team.`);
+        valuesValidByBlock.roster = false;
+      }
       if (!Array.isArray(players) || players.length === 0) {
         errors.push(`Roster for ${teamName} must include player names.`);
         valuesValidByBlock.roster = false;
       } else {
-        if (players.length < 5) warnings.push(`Roster for ${teamName} has fewer than five players; status partial.`);
-        if (players.length > 5) warnings.push(`Roster for ${teamName} has more than five players; review active lineup.`);
+        if (players.length !== 5) {
+          errors.push(`Roster for ${teamName} must include exactly five player names.`);
+          valuesValidByBlock.roster = false;
+        }
+        if (players.some((player) => isPlaceholderText(player))) {
+          errors.push(`Roster for ${teamName} contains placeholder player names.`);
+          valuesValidByBlock.roster = false;
+        }
+        if (team) rosterPlayersByTeamId.set(team.id, players.map(String).map((player) => player.trim()).filter(Boolean));
         creates.push(`${players.length} manual_real roster/player links for ${teamName}`);
       }
     }
+    if (teams) {
+      for (const team of teams.teams) {
+        if (!rosterPlayersByTeamId.has(team.id)) {
+          errors.push(`Roster for ${team.name} is required.`);
+          valuesValidByBlock.roster = false;
+        }
+      }
+    }
     if (sections.playerStats.length) {
+      const playerStatsByTeamId = new Map<string, Set<string>>();
       for (const player of sections.playerStats) {
-        if (!resolveTeamName(teams, player.team)) warnings.push(`Team ${String(player.team)} is not matched for this match.`);
-        if (!player.nickname) {
+        const team = resolveTeamFromRow(teams, player);
+        if (!team) {
+          errors.push(`playerStats team ${String(player.team ?? player.teamName ?? player.teamId)} must match one selected match team.`);
+          valuesValidByBlock.player_stats = false;
+        }
+        const nickname = rowNickname(player);
+        if (!nickname) {
           errors.push("playerStats nickname is required.");
           valuesValidByBlock.player_stats = false;
         }
+        if (isPlaceholderText(nickname)) { errors.push("playerStats nickname must not be a placeholder."); valuesValidByBlock.player_stats = false; }
         if (!positive(player.kd)) { errors.push("playerStats kd must be > 0."); valuesValidByBlock.player_stats = false; }
         if (!positive(player.rating)) { errors.push("playerStats rating must be > 0."); valuesValidByBlock.player_stats = false; }
         if (num(player.adr, -1) < 0) { errors.push("playerStats adr must be >= 0."); valuesValidByBlock.player_stats = false; }
         if (!rate(player.kast)) { errors.push("playerStats kast must be 0..100."); valuesValidByBlock.player_stats = false; }
         if (!positive(player.maps)) { errors.push("playerStats maps must be > 0."); valuesValidByBlock.player_stats = false; }
+        if (team && nickname) {
+          const set = playerStatsByTeamId.get(team.id) ?? new Set<string>();
+          set.add(nickname.toLowerCase());
+          playerStatsByTeamId.set(team.id, set);
+        }
+      }
+      for (const [teamId, rosterPlayers] of rosterPlayersByTeamId.entries()) {
+        const stats = playerStatsByTeamId.get(teamId) ?? new Set<string>();
+        const missingStats = rosterPlayers.filter((player) => !stats.has(player.toLowerCase()));
+        if (missingStats.length) {
+          errors.push(`playerStats missing roster players: ${missingStats.join(", ")}.`);
+          valuesValidByBlock.player_stats = false;
+        }
       }
       creates.push(`${sections.playerStats.length} manual_real PlayerStatSnapshot records scoped to ${matchId}`);
     } else valuesValidByBlock.player_stats = false;
     if (sections.mapStats.length) {
+      const mapStatsTeams = new Set<string>();
       for (const row of sections.mapStats) {
-        if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
+        const team = resolveTeamFromRow(teams, row);
+        if (!team) { errors.push(`mapStats team ${String(row.team ?? row.teamName ?? row.teamId)} must match one selected match team.`); valuesValidByBlock.map_stats = false; }
+        if (team) mapStatsTeams.add(team.id);
         if (!maps.includes(String(row.mapName))) { errors.push(`mapName ${String(row.mapName)} is not in active map pool.`); valuesValidByBlock.map_stats = false; }
         if (!positive(row.mapsPlayed)) { errors.push("mapStats mapsPlayed must be > 0."); valuesValidByBlock.map_stats = false; }
         for (const field of ["winRate", "pickRate", "banRate"]) {
           if (!rate(row[field])) { errors.push(`mapStats ${field} must be 0..100.`); valuesValidByBlock.map_stats = false; }
         }
       }
+      if (teams) {
+        for (const team of teams.teams) {
+          if (!mapStatsTeams.has(team.id)) { errors.push(`mapStats for ${team.name} is required.`); valuesValidByBlock.map_stats = false; }
+        }
+      }
       creates.push(`${sections.mapStats.length} manual_real TeamMapStat records scoped to ${matchId}`);
     } else valuesValidByBlock.map_stats = false;
     if (sections.vetoHistory.length) {
+      const vetoTeams = new Set<string>();
       for (const row of sections.vetoHistory) {
-        if (!resolveTeamName(teams, row.team)) warnings.push(`Team ${String(row.team)} is not matched for this match.`);
+        const team = resolveTeamFromRow(teams, row);
+        if (!team) { errors.push(`vetoHistory team ${String(row.team ?? row.teamName ?? row.teamId)} must match one selected match team.`); valuesValidByBlock.veto_history = false; }
+        if (team) vetoTeams.add(team.id);
         if (!maps.includes(String(row.mapName))) { errors.push(`mapName ${String(row.mapName)} is not in active map pool.`); valuesValidByBlock.veto_history = false; }
         for (const field of ["pickRate", "banRate", "deciderRate"]) {
           if (!rate(row[field])) { errors.push(`vetoHistory ${field} must be 0..100.`); valuesValidByBlock.veto_history = false; }
         }
         if (!positive(row.sampleSize)) { errors.push("vetoHistory sampleSize must be > 0."); valuesValidByBlock.veto_history = false; }
+      }
+      if (teams) {
+        for (const team of teams.teams) {
+          if (!vetoTeams.has(team.id)) { errors.push(`vetoHistory for ${team.name} is required.`); valuesValidByBlock.veto_history = false; }
+        }
       }
       creates.push(`${sections.vetoHistory.length} manual_real VetoPattern records scoped to ${matchId}`);
     } else valuesValidByBlock.veto_history = false;
@@ -445,6 +575,14 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
       }
       creates.push(`${sections.news.length} manual_real NewsItem records scoped to ${matchId}`);
     } else valuesValidByBlock.news = false;
+    if (sections.teamForms.length) {
+      for (const row of sections.teamForms) {
+        if (!resolveTeamFromRow(teams, row)) errors.push(`teamForms team ${String(row.team ?? row.teamName ?? row.teamId)} must match one selected match team.`);
+        if (!positive(row.matchesPlayed ?? row.matches)) errors.push("teamForms matchesPlayed/matches must be > 0.");
+        if (!positive(row.mapsPlayed ?? row.maps)) errors.push("teamForms mapsPlayed/maps must be > 0.");
+      }
+      creates.push(`${sections.teamForms.length} manual_real TeamFormSnapshot records scoped to ${matchId}`);
+    }
 
     for (const item of manualBlocks) {
       const hasBlockData =
@@ -642,6 +780,17 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     h2hPresent: blockStatuses.some((status) => status.block === "h2h" && (status.status === "valid" || status.status === "applied" || status.status === "partial")),
     newsChecked: blockStatuses.some((status) => status.block === "news" && (status.status === "valid" || status.status === "applied" || status.status === "partial"))
   });
+  const before = teams ? await snapshot(matchId) : null;
+  const missing = missingAfterBlocks(blockStatuses);
+  const qualityView = manualRealPackQuality
+    ? {
+        score: manualRealPackQuality.score,
+        label: manualRealPackQuality.label,
+        canReachL3: manualRealPackQuality.canReachL3,
+        reasons: manualRealPackQuality.reasons,
+        warnings: manualRealPackQuality.warnings
+      }
+    : undefined;
 
   return {
     ok: errors.length === 0,
@@ -650,22 +799,23 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     creates,
     updates,
     blockStatuses,
-    whatStillMissing: missingAfterBlocks(blockStatuses),
+    whatStillMissing: missing,
     matchId,
     type,
     sourceMode,
     importBatchId,
     realActionable: !sample,
     pipelineProof: sample,
-    manualRealPackQuality: manualRealPackQuality
-      ? {
-          score: manualRealPackQuality.score,
-          label: manualRealPackQuality.label,
-          canReachL3: manualRealPackQuality.canReachL3,
-          reasons: manualRealPackQuality.reasons,
-          warnings: manualRealPackQuality.warnings
-        }
-      : undefined
+    manualRealPackQuality: qualityView,
+    before,
+    afterPreview: before ? manualPackSnapshotFrom(before, {
+      ok: errors.length === 0,
+      type,
+      sample,
+      manualRealPackQuality: qualityView,
+      warnings,
+      missing
+    }) : null
   };
 }
 
@@ -1003,6 +1153,7 @@ async function applyDomainRecords(payload: Record<string, unknown>, meta: Enrich
     changed.push(...await applyVeto(teams, sections.vetoHistory, period, meta));
     changed.push(...await applyH2h(teams, sections.h2h, meta));
     changed.push(...await applyNews(teams, sections.news, meta));
+    changed.push(...await applyTeamForms(teams, sections.teamForms, period, meta));
   }
   if (type === "roster") changed.push(...await applyRoster(teams, record(payload.teams), meta));
   if (type === "player_stats") changed.push(...await applyPlayerStats(teams, rows(payload.players), period, meta));
@@ -1032,11 +1183,21 @@ async function applyDomainRecords(payload: Record<string, unknown>, meta: Enrich
 async function snapshot(matchId: string) {
   const input = await buildPredictionInput(matchId);
   const prediction = calculatePrediction(input);
+  const previewDataDepth = deriveDataDepth(input, prediction);
+  const realDataDepth = deriveRealDataDepth(input, prediction);
+  const missingBlocks = [
+    ...prediction.readiness.missingCriticalData,
+    ...prediction.realForecast.reasons
+  ];
   return {
     readiness: prediction.readiness.level,
+    realForecastReady: prediction.realForecast.isReady,
     dataQuality: prediction.dataQualityScore,
     confidence: prediction.confidenceScore,
-    probability: `${prediction.teamAProbability}/${prediction.teamBProbability}`
+    probability: `${prediction.teamAProbability}/${prediction.teamBProbability}`,
+    previewDataDepth,
+    realDataDepth,
+    missingBlocks: [...new Set(missingBlocks)]
   };
 }
 
@@ -1094,12 +1255,20 @@ export async function applyManualEnrichment(text: string) {
     ...validation,
     applied: true,
     sourceRecordId: raw.record.id,
+    before,
+    after,
     readinessBefore: before.readiness,
     readinessAfter: after.readiness,
+    realForecastReadyBefore: before.realForecastReady,
+    realForecastReadyAfter: after.realForecastReady,
     dataQualityBefore: before.dataQuality,
     dataQualityAfter: after.dataQuality,
     confidenceBefore: before.confidence,
     confidenceAfter: after.confidence,
+    previewDataDepthBefore: before.previewDataDepth,
+    previewDataDepthAfter: after.previewDataDepth,
+    realDataDepthBefore: before.realDataDepth,
+    realDataDepthAfter: after.realDataDepth,
     probabilityBefore: before.probability,
     probabilityAfter: after.probability,
     sampleData: isSample,

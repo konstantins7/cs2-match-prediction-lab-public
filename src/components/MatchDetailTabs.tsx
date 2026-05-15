@@ -19,6 +19,7 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
+import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
@@ -28,7 +29,7 @@ import { formatDateTime } from "@/lib/format";
 import type { MatchPriorityResult } from "@/lib/proFocus";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 import type { ResearchTask } from "@/lib/researchQueueCore";
-import { buildConfidenceRiskExplanation, buildForecastStory } from "@/lib/ui/forecastUx";
+import { buildConfidenceRiskExplanation, buildForecastStory, deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
 
 const tabs = ["Обзор", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
 
@@ -156,6 +157,24 @@ export function MatchDetailTabs({
           <DataCoveragePanel input={input} />
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
+          <ManualEnrichmentPanel
+            defaultMatchId={input.match.id}
+            initialTemplate="manual_real_pack"
+            matchOptions={[{
+              matchId: input.match.id,
+              label: `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)}`,
+              teamAName: input.teamA.name,
+              teamBName: input.teamB.name,
+              startTime: input.match.startTime,
+              readinessLevel: prediction.readiness.level,
+              realForecastReady: prediction.realForecast.isReady,
+              sourceLevel: prediction.sourceLevel,
+              previewDataDepth: deriveDataDepth(input, prediction),
+              realDataDepth: deriveRealDataDepth(input, prediction),
+              missingBlocks: [...prediction.readiness.missingCriticalData, ...prediction.realForecast.reasons],
+              tasks: researchTasks
+            }]}
+          />
           <ForecastReportBuilder input={input} prediction={prediction} featureSnapshot={featureSnapshot} />
           <FeatureSnapshotPanel snapshot={featureSnapshot} />
           <SourceCoverageMatrix rows={sourceCoverageRows} compact />
@@ -321,9 +340,11 @@ function ForecastReportBuilder({ input, prediction, featureSnapshot }: { input: 
     );
   }
 
+  const realDepth = deriveRealDataDepth(input, prediction);
   const reportSections = [
     ["Матч", `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)} · ${input.match.format}`],
     ["Источники данных", prediction.sourceLevel],
+    ["Real Data Depth", `${realDepth.level}/5 · ${realDepth.label}`],
     ["Покрытие данных", input.dataCoverage?.known.join(", ") || "Coverage metadata unavailable"],
     ["Снимок признаков", featureSnapshot ? `${featureSnapshot.modelVersion} · ${featureSnapshot.featureSchemaVersion}` : "Feature snapshot pending"],
     ["Team Strength", prediction.factors.find((factor) => factor.factorName.includes("Team Strength"))?.explanation ?? "Team strength included in model factors."],

@@ -1,24 +1,13 @@
 export const manualEnrichmentTemplates = {
   manual_real_pack: {
-    matchId: "pandascore_match_1474573",
     type: "manual_real_pack",
-    source: "manual_real",
-    metadata: {
-      sourceName: "",
-      sourceUrl: "",
-      collectedAt: "2026-05-13T00:00:00Z",
-      period: "last_30_days",
-      sampleSize: 0,
-      confidence: 0.5,
-      notes: "Manual real data. User is responsible for source accuracy."
-    },
-    rankingConfirmation: {
-      teams: []
-    },
-    rosters: {
-      Monte: [],
-      G2: []
-    },
+    matchId: "pandascore_match_1474573",
+    sourceName: "",
+    collectedAt: "",
+    period: "",
+    sampleSize: 0,
+    confidence: 0,
+    rosters: {},
     playerStats: [],
     mapStats: [],
     vetoHistory: [],

@@ -7,8 +7,8 @@ import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import type { ResearchTask } from "@/lib/researchQueueCore";
 import { getBestNextAction } from "@/lib/bestNextAction";
 import { formatDateTime } from "@/lib/format";
-import { ActionButton, ForecastStatusHero, MatchHero, NextBestActionCard } from "@/components/ui";
-import { deriveDataDepth } from "@/lib/ui/forecastUx";
+import { ActionButton, DataDepthMeter, ForecastStatusHero, MatchHero, NextBestActionCard } from "@/components/ui";
+import { deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
 
 function fallbackActions(prediction: PredictionOutput) {
   if (prediction.readiness.level === "L0_FIXTURE_ONLY" || prediction.readiness.level === "L1_BASIC_CONTEXT") {
@@ -30,6 +30,7 @@ export function MatchForecastStatusPanel({ input, prediction, researchTasks }: {
       ? prediction.realForecast.reasons
       : prediction.readiness.reasons;
   const depth = deriveDataDepth(input, prediction);
+  const realDepth = deriveRealDataDepth(input, prediction);
 
   return (
     <div className="space-y-4">
@@ -56,6 +57,10 @@ export function MatchForecastStatusPanel({ input, prediction, researchTasks }: {
           </>
         }
       />
+      <section className="grid gap-3 md:grid-cols-2">
+        <DataDepthMeter depth={depth} title="Preview Data Depth" />
+        <DataDepthMeter depth={realDepth} title="Real Data Depth" />
+      </section>
       <section className="rounded-2xl border border-white/10 bg-lab-panel/85 p-5">
         <div className="flex flex-wrap gap-2">
           <ReadinessBadge level={prediction.readiness.level} />

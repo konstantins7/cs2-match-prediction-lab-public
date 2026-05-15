@@ -20,4 +20,23 @@ describe("manual enrichment templates", () => {
       expect(() => JSON.stringify(template)).not.toThrow();
     }
   });
+
+  it("keeps manual_real_pack as an empty real-data template, not applied evidence", () => {
+    expect(manualEnrichmentTemplates.manual_real_pack).toMatchObject({
+      type: "manual_real_pack",
+      matchId: "pandascore_match_1474573",
+      sourceName: "",
+      collectedAt: "",
+      period: "",
+      sampleSize: 0,
+      confidence: 0,
+      rosters: {},
+      playerStats: [],
+      mapStats: [],
+      vetoHistory: [],
+      h2h: [],
+      news: []
+    });
+    expect("metadata" in manualEnrichmentTemplates.manual_real_pack).toBe(false);
+  });
 });

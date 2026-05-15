@@ -29,9 +29,35 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
   const analystSampleEnabled = process.env.ENABLE_ANALYST_SAMPLE === "true";
   const selectedMatchId = params.matchId ?? rows[0]?.matchId ?? "pandascore_match_1474573";
   const initialTemplate = params.template === "parsed_demo" ? "parsed_demo" : "manual_real_pack";
-  const options = rows.map((row) => ({ matchId: row.matchId, label: `${row.matchLabel} · ${formatDateTime(row.startTime)}`, teamAName: row.teamAName, teamBName: row.teamBName, tasks: row.tasks }));
+  const options = rows.map((row) => ({
+    matchId: row.matchId,
+    label: `${row.matchLabel} · ${formatDateTime(row.startTime)}`,
+    teamAName: row.teamAName,
+    teamBName: row.teamBName,
+    startTime: row.startTime,
+    readinessLevel: row.readinessLevel,
+    realForecastReady: false,
+    sourceLevel: row.sourceMode === "analyst_sample" ? "Sample only" : row.sourceMode,
+    previewDataDepth: routeDepth(row.readinessLevel, row.missingCriticalData),
+    realDataDepth: row.sourceMode === "analyst_sample" ? insufficientRealDepth() : routeDepth(row.readinessLevel, row.missingCriticalData),
+    missingBlocks: row.missingCriticalData,
+    tasks: row.tasks
+  }));
   if (selectedMatchId && !options.some((option) => option.matchId === selectedMatchId)) {
-    options.unshift({ matchId: selectedMatchId, label: selectedMatchId, teamAName: "Team A", teamBName: "Team B", tasks: [] });
+    options.unshift({
+      matchId: selectedMatchId,
+      label: selectedMatchId,
+      teamAName: "Team A",
+      teamBName: "Team B",
+      startTime: new Date().toISOString(),
+      readinessLevel: "L0_FIXTURE_ONLY",
+      realForecastReady: false,
+      sourceLevel: "unknown",
+      previewDataDepth: routeDepth("L0_FIXTURE_ONLY", []),
+      realDataDepth: insufficientRealDepth(),
+      missingBlocks: [],
+      tasks: []
+    });
   }
   const groups = buildTaskGroups(rows);
   const priorityRows = buildPriorityRows(rows).slice(0, 10);
@@ -285,6 +311,10 @@ function routeDepth(readinessLevel: string, missing: string[]): DataDepth {
   if (!missing.some((item) => item.toLowerCase().includes("player") || item.toLowerCase().includes("roster"))) return { level: 3, label: "Составы/player stats", description: "Базовый аналитический контекст уже есть." };
   if (readinessLevel === "L1_BASIC_CONTEXT" || readinessLevel === "L2_BASIC_PREDICTION") return { level: 2, label: "Рейтинг/basic history", description: "Есть ranking или basic history, но не хватает depth." };
   return { level: 1, label: "Базовые данные матча", description: "Есть только fixture и расписание." };
+}
+
+function insufficientRealDepth(): DataDepth {
+  return { level: 1, label: "Недостаточно real data", description: "Sample/dev data не считается реальной глубиной прогноза." };
 }
 
 function expectedGain(readinessLevel: string, action: string) {

@@ -1,5 +1,6 @@
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import { getBestNextAction } from "@/lib/bestNextAction";
+import { isPreMatchUsableDataRole, parseEvidenceDate } from "@/lib/realData/dataRole";
 
 export type DataDepth = {
   level: 1 | 2 | 3 | 4 | 5;
@@ -62,6 +63,61 @@ export function deriveDataDepth(input: PredictionInput, prediction: PredictionOu
   return { level, ...depthLabels[level] };
 }
 
+function rowPassesRealForecastCutoff(input: PredictionInput, row: {
+  isActive?: boolean | null;
+  dataLeakageCheckPassed?: boolean | null;
+  dataRole?: string | null;
+  sourceDate?: Date | string | null;
+  collectedAt?: Date | string | null;
+}) {
+  if (row.isActive === false || row.dataLeakageCheckPassed === false) return false;
+  if (row.dataRole && !isPreMatchUsableDataRole(row.dataRole)) return false;
+  const evidenceDate = parseEvidenceDate(row.sourceDate ?? row.collectedAt ?? null);
+  if (!evidenceDate) return true;
+  return evidenceDate.getTime() <= new Date(input.match.startTime).getTime();
+}
+
+function isRealSourceValue(value?: string | null) {
+  if (!value) return false;
+  return ["manual_real", "manual_enrichment", "parsed_demo", "grid"].includes(value);
+}
+
+function hasRealDeepSource(input: PredictionInput) {
+  return [...(input.manualSourceRecords ?? [])].some((record) => {
+    const raw = record.rawJson.toLowerCase();
+    return raw.includes("parsed_demo") || raw.includes("roundeconomy") || raw.includes("economy") || raw.includes("grid");
+  });
+}
+
+export function deriveRealDataDepth(input: PredictionInput, prediction: PredictionOutput): DataDepth {
+  if (prediction.sourceLevel === "Sample only") {
+    return {
+      level: 1,
+      label: "Недостаточно real data",
+      description: "Sample/dev data не считается реальной глубиной прогноза."
+    };
+  }
+
+  const realPlayersA = input.playersA.filter((player) => isRealSourceValue(player.sourceMode) && rowPassesRealForecastCutoff(input, player));
+  const realPlayersB = input.playersB.filter((player) => isRealSourceValue(player.sourceMode) && rowPassesRealForecastCutoff(input, player));
+  const realPlayerStatsA = input.playerStatsA.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+  const realPlayerStatsB = input.playerStatsB.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+  const realMapStatsA = input.mapStatsA.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+  const realMapStatsB = input.mapStatsB.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+  const realVetoA = input.vetoPatternsA.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+  const realVetoB = input.vetoPatternsB.filter((row) => isRealSourceValue(row.source) && rowPassesRealForecastCutoff(input, row));
+
+  let level: DataDepth["level"] = 1;
+  if (input.dataCoverage?.rankData || input.dataCoverage?.recentMatches || input.teamA.valveRank || input.teamB.valveRank || input.basicResultA || input.basicResultB) {
+    level = 2;
+  }
+  if (realPlayersA.length >= 5 && realPlayersB.length >= 5 && realPlayerStatsA.length >= 5 && realPlayerStatsB.length >= 5) level = 3;
+  if (realMapStatsA.length > 0 && realMapStatsB.length > 0 && realVetoA.length > 0 && realVetoB.length > 0) level = 4;
+  if (prediction.sourceLevel === "Deep data" || hasRealDeepSource(input)) level = 5;
+
+  return { level, ...depthLabels[level] };
+}
+
 export type ForecastStoryView = {
   known: string[];
   missing: string[];
@@ -76,9 +132,11 @@ export type ForecastStoryView = {
 
 export function buildForecastStory(input: PredictionInput, prediction: PredictionOutput): ForecastStoryView {
   const depth = deriveDataDepth(input, prediction);
+  const realDepth = deriveRealDataDepth(input, prediction);
   const best = getBestNextAction(prediction);
   const known = [
-    depth.description,
+    `Preview Data Depth: ${depth.level}/5 — ${depth.description}`,
+    `Real Data Depth: ${realDepth.level}/5 — ${realDepth.description}`,
     input.dataCoverage?.rankData ? "Есть ranking signal." : "",
     input.dataCoverage?.recentMatches ? "Есть basic history." : "",
     input.dataCoverage?.newsOrRosterEvents ? "Есть новости или roster context." : "",

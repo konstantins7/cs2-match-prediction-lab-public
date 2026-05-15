@@ -3,8 +3,8 @@ import packageJson from "../../package.json";
 import { checkDevLogContent } from "./devLogCheck";
 
 describe("MVP 0.5 safety checks", () => {
-it("package version is 0.5.0", () => {
-  expect(packageJson.version).toBe("0.5.0");
+it("package version is 0.6.0", () => {
+  expect(packageJson.version).toBe("0.6.0");
 });
 
   it("dev log checker fails when Fast Refresh is caused by runtime errors", () => {

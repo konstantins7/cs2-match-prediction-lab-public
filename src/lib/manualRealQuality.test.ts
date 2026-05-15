@@ -71,6 +71,27 @@ describe("manual real block quality", () => {
     expect(detected.reasons.join(" ")).toContain("placeholder");
   });
 
+  it("does not treat optional empty H2H/news arrays as fake when required pack blocks are filled", () => {
+    const detected = detectManualRealPlaceholderPayload({
+      type: "manual_real_pack",
+      sourceName: "Verified analyst sheet",
+      collectedAt: "2026-05-12T00:00:00Z",
+      period: "last_30_days",
+      sampleSize: 20,
+      confidence: 0.8,
+      rosters: {
+        "Team A": ["A1", "A2", "A3", "A4", "A5"],
+        "Team B": ["B1", "B2", "B3", "B4", "B5"]
+      },
+      playerStats: [{ team: "Team A", nickname: "A1", kd: 1.1, rating: 1.05, adr: 76, kast: 72, maps: 10 }],
+      mapStats: [{ team: "Team A", mapName: "Mirage", mapsPlayed: 10, winRate: 55, pickRate: 20, banRate: 10 }],
+      vetoHistory: [{ team: "Team A", mapName: "Mirage", pickRate: 20, banRate: 10, deciderRate: 15, sampleSize: 10 }],
+      h2h: [],
+      news: []
+    });
+    expect(detected.isPlaceholder).toBe(false);
+  });
+
   it("calculates full pack quality thresholds", () => {
     const valid = calculateManualBlockQuality("player_stats", {
       sourceName: "Verified manual source",
