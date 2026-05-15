@@ -23,6 +23,7 @@ import { DemoStatExportCta } from "./ImportProfilesPanel";
 import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
 import { ParsedDemoExportPanel } from "./ParsedDemoExportPanel";
 import { AnalystSheetImportPanel } from "./AnalystSheetImportPanel";
+import { FirstRealForecastSheetSessionPanel } from "./FirstRealForecastSheetSessionPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
@@ -33,6 +34,7 @@ import type { MatchPriorityResult } from "@/lib/proFocus";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 import type { ResearchTask } from "@/lib/researchQueueCore";
 import { buildConfidenceRiskExplanation, buildForecastStory, deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
+import type { FirstRealForecastSessionView } from "@/lib/firstRealForecastSheetSession";
 
 const tabs = ["Обзор", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
 
@@ -42,7 +44,8 @@ export function MatchDetailTabs({
   priority,
   researchTasks = [],
   featureSnapshot,
-  sourceCoverageRows = []
+  sourceCoverageRows = [],
+  firstRealForecastSession
 }: {
   input: PredictionInput;
   prediction: PredictionOutput;
@@ -50,6 +53,7 @@ export function MatchDetailTabs({
   researchTasks?: ResearchTask[];
   featureSnapshot?: FeatureSnapshotView | null;
   sourceCoverageRows?: SourceCoverageRow[];
+  firstRealForecastSession?: FirstRealForecastSessionView;
 }) {
   const [active, setActive] = useState<(typeof tabs)[number]>("Обзор");
   const hasVetoHistory = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
@@ -160,7 +164,11 @@ export function MatchDetailTabs({
           <DataCoveragePanel input={input} />
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
-          <AnalystSheetImportPanel defaultMatchId={input.match.id} />
+          {firstRealForecastSession ? (
+            <FirstRealForecastSheetSessionPanel session={firstRealForecastSession} />
+          ) : (
+            <AnalystSheetImportPanel defaultMatchId={input.match.id} />
+          )}
           <DemoStatExportCta />
           <ParsedDemoExportPanel defaultMatchId={input.match.id} />
           <ManualEnrichmentPanel

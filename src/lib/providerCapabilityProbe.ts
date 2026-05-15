@@ -100,7 +100,7 @@ async function faceitCapability(): Promise<ProviderCapability> {
       headers: {
         Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
         Accept: "application/json",
-        "User-Agent": "CS2MatchPredictionLab/0.7.1 local research analytics"
+        "User-Agent": "CS2MatchPredictionLab/0.7.2 local research analytics"
       }
     });
     if (!response.ok) {

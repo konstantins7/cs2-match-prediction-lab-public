@@ -12,6 +12,7 @@ import {
 type AnalystSheetImportPanelProps = {
   defaultMatchId: string;
   compact?: boolean;
+  initialContent?: "templates" | "empty";
 };
 
 type ApiResult = {
@@ -33,10 +34,10 @@ type ApiResult = {
   applyResult?: Record<string, unknown>;
 };
 
-export function AnalystSheetImportPanel({ defaultMatchId, compact = false }: AnalystSheetImportPanelProps) {
+export function AnalystSheetImportPanel({ defaultMatchId, compact = false, initialContent = "templates" }: AnalystSheetImportPanelProps) {
   const [selectedSheet, setSelectedSheet] = useState<AnalystSheetType>("roster");
   const [contents, setContents] = useState<Record<AnalystSheetType, string>>(() => Object.fromEntries(
-    analystSheetTypes.map((sheetType) => [sheetType, buildAnalystSheetTemplate(sheetType)])
+    analystSheetTypes.map((sheetType) => [sheetType, initialContent === "templates" ? buildAnalystSheetTemplate(sheetType) : ""])
   ) as Record<AnalystSheetType, string>);
   const [result, setResult] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
@@ -55,6 +56,19 @@ export function AnalystSheetImportPanel({ defaultMatchId, compact = false }: Ana
   }
 
   async function request(action: "validate" | "preview" | "apply", scope: "selected" | "all") {
+    if (action === "apply" && sheetsFor(scope).length === 0) {
+      setResult({
+        ok: false,
+        applied: false,
+        errors: ["Нет реальных CSV/TSV данных для Apply. Сначала вставьте или загрузите заполненную таблицу."],
+        warnings: ["workflow ready = yes; Real Forecast Ready остаётся no без валидных real sheets."],
+        rowsParsed: 0,
+        sheetsLoaded: [],
+        coveredBlocks: [],
+        missingBlocks: analystSheetTypes.filter((sheetType) => ["roster", "player_stats", "map_stats", "veto_history"].includes(sheetType)).map((sheetType) => analystSheetTemplates[sheetType].coveredBlock)
+      });
+      return;
+    }
     setLoading(`${action}-${scope}`);
     setResult(null);
     try {
@@ -219,6 +233,7 @@ function ResultView({ result }: { result: ApiResult }) {
       <List title="Warnings" items={result.warnings ?? []} tone="text-lab-amber" />
       <List title="Records that would be created" items={result.recordsPreview ?? []} tone="text-white" />
       <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {result.before ? <Snapshot title="Before" snapshot={result.before} /> : null}
         {result.afterPreview ? <Snapshot title="After preview" snapshot={result.afterPreview} /> : null}
         {applyAfter ? <Snapshot title="After apply" snapshot={applyAfter} /> : null}
       </div>

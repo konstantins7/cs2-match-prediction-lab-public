@@ -5,7 +5,7 @@ import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPane
 import { ManualNewsImportPanel } from "@/components/ManualNewsImportPanel";
 import { ImportProfilesPanel } from "@/components/ImportProfilesPanel";
 import { ParsedDemoExportPanel } from "@/components/ParsedDemoExportPanel";
-import { AnalystSheetImportPanel } from "@/components/AnalystSheetImportPanel";
+import { FirstRealForecastSheetSessionPanel } from "@/components/FirstRealForecastSheetSessionPanel";
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { SourceHunterPanel } from "@/components/SourceHunterPanel";
@@ -13,6 +13,7 @@ import { ActionButton, DataDepthMeter, PageHeader, StatCard } from "@/components
 import { formatDateTime } from "@/lib/format";
 import { getResearchQueueRows, knownTeamMatchingIssues, refreshResearchPack, summarizeResearchQueue } from "@/lib/researchQueue";
 import { getPlaybookEntriesForMissing } from "@/lib/dataAcquisitionPlaybook";
+import { getFirstRealForecastTargetSession } from "@/lib/firstRealForecastSheetSessionData";
 import type { DataDepth } from "@/lib/ui/forecastUx";
 
 export const dynamic = "force-dynamic";
@@ -29,6 +30,7 @@ type Search = { matchId?: string; template?: string };
 export default async function ResearchQueuePage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
   const rows = await getResearchQueueRows(120);
+  const firstRealForecastSession = await getFirstRealForecastTargetSession();
   const summary = summarizeResearchQueue(rows);
   const analystSampleEnabled = process.env.ENABLE_ANALYST_SAMPLE === "true";
   const selectedMatchId = params.matchId ?? rows[0]?.matchId ?? "pandascore_match_1474573";
@@ -153,7 +155,7 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         matchOptions={options}
       />
 
-      <AnalystSheetImportPanel defaultMatchId={selectedMatchId} compact />
+      <FirstRealForecastSheetSessionPanel session={firstRealForecastSession} compact />
 
       <ParsedDemoExportPanel defaultMatchId={selectedMatchId} compact />
 

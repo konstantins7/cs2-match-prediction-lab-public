@@ -222,7 +222,7 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     status: "optional",
     userActionRequired: "Сформировать normalized JSON из локального parser output.",
     setupInstructions: "Instruction profile only; JSON-first mapping в существующий parsed_demo/manual_real flow.",
-    limitations: "Raw .dem parser worker не входит в 0.7.1.",
+    limitations: "Raw .dem parser worker не входит в 0.7.2.",
     forbiddenActions: ["bundled raw .dem parsing", "automatic demo crawl"]
   },
   {
