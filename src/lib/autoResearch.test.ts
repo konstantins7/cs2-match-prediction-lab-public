@@ -22,7 +22,7 @@ function result(source: "pandascore" | "valve-rankings" | "cs-updates", status: 
   } as const;
 }
 
-describe("MVP 0.4 auto research workflow", () => {
+describe("MVP 0.6.1 auto research workflow", () => {
   it("global one-click sync calls expected pipeline functions in order", async () => {
     const calls: string[] = [];
     const metrics = (after = false) => ({
@@ -187,7 +187,7 @@ describe("MVP 0.4 auto research workflow", () => {
     expect(sourceIndex.toLowerCase()).not.toContain("apify");
     expect(sourceIndex.toLowerCase()).not.toContain("hltv");
     expect(AUTO_RESEARCH_ORCHESTRATOR_PLAN.map((job) => job.source)).not.toContain("abios");
-    expect(dataSourceRegistry.filter((item) => item.accessType === "trial" || item.accessType === "paid_future").every((item) => item.legalMode === "disabled")).toBe(true);
+    expect(dataSourceRegistry.filter((item) => item.accessType === "trial" || item.accessType === "paid_future" || item.accessType === "trial_or_paid_future").every((item) => item.status === "disabled")).toBe(true);
   });
 
   it("best next action and human status prefer user-readable forecast work", () => {

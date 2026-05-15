@@ -28,7 +28,7 @@ export default async function ModelLabPage() {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.6.0</p>
+        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.6.1</p>
         <h1 className="text-2xl font-semibold text-white">Лаборатория модели</h1>
         <p className="mt-1 text-sm text-lab-muted">Снимки признаков, покрытие источников, калибровка готовности прогноза и экспорт датасета для обучения. Это исследовательский слой, не ML production.</p>
       </header>
@@ -49,6 +49,26 @@ export default async function ModelLabPage() {
           <a className="rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan hover:bg-lab-cyan hover:text-black" href="/api/admin/model-lab/training-dataset">
             Экспорт CSV
           </a>
+        </div>
+      </section>
+
+      <section className="rounded border border-lab-border bg-lab-panel p-4">
+        <h2 className="font-semibold text-white">Offline research datasets</h2>
+        <p className="mt-1 text-sm text-lab-muted">
+          Эти источники предназначены только для research/calibration после проверки лицензии. Они не являются live forecast source и не могут поднимать Real Forecast Ready.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          {[
+            "Kaggle CS:GO Professional Matches",
+            "CS:GO top20 matches datasets",
+            "Historical demo/stat exports"
+          ].map((name) => (
+            <article key={name} className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+              <h3 className="font-medium text-white">{name}</h3>
+              <p className="mt-2">Назначение: training/calibration only.</p>
+              <p className="mt-1 text-lab-amber">License check required. Not live forecast source.</p>
+            </article>
+          ))}
         </div>
       </section>
 

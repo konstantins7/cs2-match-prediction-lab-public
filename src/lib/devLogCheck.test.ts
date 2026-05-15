@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../../package.json";
 import { checkDevLogContent } from "./devLogCheck";
 
-describe("MVP 0.5 safety checks", () => {
-it("package version is 0.6.0", () => {
-  expect(packageJson.version).toBe("0.6.0");
-});
+describe("MVP 0.6.1 safety checks", () => {
+  it("package version is 0.6.1", () => {
+    expect(packageJson.version).toBe("0.6.1");
+  });
 
   it("dev log checker fails when Fast Refresh is caused by runtime errors", () => {
     const result = checkDevLogContent("warn\nFast Refresh had to perform a full reload due to a runtime error.\n");

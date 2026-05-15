@@ -3,8 +3,10 @@ import Link from "next/link";
 import { ManualEnrichmentPanel } from "@/components/ManualEnrichmentPanel";
 import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPanel";
 import { ManualNewsImportPanel } from "@/components/ManualNewsImportPanel";
+import { ImportProfilesPanel } from "@/components/ImportProfilesPanel";
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
+import { SourceHunterPanel } from "@/components/SourceHunterPanel";
 import { ActionButton, DataDepthMeter, PageHeader, StatCard } from "@/components/ui";
 import { formatDateTime } from "@/lib/format";
 import { getResearchQueueRows, knownTeamMatchingIssues, refreshResearchPack, summarizeResearchQueue } from "@/lib/researchQueue";
@@ -148,6 +150,10 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         analystSampleEnabled={analystSampleEnabled}
         matchOptions={options}
       />
+
+      <SourceHunterPanel compact />
+
+      <ImportProfilesPanel compact />
 
       <FaceitManualIdImportPanel compact />
 

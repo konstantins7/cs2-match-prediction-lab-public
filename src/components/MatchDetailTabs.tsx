@@ -19,6 +19,7 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
+import { DemoStatExportCta } from "./ImportProfilesPanel";
 import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
 import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
@@ -157,6 +158,7 @@ export function MatchDetailTabs({
           <DataCoveragePanel input={input} />
           <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
           <DataSourcesTable input={input} />
+          <DemoStatExportCta />
           <ManualEnrichmentPanel
             defaultMatchId={input.match.id}
             initialTemplate="manual_real_pack"

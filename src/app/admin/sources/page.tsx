@@ -2,8 +2,10 @@ import { prisma } from "@/lib/prisma";
 import { RankMatchingPanel } from "@/components/RankMatchingPanel";
 import { ProviderCapabilityProbePanel } from "@/components/ProviderCapabilityProbePanel";
 import { FaceitManualIdImportPanel } from "@/components/FaceitManualIdImportPanel";
+import { ImportProfilesPanel } from "@/components/ImportProfilesPanel";
 import { SourceSyncPanel } from "@/components/SourceSyncPanel";
 import { SourceCoverageMatrix } from "@/components/SourceCoverageMatrix";
+import { SourceHunterPanel } from "@/components/SourceHunterPanel";
 import { PageHeader, SourceStatusCard, StatCard } from "@/components/ui";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getRankMatchingCandidates } from "@/lib/data/rankMatching";
@@ -97,6 +99,10 @@ export default async function SourcesPage() {
         </div>
       </section>
 
+      <SourceHunterPanel />
+
+      <ImportProfilesPanel />
+
       <details className="rounded border border-lab-border bg-lab-panel p-4">
         <summary className="cursor-pointer font-semibold text-lab-cyan">Режим аналитика: детальная карта подключения</summary>
       <section className="mt-4 rounded border border-lab-cyan/40 bg-lab-panel p-4">
@@ -176,10 +182,12 @@ export default async function SourcesPage() {
       <section className="mt-4 rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Карта источников</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <RoadmapGroup title="Работает сейчас" items={["PandaScore", "Valve", "Steam", "manual_real", "parsed_demo JSON"]} />
-          <RoadmapGroup title="Можно подключить бесплатно/с ключом" items={["GRID Open Access", "LiquipediaDB", "FACEIT"]} />
+          <RoadmapGroup title="Работает сейчас" items={["PandaScore", "Valve", "Steam", "manual_real JSON", "parsed_demo JSON"]} />
+          <RoadmapGroup title="Можно подключить бесплатно/с ключом" items={["GRID Open Access", "LiquipediaDB", "FACEIT", "Leetify placeholder"]} />
+          <RoadmapGroup title="Бесплатные upload/tool paths" items={["CS Demo Manager JSON", "Awpy JSON", "demoparser JSON", "demoinfocs JSON"]} />
           <RoadmapGroup title="Ручной ввод" items={["Manual HLTV Top 50", "Manual news/insider"]} />
-          <RoadmapGroup title="Будущее / trial / paid" items={["Abios", "GameScorekeeper", "DataSportsGroup"]} />
+          <RoadmapGroup title="Offline research" items={["Kaggle datasets: training/calibration only", "ByMykel static metadata", "CS2Leaderboard context"]} />
+          <RoadmapGroup title="Будущее / trial / paid" items={["Abios", "TheSports", "GameScorekeeper", "DataSportsGroup", "Sportradar", "LSports"]} />
         </div>
       </section>
       </details>
