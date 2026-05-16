@@ -100,6 +100,60 @@ export default async function SourcesPage() {
         </div>
       </section>
 
+      <section id="data-onboarding" className="rounded-2xl border border-lab-violet/35 bg-lab-panel/85 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-white">Data Onboarding</h2>
+            <p className="mt-1 text-sm text-lab-muted">Что можно подключать сейчас, а что остаётся только training/local guidance. Никакие ключи или personal auth codes здесь не показываются.</p>
+          </div>
+          <span className="rounded-full border border-lab-violet/35 bg-lab-violet/10 px-3 py-1 text-xs font-medium text-lab-violet">MVP 0.7.4</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <OnboardingCard
+            title="Kaggle CSV"
+            label="training/calibration only"
+            body="results.csv, players.csv, picks.csv и economy.csv проверяются в Model Lab inspector. Они не являются live forecast source и не могут поднять Real Forecast Ready."
+            href="/admin/model-lab"
+            action="Открыть inspector"
+          />
+          <OnboardingCard
+            title="Leetify"
+            label="optional context"
+            body="Developer page: https://leetify.com/app/developer. Base URL: https://api-public.cs-prod.leetify.com. Только explicit steam64_id / Leetify ID, attribution required, privacy dependent."
+            href="#source-playbook"
+            action="Смотреть правила"
+          />
+          <OnboardingCard
+            title="TheSportsDB"
+            label="low-priority fallback"
+            body="Disabled by default. Можно делать coverage probe для teams/events metadata, но не player stats, map/veto, round/economy и не Real Forecast Ready."
+            href="#source-playbook"
+            action="Проверить статус"
+          />
+          <OnboardingCard
+            title="Steam auth code"
+            label="local-only guidance"
+            body="Только personal match history/demo pipeline. Не нужен для pro forecast. Не добавлять в .env.example; если код раскрыт, rotate/regenerate."
+            href="/admin/model-lab"
+            action="Смотреть demo path"
+          />
+          <OnboardingCard
+            title="CS Demo Manager"
+            label="historical demos"
+            body="Берите прошлые демки текущего состава, экспортируйте JSON/CSV и загружайте через Parsed Demo Export Intake или CSV/TSV Analyst Sheet Import. Target post-start demo не pre-match evidence."
+            href="/admin/research-queue"
+            action="Открыть импорт"
+          />
+          <OnboardingCard
+            title="GRID Mapping"
+            label="future / blocked by TBD"
+            body="GRID Open Access работает, но когда Central Data отдаёт TBD-1 vs TBD-2, match mapping остаётся needs_review/future и не создаёт fake scoped records."
+            href="#grid-open-access"
+            action="Открыть GRID"
+          />
+        </div>
+      </section>
+
       <SourceHunterPanel />
 
       <ImportProfilesPanel />
@@ -389,6 +443,19 @@ function RoadmapGroup({ title, items }: { title: string; items: string[] }) {
   );
 }
 
+function OnboardingCard({ title, label, body, href, action }: { title: string; label: string; body: string; href: string; action: string }) {
+  return (
+    <article className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-lab-violet">{label}</p>
+      <h3 className="mt-2 font-semibold text-white">{title}</h3>
+      <p className="mt-2 text-sm text-lab-muted">{body}</p>
+      <a href={href} className="mt-3 inline-flex rounded-lg border border-lab-violet/45 bg-lab-violet/10 px-3 py-2 text-sm font-medium text-lab-violet hover:bg-lab-violet/15">
+        {action}
+      </a>
+    </article>
+  );
+}
+
 function buildSourceNextActions(sourceSetup: ReturnType<typeof buildSourceSetupChecklist>, statuses: Awaited<ReturnType<typeof getSourceStatuses>>) {
   const setup = new Map(sourceSetup.map((item) => [item.id, item]));
   const status = new Map<string, (typeof statuses)[number]>(statuses.map((item) => [item.source, item]));
@@ -459,9 +526,13 @@ function buildProviderCards(sourceSetup: ReturnType<typeof buildSourceSetupCheck
     row("grid", "GRID", "Official series context через Central Data и Series State.", "Series Events, File Download и Stats Feed недоступны на Open Access.", "Проверить Open Access capabilities.", "Только подтверждённые OA endpoints; known series id required."),
     row("liquipedia", "LiquipediaDB", "Составы, турниры, история, roster changes.", "Нужен approved API access.", "Запросить key.", "Rate limits and approved access."),
     row("faceit", "FACEIT", "Optional player/team/competition context.", "Не заменяет map/veto/deep telemetry.", "Добавить manual FACEIT IDs.", "Нужны явные IDs/context; массовый FACEIT crawl отключён."),
+    row("leetify", "Leetify", "Optional player/profile context по explicit steam64_id / Leetify ID.", "Не Tier-1/deep pro source и не broad crawl.", "Создать key на developer page и хранить только в .env.", "Attribution required; privacy dependent; no automatic sync."),
+    row("cs_demo_manager", "CS Demo Manager", "Исторические демки -> JSON/CSV export -> existing intake.", "Не даёт будущую демку target match; raw parser не встроен.", "Экспортировать прошлые матчи текущего состава.", "Target post-start demo не pre-match evidence."),
     row("parsed_demo", "Parsed Demo", "Player/map/round/economy stats без платных API.", ".dem parser worker пока не включён.", "Загрузить parsed_demo JSON.", "Только validated local JSON."),
     row("hltv_manual_top50", "Manual HLTV", "Ranking reference и Pro Focus matching.", "Автоматический scraping отключён.", "Импортировать CSV/JSON вручную.", "Только manual reference."),
-    row("news_manual", "News/Insider manual", "Official/reference/insider risk context.", "Telegram/HLTV не скрейпятся.", "Добавить manual news note.", "Manual only, no training usage.")
+    row("news_manual", "News/Insider manual", "Official/reference/insider risk context.", "Telegram/HLTV не скрейпятся.", "Добавить manual news note.", "Manual only, no training usage."),
+    row("kaggle_csgo_datasets", "Kaggle offline", "Training/calibration metadata in Model Lab inspector.", "Not live forecast source; cannot raise Real Forecast Ready.", "Inspect CSV locally.", "License check required; no live records."),
+    row("thesportsdb", "TheSportsDB", "Low-priority teams/events metadata fallback if coverage exists.", "No player/map/veto/round/economy use.", "Keep disabled until coverage probe.", "No readiness impact.")
   ];
 }
 

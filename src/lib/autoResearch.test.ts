@@ -22,7 +22,7 @@ function result(source: "pandascore" | "valve-rankings" | "cs-updates", status: 
   } as const;
 }
 
-describe("MVP 0.7.3 auto research workflow", () => {
+describe("MVP 0.7.4 auto research workflow", () => {
   it("global one-click sync calls expected pipeline functions in order", async () => {
     const calls: string[] = [];
     const metrics = (after = false) => ({

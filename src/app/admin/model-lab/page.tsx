@@ -1,8 +1,10 @@
 import { SourceCoverageMatrix } from "@/components/SourceCoverageMatrix";
+import { OfflineDatasetInspectorPanel } from "@/components/OfflineDatasetInspectorPanel";
 import { FEATURE_SCHEMA_VERSION, FEATURE_MODEL_VERSION } from "@/lib/features/matchFeatureSnapshot";
 import { getCalibrationByReadiness } from "@/lib/modelLab/calibration";
 import { calculateGlickoStyleUncertainty, calculateTrueSkillStylePlaceholder } from "@/lib/modelLab/ratings";
 import { TRAINING_DATASET_COLUMNS } from "@/lib/modelLab/trainingDataset";
+import { offlineDatasetProfiles } from "@/lib/offlineDatasetInspector";
 import { prisma } from "@/lib/prisma";
 import { buildSourceCoverageMatrix } from "@/lib/sourceCoverageMatrix";
 import { getSourceStatuses } from "@/lib/sources/sourceHealth";
@@ -28,7 +30,7 @@ export default async function ModelLabPage() {
   return (
     <div className="space-y-5">
       <header>
-        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.7.3</p>
+        <p className="text-sm uppercase tracking-wide text-lab-cyan">MVP 0.7.4</p>
         <h1 className="text-2xl font-semibold text-white">Лаборатория модели</h1>
         <p className="mt-1 text-sm text-lab-muted">Снимки признаков, покрытие источников, калибровка готовности прогноза и экспорт датасета для обучения. Это исследовательский слой, не ML production.</p>
       </header>
@@ -52,21 +54,20 @@ export default async function ModelLabPage() {
         </div>
       </section>
 
+      <OfflineDatasetInspectorPanel />
+
       <section className="rounded border border-lab-border bg-lab-panel p-4">
-        <h2 className="font-semibold text-white">Offline research datasets</h2>
+        <h2 className="font-semibold text-white">Offline dataset profiles</h2>
         <p className="mt-1 text-sm text-lab-muted">
-          Эти источники предназначены только для research/calibration после проверки лицензии. Они не являются live forecast source и не могут поднимать Real Forecast Ready.
+          Метаданные считаются через inspector из загруженного CSV/TSV. Row counts и date ranges не хардкодятся и не считаются постоянной истиной.
         </p>
-        <div className="mt-3 grid gap-3 md:grid-cols-3">
-          {[
-            "Kaggle CS:GO Professional Matches",
-            "CS:GO top20 matches datasets",
-            "Historical demo/stat exports"
-          ].map((name) => (
-            <article key={name} className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
-              <h3 className="font-medium text-white">{name}</h3>
+        <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          {Object.values(offlineDatasetProfiles).map((profile) => (
+            <article key={profile.type} className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+              <h3 className="font-medium text-white">{profile.filename}</h3>
+              <p className="mt-2">{profile.description}</p>
               <p className="mt-2">Назначение: training/calibration only.</p>
-              <p className="mt-1 text-lab-amber">License check required. Not live forecast source.</p>
+              <p className="mt-1 text-lab-amber">License check required. Not live forecast source. Cannot raise Real Forecast Ready.</p>
             </article>
           ))}
         </div>

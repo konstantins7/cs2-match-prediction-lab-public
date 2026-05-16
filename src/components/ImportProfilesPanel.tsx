@@ -8,7 +8,7 @@ export function ImportProfilesPanel({ compact = false }: { compact?: boolean }) 
         <div>
           <h2 className="font-semibold text-white">Import profiles</h2>
           <p className="mt-1 text-sm text-lab-muted">
-            0.7.3 принимает prepared JSON через dedicated parsed demo export intake и существующие validated `manual_real` / `parsed_demo` flows. XLSX, SQL и raw .dem parser worker помечены как future/inactive.
+            0.7.4 принимает prepared JSON через dedicated parsed demo export intake и существующие validated `manual_real` / `parsed_demo` flows. XLSX, SQL и raw .dem parser worker помечены как future/inactive.
           </p>
         </div>
         <span className="rounded-full border border-lab-amber/35 bg-lab-amber/10 px-3 py-1 text-xs font-medium text-lab-amber">без новых парсеров</span>

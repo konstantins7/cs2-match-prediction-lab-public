@@ -174,6 +174,15 @@ export function MatchDetailTabs({
           ) : (
             <AnalystSheetImportPanel defaultMatchId={input.match.id} />
           )}
+          <section className="rounded border border-lab-amber/35 bg-lab-panel p-4">
+            <h2 className="font-semibold text-white">Data onboarding guardrails</h2>
+            <p className="mt-2 text-sm text-lab-muted">
+              Первый реальный прогноз всё ещё требует реальные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для этого матча. Kaggle/offline datasets и personal Steam demos помогают training/calibration или demo pipeline, но не заменяют live match evidence.
+            </p>
+            <p className="mt-2 text-sm text-lab-amber">
+              CS Demo Manager полезен для прошлых матчей текущего состава; демка target match после старта не используется как pre-match evidence.
+            </p>
+          </section>
           <DemoStatExportCta />
           <ParsedDemoExportPanel defaultMatchId={input.match.id} />
           <ManualEnrichmentPanel

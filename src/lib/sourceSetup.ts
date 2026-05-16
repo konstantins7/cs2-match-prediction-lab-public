@@ -37,8 +37,12 @@ export function buildSourceSetupChecklist(hasManualHltv = false, hasParsedDemo =
     ["grid", grid?.configured ? "configured" : "missing", "/admin/sources", "Как получить"],
     ["liquipedia", liquipedia?.configured ? "configured" : "missing", "/admin/sources", "Как получить"],
     ["faceit", faceit?.configured ? "configured" : "missing", "/admin/sources", "Как получить"],
+    ["leetify", "future", "/admin/sources#data-onboarding", "Подробнее"],
+    ["cs_demo_manager", "available", "/admin/research-queue", "Загрузить export"],
     ["parsed_demo", hasParsedDemo ? "available" : "missing", "/admin/research-queue?template=parsed_demo", "Загрузить JSON"],
-    ["hltv_manual_top50", hasManualHltv ? "configured" : "missing", "/admin/sources", "Импортировать CSV"]
+    ["hltv_manual_top50", hasManualHltv ? "configured" : "missing", "/admin/sources", "Импортировать CSV"],
+    ["kaggle_csgo_datasets", "future", "/admin/model-lab", "Inspect CSV"],
+    ["thesportsdb", "future", "/admin/sources#data-onboarding", "Подробнее"]
   ] as const;
   const futureRows = ["abios", "gamescorekeeper", "datasportsgroup"].map((id) => [id, "future", "/admin/sources", "Подробнее"] as const);
   return [...rows, ...futureRows].map(([id, status, actionHref, actionLabel]) => {
@@ -71,8 +75,12 @@ function sourceValue(id: string) {
     grid: "Даст official GRID series context через Central Data и Series State; round/player/economy proxy только если Series State реально возвращает эти поля. OA не включает Series Events/File Download/Stats Feed.",
     liquipedia: "Даст составы, турниры, историю, roster changes. Лимит 60 requests/hour.",
     faceit: "Даст player/team context, competitions и FACEIT statistics.",
+    leetify: "Optional player/profile context через explicit steam64_id / Leetify ID, attribution required. Не broad crawl.",
+    cs_demo_manager: "Даст локальный путь demo -> JSON/CSV export -> parsed_demo или analyst sheets для исторических матчей текущего состава.",
     parsed_demo: "Даст player stats, map stats, round/economy, pistol/overtime без платных API.",
     hltv_manual_top50: "Улучшит ranking и Pro Focus. Только manual CSV/JSON, без scraping и без Apify sync.",
+    kaggle_csgo_datasets: "Offline calibration datasets: results/players/picks/economy CSV. Not live forecast source.",
+    thesportsdb: "Low-priority metadata fallback only. Disabled by default; сначала coverage probe.",
     abios: "Trial/future provider. Не используется как основной free source.",
     gamescorekeeper: "Paid/future provider. Не используется как основной free source.",
     datasportsgroup: "Paid/future provider. Не используется как основной free source."

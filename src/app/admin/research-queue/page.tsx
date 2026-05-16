@@ -83,6 +83,18 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         <StatCard label="Нужен ручной ввод" value={summary.requiresManualInput} tone="violet" />
       </section>
 
+      <section className="rounded-2xl border border-lab-amber/35 bg-lab-panel/85 p-4">
+        <h2 className="font-semibold text-white">Что реально нужно для первого прогноза</h2>
+        <p className="mt-1 text-sm text-lab-muted">
+          First real forecast всё ещё требует реальные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для выбранного матча. Kaggle/offline datasets и personal Steam demos помогают calibration/demo pipeline, но не заменяют live match evidence.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <MiniNote title="Kaggle CSV" body="training/calibration only; не поднимает Real Forecast Ready." />
+          <MiniNote title="Steam auth code" body="только personal match history/demo pipeline; не pro forecast source." />
+          <MiniNote title="CS Demo Manager" body="используйте прошлые демки текущего состава, не target post-start demo." />
+        </div>
+      </section>
+
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
         {groups.map((group) => (
           <div key={group.title} className="rounded border border-lab-border bg-lab-panel p-3">
@@ -266,6 +278,15 @@ function taskLabel(value: string) {
     "Connect GRID/Liquipedia": "Подключить GRID/Liquipedia"
   };
   return labels[value] ?? value;
+}
+
+function MiniNote({ title, body }: { title: string; body: string }) {
+  return (
+    <article className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+      <h3 className="font-medium text-white">{title}</h3>
+      <p className="mt-1 text-sm text-lab-muted">{body}</p>
+    </article>
+  );
 }
 
 function buildTaskGroups(rows: Awaited<ReturnType<typeof getResearchQueueRows>>) {

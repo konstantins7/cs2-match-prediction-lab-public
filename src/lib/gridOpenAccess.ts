@@ -104,7 +104,7 @@ function gridHeaders() {
     "Content-Type": "application/json",
     Accept: "application/json",
     "x-api-key": process.env.GRID_API_KEY ?? "",
-    "User-Agent": "CS2MatchPredictionLab/0.7.3 local research analytics"
+    "User-Agent": "CS2MatchPredictionLab/0.7.4 local research analytics"
   };
 }
 

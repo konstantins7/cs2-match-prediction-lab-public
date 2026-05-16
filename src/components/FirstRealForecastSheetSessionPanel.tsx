@@ -21,10 +21,13 @@ export function FirstRealForecastSheetSessionPanel({ session, compact = false }:
     <section id="first-real-forecast-sheet-session" className={compact ? "rounded border border-lab-green/35 bg-lab-panel p-4" : "rounded-2xl border border-lab-green/35 bg-lab-panel/90 p-5 shadow-[0_0_32px_rgba(34,197,94,0.08)]"}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-lab-green">MVP 0.7.3</p>
+          <p className="text-xs uppercase tracking-wide text-lab-green">MVP 0.7.4</p>
           <h2 className="mt-1 text-lg font-semibold text-white">Собрать первый реальный прогноз из analyst sheets</h2>
           <p className="mt-1 max-w-3xl text-sm text-lab-muted">
             Target: {firstRealForecastTarget.matchId} · {firstRealForecastTarget.teamAName} vs {firstRealForecastTarget.teamBName}. Apply разрешён только после valid real CSV/TSV.
+          </p>
+          <p className="mt-2 max-w-3xl text-sm text-lab-amber">
+            Kaggle/offline datasets и personal Steam demos не заменяют live match evidence: нужны реальные roster/player/map/veto sheets для выбранного матча.
           </p>
         </div>
         <span className={session.targetValid ? "rounded-full border border-lab-green/45 bg-lab-green/10 px-3 py-1 text-xs font-medium text-lab-green" : "rounded-full border border-lab-red/45 bg-lab-red/10 px-3 py-1 text-xs font-medium text-lab-red"}>

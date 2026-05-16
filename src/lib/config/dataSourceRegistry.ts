@@ -181,10 +181,10 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "api_with_attribution",
     priority: 11,
     status: "optional",
-    userActionRequired: "Использовать только explicit player/profile context и указать attribution.",
-    setupInstructions: "Placeholder only: пользователь подтверждает профиль/ID, приложение не делает broad crawl.",
-    limitations: "Требует attribution, зависит от публичности профиля/privacy, не Tier-1 pro source.",
-    forbiddenActions: ["broad crawl", "automatic sync", "privacy bypass", "using without attribution"]
+    userActionRequired: "Создать key на https://leetify.com/app/developer и использовать только explicit steam64_id / Leetify ID context.",
+    setupInstructions: "Base URL: https://api-public.cs-prod.leetify.com. Key хранится только в .env; validate через /api-key/validate; header guidance: _leetify_key или Authorization header server-side.",
+    limitations: "Требует attribution, зависит от публичности профиля/privacy, optional context only, не Tier-1 pro source и не live forecast source сам по себе.",
+    forbiddenActions: ["broad crawl", "nickname search", "automatic sync", "privacy bypass", "using without attribution", "logging API keys"]
   },
   {
     id: "cs_demo_manager",
@@ -194,10 +194,10 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "user_export_upload",
     priority: 12,
     status: "optional",
-    userActionRequired: "Экспортировать JSON из внешнего инструмента и загрузить через JSON-first profile.",
-    setupInstructions: "Текущий MVP принимает JSON-инструкции через manual_real/parsed_demo intake; XLSX/SQL parser позже.",
-    limitations: "Нет внешнего API key; XLSX/SQL import future/inactive.",
-    forbiddenActions: ["direct DB import", "SQL parser in current MVP", "XLSX parser in current MVP"]
+    userActionRequired: "Анализировать исторические демки текущего состава, экспортировать JSON/CSV и загрузить через Parsed Demo Export Intake или CSV/TSV Analyst Sheet Import.",
+    setupInstructions: "Используйте исторические демки прошлых матчей команд/игроков: экспортируйте JSON/CSV и грузите через существующий intake. Демка target match после старта не является pre-match evidence.",
+    limitations: "Нет внешнего API key; XLSX/SQL/raw .dem parser в приложении future/inactive.",
+    forbiddenActions: ["direct DB import", "target post-start demo as pre-match evidence", "SQL parser in current MVP", "XLSX parser in current MVP"]
   },
   {
     id: "awpy",
@@ -222,7 +222,7 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     status: "optional",
     userActionRequired: "Сформировать normalized JSON из локального parser output.",
     setupInstructions: "Instruction profile only; JSON-first mapping в существующий parsed_demo/manual_real flow.",
-    limitations: "Raw .dem parser worker не входит в 0.7.3.",
+    limitations: "Raw .dem parser worker не входит в 0.7.4.",
     forbiddenActions: ["bundled raw .dem parsing", "automatic demo crawl"]
   },
   {
@@ -246,10 +246,10 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "api",
     priority: 30,
     status: "future",
-    userActionRequired: "Проверить CS2 coverage через capability probe до любого использования.",
-    setupInstructions: "Low-priority fallback, не live/deep match source.",
-    limitations: "Требуется capability probe; CS2 coverage может отсутствовать.",
-    forbiddenActions: ["auto-run without capability confirmation", "treating as pro/deep source"],
+    userActionRequired: "Добавить THESPORTSDB_API_KEY в local .env при необходимости и включать probe вручную; ENABLE_THESPORTSDB_SYNC=false по умолчанию.",
+    setupInstructions: "Low-priority metadata fallback only: проверить, есть ли CS2/Counter-Strike coverage, прежде чем показывать teams/events.",
+    limitations: "Не даёт player stats, map/veto, round/economy или pro/deep CS2 evidence; не влияет на readiness.",
+    forbiddenActions: ["auto-run without capability confirmation", "player stats", "map/veto stats", "round/economy stats", "treating as pro/deep source", "Real Forecast Ready impact"],
     advancedOnly: true
   },
   {
@@ -288,10 +288,10 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "license_check_required",
     priority: 40,
     status: "future",
-    userActionRequired: "Проверить license и использовать только offline training/calibration.",
-    setupInstructions: "Offline research dataset, not live forecast source.",
-    limitations: "License check required; нельзя использовать как live evidence.",
-    forbiddenActions: ["live forecast source", "training export without license check", "post-match leakage"],
+    userActionRequired: "Загрузить results.csv / players.csv / picks.csv / economy.csv в Model Lab inspector и проверить license перед training/calibration.",
+    setupInstructions: "Inspect-only metadata: rows, columns, date range, top maps, top teams/events и warnings считаются динамически из CSV.",
+    limitations: "Training/calibration only; not live forecast source; cannot raise Real Forecast Ready.",
+    forbiddenActions: ["live forecast source", "live Match/Team/Player records", "Real Forecast Ready impact", "training export without license check", "post-match leakage"],
     advancedOnly: true
   },
   {

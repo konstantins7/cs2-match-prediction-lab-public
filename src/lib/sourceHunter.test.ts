@@ -4,7 +4,7 @@ import { dataSourceRegistry } from "./config/dataSourceRegistry";
 import { getImportProfiles } from "./importProfiles";
 import { getSourceHunterRecommendations } from "./sourceHunter";
 
-describe("MVP 0.7.3 Source Hunter and JSON-first profiles", () => {
+describe("MVP 0.7.4 Source Hunter and onboarding profiles", () => {
   it("registers new free/optional/future sources with legal modes and statuses", () => {
     const byId = new Map(dataSourceRegistry.map((source) => [source.id, source]));
     expect(byId.get("leetify")).toMatchObject({ accessType: "public_api", legalMode: "api_with_attribution", status: "optional" });
@@ -80,6 +80,7 @@ describe("MVP 0.7.3 Source Hunter and JSON-first profiles", () => {
     const researchQueue = readFileSync("src/app/admin/research-queue/page.tsx", "utf8");
     const matchDetail = readFileSync("src/components/MatchDetailTabs.tsx", "utf8");
     const modelLab = readFileSync("src/app/admin/model-lab/page.tsx", "utf8");
+    const offlineInspector = readFileSync("src/components/OfflineDatasetInspectorPanel.tsx", "utf8");
     expect(sourcesPage).toContain("SourceHunterPanel");
     expect(sourcesPage).toContain("ImportProfilesPanel");
     expect(sourceHunter).toContain("Где взять недостающие данные");
@@ -87,8 +88,9 @@ describe("MVP 0.7.3 Source Hunter and JSON-first profiles", () => {
     expect(importProfiles).toContain("Future/inactive parsers");
     expect(researchQueue).toContain("SourceHunterPanel compact");
     expect(matchDetail).toContain("DemoStatExportCta");
-    expect(modelLab).toContain("Offline research datasets");
-    expect(modelLab).toContain("training/calibration only");
-    expect(modelLab).toContain("Not live forecast source");
+    expect(offlineInspector).toContain("Offline calibration datasets");
+    expect(modelLab).toContain("OfflineDatasetInspectorPanel");
+    expect(`${modelLab}\n${offlineInspector}`).toContain("training/calibration only");
+    expect(`${modelLab}\n${offlineInspector}`).toContain("Not live forecast source");
   });
 });
