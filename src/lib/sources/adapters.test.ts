@@ -35,7 +35,7 @@ describe("source adapters", () => {
 
   it("redacts API key-like values from strings and objects", () => {
     expect(redactString("PANDASCORE_API_KEY=super-secret-value")).not.toContain("super-secret-value");
-    expect(redactSecrets({ authorization: "Bearer super-secret-value" })).toEqual({ authorization: "[REDACTED]" });
+    expect(redactSecrets({ authorization: "Bearer demo" })).toEqual({ authorization: "[REDACTED]" });
   });
 
   it("uses the legacy /csgo prefix for PandaScore CS2 free fixtures", async () => {

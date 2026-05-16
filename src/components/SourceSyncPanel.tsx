@@ -18,6 +18,7 @@ const actions: Action[] = [
   { label: "Sync PandaScore Free Fixtures", action: "pandascore_free", requiredSource: "pandascore" },
   { label: "Sync Valve Rankings", source: "valve-rankings", jobType: "valve_rankings", requiredSource: "valve-rankings" },
   { label: "Sync Steam/CS Updates", source: "cs-updates", jobType: "game_meta_updates", requiredSource: "cs-updates" },
+  { label: "Sync GRID Central Data OA", action: "grid_oa_sync_central_data", requiredSource: "grid" },
   { label: "Run All Free Sync", action: "run_all" },
   { label: "Rebuild Snapshots", action: "rebuild_snapshots" },
   { label: "Build basic form snapshots", action: "build_basic_form_snapshots" },

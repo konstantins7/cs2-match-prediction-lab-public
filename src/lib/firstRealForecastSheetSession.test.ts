@@ -8,7 +8,7 @@ import {
   firstRealForecastTarget
 } from "./firstRealForecastSheetSession";
 
-describe("MVP 0.7.2 first real forecast from analyst sheets", () => {
+describe("MVP 0.7.3 first real forecast from analyst sheets", () => {
   it("accepts the confirmed Evo Novo vs WAZABI future/upcoming target", () => {
     const result = evaluateFirstRealForecastTarget({
       id: firstRealForecastTarget.matchId,

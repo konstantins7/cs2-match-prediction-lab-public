@@ -68,7 +68,7 @@ export function isNoExtraApiMode(items: SourceSetupItem[]) {
 function sourceValue(id: string) {
   const values: Record<string, string> = {
     pandascore: "Даст расписание, команды, турниры и basic results.",
-    grid: "Даст CS2 official data и round/player/economy данные, если доступ одобрен. Лучший источник для deep telemetry.",
+    grid: "Даст official GRID series context через Central Data и Series State; round/player/economy proxy только если Series State реально возвращает эти поля. OA не включает Series Events/File Download/Stats Feed.",
     liquipedia: "Даст составы, турниры, историю, roster changes. Лимит 60 requests/hour.",
     faceit: "Даст player/team context, competitions и FACEIT statistics.",
     parsed_demo: "Даст player stats, map stats, round/economy, pistol/overtime без платных API.",

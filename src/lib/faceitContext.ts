@@ -214,7 +214,7 @@ function authHeaders() {
   return {
     Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
     Accept: "application/json",
-    "User-Agent": "CS2MatchPredictionLab/0.7.2 local research analytics"
+    "User-Agent": "CS2MatchPredictionLab/0.7.3 local research analytics"
   };
 }
 

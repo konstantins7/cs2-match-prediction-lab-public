@@ -90,10 +90,10 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     legalMode: "api",
     priority: 4,
     status: "optional",
-    userActionRequired: "Подать заявку на доступ и добавить GRID_API_KEY в .env.",
-    setupInstructions: "Лучший источник для deep telemetry, если доступ одобрен.",
-    limitations: "Без подтверждённых capabilities deep telemetry остаётся pending/future.",
-    forbiddenActions: ["scraping", "logging API keys", "calling unconfirmed paid/deep endpoints"]
+    userActionRequired: "Добавить GRID_API_KEY только в local .env и запускать capability probe / selected-match sync вручную.",
+    setupInstructions: "Open Access использует только Central Data и Series State. Match mapping может потребовать ручной gridSeriesId.",
+    limitations: "Series Events API, File Download API и Stats Feed недоступны на Open Access; GRID не заменяет map/veto gates сам по себе.",
+    forbiddenActions: ["scraping", "logging API keys", "calling Series Events API", "calling File Download API", "calling Stats Feed", "calling unconfirmed paid/deep endpoints"]
   },
   {
     id: "liquipedia",
@@ -222,7 +222,7 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     status: "optional",
     userActionRequired: "Сформировать normalized JSON из локального parser output.",
     setupInstructions: "Instruction profile only; JSON-first mapping в существующий parsed_demo/manual_real flow.",
-    limitations: "Raw .dem parser worker не входит в 0.7.2.",
+    limitations: "Raw .dem parser worker не входит в 0.7.3.",
     forbiddenActions: ["bundled raw .dem parsing", "automatic demo crawl"]
   },
   {

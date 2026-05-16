@@ -95,6 +95,34 @@ function inputCoverage(input: PredictionInput | undefined, dataType: SourceDataT
       };
     }
   }
+  if (source === "GRID") {
+    const gridRecords = [...input.playerStatsA, ...input.playerStatsB, ...input.mapStatsA, ...input.mapStatsB, ...input.vetoPatternsA, ...input.vetoPatternsB, ...input.h2h].filter((record) => hasMode(record.source, source));
+    if (dataType === "fixture") {
+      const available = input.manualSourceRecords?.some((record) => record.source === "grid" && record.entityType === "grid_series") ?? false;
+      return {
+        available,
+        used: false,
+        quality: available ? 0.46 : 0,
+        note: available ? "GRID Central Data series context present; fixture still uses canonical match source." : "GRID series context missing."
+      };
+    }
+    if (dataType === "player_stats") {
+      const available = [...input.playerStatsA, ...input.playerStatsB].some((record) => hasMode(record.source, source));
+      return { available, used: available, quality: available ? 0.58 : 0, note: available ? "GRID Series State player kills/deaths present and cutoff-safe." : "GRID player context missing or not cutoff-safe." };
+    }
+    if (dataType === "map_stats") {
+      const available = [...input.mapStatsA, ...input.mapStatsB].some((record) => hasMode(record.source, source));
+      return { available, used: available, quality: available ? 0.58 : 0, note: available ? "GRID map/game fields present." : "GRID OA map/game fields not present." };
+    }
+    if (dataType === "h2h" || dataType === "veto") {
+      const available = gridRecords.length > 0 && dataType === "h2h";
+      return { available, used: available, quality: available ? 0.45 : 0, note: available ? "GRID scoped context present." : "GRID OA does not replace missing map/veto history by itself." };
+    }
+    if (dataType === "round_economy") {
+      const available = input.teamFormA?.source === "grid" || input.teamFormB?.source === "grid";
+      return { available, used: available, quality: available ? 0.52 : 0, note: available ? "GRID Series State team score/kills/deaths proxy present." : "GRID Series State round/economy proxy not available." };
+    }
+  }
   if (dataType === "fixture") {
     const used = source === "PandaScore" && input.match.sourceMode === "pandascore_free";
     return {
@@ -151,7 +179,19 @@ function inputCoverage(input: PredictionInput | undefined, dataType: SourceDataT
 
 function fallbackCell(source: CoverageSource, sourceStatus: SourceStatus | undefined, dataType: SourceDataType): SourceCoverageCell {
   const priority = sourcePriorityByDataType[dataType].some((entry) => sourceModeByCoverageSource[source].includes(entry.sourceMode) || sourceModeByCoverageSource[source].includes(entry.source));
-  if (source === "GRID") return { source, status: "future", lastSync: latestSync(sourceStatus), quality: 0, usedInPrediction: false, note: "Requires GRID access; expected source for detailed telemetry." };
+  if (source === "GRID") {
+    const configured = Boolean(sourceStatus?.configured);
+    return {
+      source,
+      status: configured ? "partial" : "requires_key",
+      lastSync: latestSync(sourceStatus),
+      quality: 0,
+      usedInPrediction: false,
+      note: configured
+        ? "GRID Open Access configured: Central Data / Series State only; Series Events, File Download and Stats Feed unavailable on OA."
+        : "GRID Open Access requires local GRID_API_KEY and ENABLE_GRID_SYNC=true."
+    };
+  }
   if (source === "Liquipedia" && !sourceStatus?.enabled) return { source, status: "requires_key", lastSync: latestSync(sourceStatus), quality: 0, usedInPrediction: false, note: "LiquipediaDB requires access; MediaWiki API is limited and rate-limited." };
   if (source === "FACEIT" && !sourceStatus?.enabled) return { source, status: "requires_key", lastSync: latestSync(sourceStatus), quality: 0, usedInPrediction: false, note: "Optional FACEIT API source." };
   return { source, status: priority ? "partial" : "missing", lastSync: latestSync(sourceStatus), quality: 0, usedInPrediction: false, note: priority ? "Potential source for this data type." : "Not priority source." };

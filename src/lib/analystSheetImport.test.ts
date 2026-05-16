@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { analystSheetTemplates, buildAnalystSheetTemplate } from "./analystSheetTemplates";
 import { detectDelimiter, normalizeMapName, parseDelimitedRows } from "./analystSheetImport";
 
-describe("MVP 0.7.2 CSV/TSV analyst sheet import", () => {
+describe("MVP 0.7.3 CSV/TSV analyst sheet import", () => {
   it("parses comma CSV, semicolon CSV, TSV, BOM, quoted values and ignores empty lines", () => {
     const comma = parseDelimitedRows("\uFEFFmatchId,teamName,nickname\nm1,\"Team, A\",player_one\n\n");
     expect(comma.delimiter).toBe(",");

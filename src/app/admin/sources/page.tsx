@@ -47,6 +47,7 @@ export default async function SourcesPage() {
   const sourceSetup = buildSourceSetupChecklist(coverage.hltvManualMatchedTeams > 0, dataStatus.teamsWithPlayerRoster > 0 || dataStatus.matchesEnoughForBasicPrediction > 0);
   const noExtraApiMode = isNoExtraApiMode(sourceSetup);
   const faceitStatus = statuses.find((status) => status.source === "faceit");
+  const gridStatus = statuses.find((status) => status.source === "grid");
   const sourceCards = buildProviderCards(sourceSetup, statuses);
   const sourceNextActions = buildSourceNextActions(sourceSetup, statuses);
 
@@ -146,6 +147,42 @@ export default async function SourcesPage() {
       </details>
 
       <ProviderCapabilityProbePanel />
+
+      <section id="grid-open-access" className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-white">GRID Open Access</h2>
+            <p className="mt-1 text-sm text-lab-muted">
+              GRID используется как официальный optional provider: сначала capability probe, затем Central Data sync, затем Series State только по known series id. Unsupported APIs не вызываются.
+            </p>
+          </div>
+          <a href="#provider-capability-probe" className="rounded border border-lab-cyan/50 px-3 py-2 text-sm text-lab-cyan hover:bg-lab-cyan/10">Проверить GRID</a>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-3">
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Подключение</p>
+            <p>ключ добавлен: {gridStatus?.configured ? "да" : "нет"}</p>
+            <p>синхронизация включена: {gridStatus?.enabled ? "да" : "нет"}</p>
+            <p>статус: {sourceStatusLabel(gridStatus?.status ?? "idle")}</p>
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Open Access endpoints</p>
+            <p>Central Data: {gridStatus?.enabled ? "доступно после probe" : "нет"}</p>
+            <p>Series State: pending до known series id</p>
+            <p>last sync: {gridStatus?.lastSyncedAt ?? "ещё не запускался"}</p>
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+            <p className="text-white">Недоступно на OA</p>
+            <p>Series Events unavailable on OA</p>
+            <p>File Download unavailable on OA</p>
+            <p>Stats Feed unavailable on OA</p>
+          </div>
+        </div>
+        <div className="mt-3 rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+          <p>записей получено: <span className="text-white">{gridStatus?.recordsFetched ?? 0}</span> · создано/обновлено: <span className="text-white">{gridStatus?.recordsCreated ?? 0}/{gridStatus?.recordsUpdated ?? 0}</span> · нужно проверить: <span className="text-white">{gridStatus?.needsReviewCount ?? 0}</span></p>
+          <p className="mt-2 text-lab-amber">GRID данные могут поднять coverage/depth, но Real Forecast Ready всё равно требует existing gates, достаточный sample, map/veto или deep substitutes, no leakage и no critical needs_review.</p>
+        </div>
+      </section>
 
       <section id="faceit-context" className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
         <h2 className="font-semibold text-white">FACEIT Context Enrichment</h2>
@@ -383,10 +420,10 @@ function buildSourceNextActions(sourceSetup: ReturnType<typeof buildSourceSetupC
     },
     {
       title: "GRID",
-      status: grid?.configured ? "Ключ добавлен; глубокая статистика не подтверждена" : "Не подключено",
-      description: "Если доступ расширится, GRID может дать round/player/economy слой. Сейчас нужно проверить реальные возможности доступа.",
+      status: grid?.configured ? "Ключ добавлен; OA endpoints нужно проверить" : "Не подключено",
+      description: "GRID Open Access даёт Central Data и Series State. Series Events, File Download и Stats Feed недоступны на OA.",
       actionLabel: "Проверить GRID",
-      href: "#provider-capability-probe"
+      href: "#grid-open-access"
     },
     {
       title: "Manual HLTV Top 50",
@@ -419,7 +456,7 @@ function buildProviderCards(sourceSetup: ReturnType<typeof buildSourceSetupCheck
     row("pandascore", "PandaScore", "Матчи, команды, турниры и basic results.", "Deep stats недоступны на free/basic plan.", "Добавить API key в .env.", "Fixture/basic only."),
     row("valve", "Valve", "Рейтинги, top-100 signal и roster hints.", "Не даёт player/map/veto deep layer.", "Использовать public rankings.", "Ranking source only."),
     row("steam", "Steam", "CS2 patch/meta context.", "Не даёт match telemetry.", "Оставить public updates enabled.", "Patch/meta only."),
-    row("grid", "GRID", "Потенциально round/player/economy telemetry.", "Глубокая статистика пока не подтверждена / требует доступа.", "Запросить Open Access.", "Только подтверждённые endpoints."),
+    row("grid", "GRID", "Official series context через Central Data и Series State.", "Series Events, File Download и Stats Feed недоступны на Open Access.", "Проверить Open Access capabilities.", "Только подтверждённые OA endpoints; known series id required."),
     row("liquipedia", "LiquipediaDB", "Составы, турниры, история, roster changes.", "Нужен approved API access.", "Запросить key.", "Rate limits and approved access."),
     row("faceit", "FACEIT", "Optional player/team/competition context.", "Не заменяет map/veto/deep telemetry.", "Добавить manual FACEIT IDs.", "Нужны явные IDs/context; массовый FACEIT crawl отключён."),
     row("parsed_demo", "Parsed Demo", "Player/map/round/economy stats без платных API.", ".dem parser worker пока не включён.", "Загрузить parsed_demo JSON.", "Только validated local JSON."),

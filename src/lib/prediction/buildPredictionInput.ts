@@ -33,7 +33,7 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
   const weights = { ...defaultWeights, ...(await getDefaultModelWeights()), ...modelWeights };
   const cutoff = new Date(match.startTime);
   const preMatchRoles = ["pre_match_evidence", "historical_team_form"];
-  const safeRealEvidenceWhere = (source: "manual_enrichment" | "parsed_demo") => ({
+  const safeRealEvidenceWhere = (source: "manual_enrichment" | "parsed_demo" | "grid") => ({
     source,
     matchId: match.id,
     isActive: true,
@@ -52,22 +52,28 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     prisma.teamMapStat.count({ where: safeRealEvidenceWhere("parsed_demo") }),
     prisma.vetoPattern.count({ where: safeRealEvidenceWhere("parsed_demo") }),
     prisma.teamFormSnapshot.count({ where: safeRealEvidenceWhere("parsed_demo") }),
-    prisma.player.count({ where: { sourceMode: "parsed_demo", matchId: match.id, isActive: true } })
+    prisma.player.count({ where: { sourceMode: "parsed_demo", matchId: match.id, isActive: true } }),
+    prisma.playerStatSnapshot.count({ where: safeRealEvidenceWhere("grid") }),
+    prisma.teamMapStat.count({ where: safeRealEvidenceWhere("grid") }),
+    prisma.vetoPattern.count({ where: safeRealEvidenceWhere("grid") }),
+    prisma.teamFormSnapshot.count({ where: safeRealEvidenceWhere("grid") })
   ]);
   const hasRealEvidenceForMatch = realEvidenceCounts.some((count) => count > 0);
   const scopedForecastWhere = hasRealEvidenceForMatch
     ? {
         OR: [
-          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo", "grid"] } },
           safeRealEvidenceWhere("manual_enrichment"),
-          safeRealEvidenceWhere("parsed_demo")
+          safeRealEvidenceWhere("parsed_demo"),
+          safeRealEvidenceWhere("grid")
         ]
       }
     : {
         OR: [
-          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo", "grid"] } },
           safeRealEvidenceWhere("manual_enrichment"),
           safeRealEvidenceWhere("parsed_demo"),
+          safeRealEvidenceWhere("grid"),
           { source: "analyst_sample", matchId: match.id, isActive: true }
         ]
       };
@@ -92,14 +98,16 @@ export async function buildPredictionInput(matchId: string, modelWeights?: Parti
     isActive: true,
     OR: hasRealEvidenceForMatch
       ? [
-          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
-          safeRealEvidenceWhere("manual_enrichment"),
-          safeRealEvidenceWhere("parsed_demo")
-        ]
-      : [
-          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo"] } },
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo", "grid"] } },
           safeRealEvidenceWhere("manual_enrichment"),
           safeRealEvidenceWhere("parsed_demo"),
+          safeRealEvidenceWhere("grid")
+        ]
+      : [
+          { source: { notIn: ["analyst_sample", "manual_enrichment", "parsed_demo", "grid"] } },
+          safeRealEvidenceWhere("manual_enrichment"),
+          safeRealEvidenceWhere("parsed_demo"),
+          safeRealEvidenceWhere("grid"),
           { source: "analyst_sample", matchId: match.id, isActive: true }
         ]
   });

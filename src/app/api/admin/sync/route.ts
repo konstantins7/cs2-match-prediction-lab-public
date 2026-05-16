@@ -13,6 +13,7 @@ import { confirmRankMatch, rejectRankMatch } from "@/lib/data/rankMatching";
 import { prepareMatchForecast, runForecastAutopilot, runOneClickGlobalRefresh } from "@/lib/autoResearch";
 import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
 import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
+import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -23,6 +24,9 @@ type SyncRequest = {
   jobType?: SourceJobType;
   payload?: string;
   matchId?: string;
+  gridSeriesId?: string;
+  from?: string;
+  to?: string;
   mode?: ForecastAutopilotMode;
 };
 
@@ -49,6 +53,23 @@ export async function POST(request: Request) {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
       const result = await enrichFaceitContextForMatch(body.matchId);
       return NextResponse.json({ ok: result.errors.length === 0 || result.recordsFetched > 0 || result.candidatesNeedingReview > 0, result });
+    }
+    if (body.action === "grid_oa_sync_central_data") {
+      const result = await syncGridCentralData({ from: body.from, to: body.to });
+      return NextResponse.json({ ok: result.ok || result.recordsFetched > 0, result });
+    }
+    if (body.action === "grid_oa_manual_series_mapping") {
+      const result = await importGridManualSeriesMapping(body.matchId, body.gridSeriesId);
+      return NextResponse.json({ ok: result.ok, result }, { status: result.ok ? 200 : 400 });
+    }
+    if (body.action === "grid_oa_enrich_match") {
+      if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
+      const result = await enrichGridOpenAccessMatch(body.matchId);
+      if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
+        await rebuildSnapshots();
+        await runPredictionsForUpcomingMatches();
+      }
+      return NextResponse.json({ ok: result.errors.length === 0 || result.recordsFetched > 0, result });
     }
     if (body.action === "prepare_match") {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });

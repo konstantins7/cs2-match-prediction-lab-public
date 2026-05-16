@@ -1,6 +1,7 @@
 import { resultFromRecords } from "./adapterUtils";
 import type { SourceAdapter } from "./types";
 import { buildSourceStatus, disabledResult, envFlag, envPresent, failedResult, SOURCE_PRIORITY } from "./types";
+import { GRID_UNSUPPORTED_OPEN_ACCESS_PRODUCTS } from "../gridOpenAccess";
 
 const source = "grid" as const;
 const capabilities = ["matches", "players", "results", "detailed-stats"] as const;
@@ -23,8 +24,11 @@ export const gridAdapter: SourceAdapter = {
       requiredEnv,
       enabled,
       configured,
-      message: configured ? "GRID key is present. Open Access endpoint mapping is access-dependent; expected for round/player/economy telemetry." : "Not configured: set GRID_API_KEY and ENABLE_GRID_SYNC=true.",
-      endpointsAvailable: ["round data", "player data", "economy events", "map stats", "live/historical telemetry"]
+      message: configured
+        ? "GRID Open Access key configured. Central Data / Series State are available only through explicit probe/sync actions; unsupported products are not called."
+        : "Not configured: set GRID_API_KEY and ENABLE_GRID_SYNC=true.",
+      endpointsAvailable: configured ? ["Central Data API", "Series State API requires known series id"] : [],
+      endpointsBlocked: GRID_UNSUPPORTED_OPEN_ACCESS_PRODUCTS.map((name) => `${name} unavailable on Open Access`)
     });
   },
   async sync(context) {
@@ -38,7 +42,7 @@ export const gridAdapter: SourceAdapter = {
       jobType: context.jobType,
       records: [],
       status: "partial",
-      notes: "GRID adapter is configured but MVP 0.7.2 keeps endpoint-specific detailed ingestion behind confirmed capability/access mapping."
+      notes: "Use explicit GRID Open Access actions: capability probe, Central Data sync, or selected-match Series State enrichment."
     });
   }
 };

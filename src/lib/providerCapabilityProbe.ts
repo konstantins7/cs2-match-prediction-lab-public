@@ -1,8 +1,10 @@
 import { prisma } from "./prisma";
+import { GRID_UNSUPPORTED_OPEN_ACCESS_PRODUCTS, probeGridOpenAccess } from "./gridOpenAccess";
 import { redactSecrets, safeJson } from "./security/redaction";
 import { sourceAdapters } from "./sources";
 import { envFlag, envPresent, type SourceName } from "./sources/types";
 
+// GRID Open Access unsupported products: Series Events API, File Download API, Stats Feed.
 export type ProviderCapability = {
   source: SourceName | "parsed-demo";
   label: string;
@@ -61,7 +63,7 @@ function baseCapability(source: SourceName, unlocked: string[], blocked: string[
   };
 }
 
-async function faceitCapability(): Promise<ProviderCapability> {
+async function faceitCapability(fetchImpl: typeof fetch = fetch): Promise<ProviderCapability> {
   const configured = envPresent("FACEIT_API_KEY");
   const enabled = configured && envFlag("ENABLE_FACEIT_SYNC");
   const status = adapterStatus("faceit");
@@ -96,11 +98,11 @@ async function faceitCapability(): Promise<ProviderCapability> {
   }
 
   try {
-    const response = await fetch("https://open.faceit.com/data/v4/championships?game=cs2&type=upcoming&limit=1", {
+    const response = await fetchImpl("https://open.faceit.com/data/v4/championships?game=cs2&type=upcoming&limit=1", {
       headers: {
         Authorization: `Bearer ${process.env.FACEIT_API_KEY ?? ""}`,
         Accept: "application/json",
-        "User-Agent": "CS2MatchPredictionLab/0.7.2 local research analytics"
+        "User-Agent": "CS2MatchPredictionLab/0.7.3 local research analytics"
       }
     });
     if (!response.ok) {
@@ -137,23 +139,50 @@ async function faceitCapability(): Promise<ProviderCapability> {
   }
 }
 
-export async function probeProviderCapabilities(): Promise<ProviderCapabilityProbeResult> {
+async function gridCapability(fetchImpl: typeof fetch = fetch): Promise<ProviderCapability> {
+  const status = adapterStatus("grid");
   const checkedAt = new Date().toISOString();
-  const [rankingDate, steamDate, hasParsedDemo, faceit] = await Promise.all([latestRankingDate(), latestSteamDate(), parsedDemoAvailable(), faceitCapability()]);
+  const probe = await probeGridOpenAccess(fetchImpl);
+  const blocked = [
+    ...GRID_UNSUPPORTED_OPEN_ACCESS_PRODUCTS.map((name) => `${name} unavailable on Open Access`),
+    ...(probe.seriesStateReachable === "pending" ? ["Series State pending until a known series id is available"] : []),
+    ...probe.errors
+  ];
+  return {
+    source: "grid",
+    label: status?.label ?? "GRID Open Access",
+    configured: probe.configured,
+    enabled: probe.enabled,
+    reachable: probe.centralDataReachable || probe.seriesStateReachable === true,
+    unlocked: [
+      ...(probe.centralDataReachable ? [`Central Data reachable`, `allSeries fetched: ${probe.allSeriesFetchedCount}`] : []),
+      ...(probe.seriesStateReachable === true ? ["Series State reachable"] : []),
+      ...(probe.sampleSeriesId ? [`sample series id available`] : [])
+    ],
+    blocked,
+    requiresKey: true,
+    friendlyMessage: probe.enabled
+      ? probe.centralDataReachable
+        ? probe.seriesStateReachable === true
+          ? "GRID Open Access подключён. Доступны Central Data / Series State. Deep events/file download/stats feed недоступны на OA."
+          : "GRID Open Access подключён. Central Data доступен; Series State пока не проверен без known series id. Deep events/file download/stats feed недоступны на OA."
+        : "GRID key настроен, но Central Data пока недоступен или вернул ошибку."
+      : probe.configured
+        ? "GRID key настроен, но ENABLE_GRID_SYNC=false."
+        : "GRID не подключён. Добавьте API key в .env.",
+    checkedAt,
+    rateLimit: status?.rateLimitRemaining === null || status?.rateLimitRemaining === undefined ? undefined : `${status.rateLimitRemaining} remaining`
+  };
+}
+
+export async function probeProviderCapabilities(fetchImpl: typeof fetch = fetch): Promise<ProviderCapabilityProbeResult> {
+  const checkedAt = new Date().toISOString();
+  const [rankingDate, steamDate, hasParsedDemo, faceit, grid] = await Promise.all([latestRankingDate(), latestSteamDate(), parsedDemoAvailable(), faceitCapability(fetchImpl), gridCapability(fetchImpl)]);
   const providers: ProviderCapability[] = [
     baseCapability("pandascore", ["fixtures", "teams", "players", "tournaments"], ["deep endpoints blocked/paid"], "PandaScore Free даёт fixture/basic context; deep stats недоступны на текущем тарифе."),
     baseCapability("valve-rankings", ["rankings available", "roster hints available", `latest ranking date: ${rankingDate}`], [], "Valve rankings доступны как ranking source и roster hints."),
     baseCapability("cs-updates", ["CS updates available", `latest patch/news date: ${steamDate}`], [], "Steam/CS Updates дают patch/meta context."),
-    baseCapability(
-      "grid",
-      envPresent("GRID_API_KEY") ? ["key configured", "capability probe available"] : [],
-      envPresent("GRID_API_KEY")
-        ? ["Central Data not confirmed", "Series State not confirmed", "File Download not confirmed", "Series Events not confirmed", "deep telemetry pending access confirmation"]
-        : ["GRID key missing", "Central Data unavailable", "Series State unavailable", "File Download unavailable", "Series Events unavailable"],
-      envPresent("GRID_API_KEY")
-        ? "GRID подключён, но deep telemetry недоступна/не подтверждена на текущем доступе."
-        : "GRID не подключён. Добавьте API key в .env."
-    ),
+    grid,
     baseCapability("liquipedia", envPresent("LIQUIPEDIA_API_KEY") ? ["roster capability", "tournament capability", "roster changes capability", "60 requests/hour guard"] : [], envPresent("LIQUIPEDIA_API_KEY") ? [] : ["LiquipediaDB key missing"], envPresent("LIQUIPEDIA_API_KEY") ? "LiquipediaDB доступ настроен с лимитом 60 requests/hour." : "LiquipediaDB не подключён. Можно запросить approved API access."),
     faceit,
     {
