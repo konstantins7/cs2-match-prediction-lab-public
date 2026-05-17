@@ -53,9 +53,9 @@ export async function completeAnalysisJob(params: {
         stepKey: step.id,
         status: step.status,
         explanation: step.explanation,
-        recordsFound: step.status === "success" ? 1 : 0,
+        recordsFound: step.recordsFound ?? (step.status === "success" ? 1 : 0),
         blockerCode: step.status === "missing" || step.status === "blocked" ? step.id : null,
-        sourceUsed: step.id
+        sourceUsed: step.sourceUsed ?? step.id
       }))
     }),
     prisma.analysisJob.update({

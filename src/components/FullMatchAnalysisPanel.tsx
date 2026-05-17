@@ -108,6 +108,16 @@ function AnalysisResult({ result }: { result: FullMatchAnalysisResult }) {
                 <span className={statusClass(step.status)}>{statusLabel(step.status)}</span>
               </div>
               <p className="mt-1 text-sm text-lab-muted">{step.explanation}</p>
+              {step.connectorResults?.length ? (
+                <ul className="mt-2 space-y-1 text-xs text-lab-muted">
+                  {step.connectorResults.slice(0, 4).map((connector) => (
+                    <li key={`${step.id}-${connector.connectorId}`}>
+                      {connector.label}: <span className="text-white">{connector.status}</span>
+                      {connector.normalizedPayloadSummary ? ` · ${connector.normalizedPayloadSummary}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </li>
           ))}
         </ol>
@@ -136,6 +146,45 @@ function AnalysisResult({ result }: { result: FullMatchAnalysisResult }) {
           {result.lifecycle.existingPredictionPickId ? ` · Existing final pick: ${result.lifecycle.existingPredictionPickId}` : ""}
         </p>
       </div>
+
+      <details className="rounded border border-lab-border bg-lab-panel2 p-4">
+        <summary className="cursor-pointer font-medium text-lab-cyan">Data gap resolver</summary>
+        <div className="mt-3 grid gap-3 text-sm text-lab-muted lg:grid-cols-2">
+          <div>
+            <p className="text-white">Missing blocks</p>
+            <p className="mt-1">{result.dataGapResolution.missingBlocks.join(", ") || "none"}</p>
+          </div>
+          <div>
+            <p className="text-white">Still missing</p>
+            <p className="mt-1">{result.dataGapResolution.stillMissing.join(", ") || "none"}</p>
+          </div>
+          <div>
+            <p className="text-white">Attempted resolvers</p>
+            <p className="mt-1">{result.dataGapResolution.attemptedResolvers.join(", ") || "none"}</p>
+          </div>
+          <div>
+            <p className="text-white">Trusted local imports</p>
+            <p className="mt-1">{result.dataGapResolution.trustedLocalImportsEnabled ? "enabled" : "disabled / preview-only"}</p>
+          </div>
+        </div>
+        <div className="mt-3 overflow-x-auto">
+          <table className="min-w-full text-left text-xs text-lab-muted">
+            <thead className="uppercase">
+              <tr><th className="py-2">Connector</th><th>Status</th><th>Records</th><th>Summary</th></tr>
+            </thead>
+            <tbody className="divide-y divide-lab-border">
+              {result.dataGapResolution.connectorResults.map((connector) => (
+                <tr key={connector.connectorId}>
+                  <td className="py-2 text-white">{connector.label}</td>
+                  <td>{connector.status}</td>
+                  <td>{connector.recordsCreated + connector.recordsUpdated}</td>
+                  <td>{connector.normalizedPayloadSummary ?? connector.blockers[0] ?? "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded border border-lab-border bg-lab-panel2 p-4">

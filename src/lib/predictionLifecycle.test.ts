@@ -63,7 +63,7 @@ describe("prediction lifecycle", () => {
     const importsPage = readFileSync("src/app/admin/imports/page.tsx", "utf8");
     const readme = readFileSync("README.md", "utf8");
     const combined = `${importsPage}\n${readme}`;
-    expect(combined).toContain("normalized_player_stats.csv");
+    expect(combined).toContain("player_stats.csv");
     expect(combined).toContain("manual_real_pack.json");
     expect(combined).toContain("existing validation/preview/apply");
     expect(combined).toContain("Core app не содержит HLTV scraper");

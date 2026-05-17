@@ -1,13 +1,19 @@
 import { SourceSyncPanel } from "@/components/SourceSyncPanel";
+import { acceptedPrivateInboxFileNames, scanPrivateNormalizedInbox } from "@/lib/privateNormalizedInbox";
 import { prisma } from "@/lib/prisma";
 import { getSourceStatuses } from "@/lib/sources/sourceHealth";
 
 export const dynamic = "force-dynamic";
 
-export default async function ImportsPage() {
-  const [jobs, statuses] = await Promise.all([
+type Search = { matchId?: string };
+
+export default async function ImportsPage({ searchParams }: { searchParams?: Promise<Search> }) {
+  const params = await searchParams;
+  const matchId = params?.matchId?.trim();
+  const [jobs, statuses, privateInbox] = await Promise.all([
     prisma.dataSyncJob.findMany({ orderBy: { startedAt: "desc" }, take: 12 }),
-    getSourceStatuses()
+    getSourceStatuses(),
+    scanPrivateNormalizedInbox(matchId)
   ]);
 
   return (
@@ -45,15 +51,16 @@ export default async function ImportsPage() {
           Core app не содержит HLTV scraper, browser crawler, Apify, Telegram scraping, bypass code или crawler config.
           Если внешний локальный инструмент уже подготовил данные, импортируйте только нормализованные CSV/JSON через существующий Validate / Preview / Apply flow.
         </p>
+        <div className="mt-3 rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+          <p><span className="text-white">Inbox:</span> {privateInbox.inboxPath}</p>
+          <p><span className="text-white">Trusted local imports:</span> {privateInbox.trustedLocalImportsEnabled ? "enabled" : "disabled / preview-only"}</p>
+          <p><span className="text-white">Validation target:</span> {matchId ?? "add ?matchId=... to validate CSV rows against a match"}</p>
+        </div>
         <div className="mt-3 grid gap-3 md:grid-cols-2">
           <div className="rounded border border-lab-border bg-lab-panel2 p-3">
             <h3 className="font-medium text-white">Accepted normalized files</h3>
             <ul className="mt-2 space-y-1 text-sm text-lab-muted">
-              <li>normalized_player_stats.csv</li>
-              <li>normalized_map_stats.csv</li>
-              <li>normalized_veto_history.csv</li>
-              <li>manual_real_pack.json</li>
-              <li>parsed_demo_export.json</li>
+              {acceptedPrivateInboxFileNames().map((name) => <li key={name}>{name}</li>)}
             </ul>
           </div>
           <div className="rounded border border-lab-border bg-lab-panel2 p-3">
@@ -62,9 +69,45 @@ export default async function ImportsPage() {
               <li>sourceName обязателен, sourceUrl/reference желателен.</li>
               <li>Никакой Apply без existing validation/preview.</li>
               <li>Core app не знает, как файл был собран.</li>
+              <li>Trusted auto-apply только при ENABLE_TRUSTED_LOCAL_IMPORTS=true.</li>
               <li>Real Forecast gates и source policy не меняются.</li>
             </ul>
           </div>
+        </div>
+        <div className="mt-4 overflow-x-auto">
+          <table className="min-w-full text-left text-sm">
+            <thead className="text-xs uppercase text-lab-muted">
+              <tr>
+                <th className="py-2">File</th>
+                <th>Type</th>
+                <th>Validation</th>
+                <th>Rows</th>
+                <th>Blocks</th>
+                <th>Apply</th>
+                <th>Summary</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-lab-border">
+              {privateInbox.reports.length ? privateInbox.reports.map((report) => (
+                <tr key={report.fullPath}>
+                  <td className="py-2 text-white">{report.fileName}</td>
+                  <td>{report.detectedType}</td>
+                  <td>{report.validationStatus}</td>
+                  <td>{report.rowsParsed}</td>
+                  <td>{report.blocksCovered.join(", ") || "-"}</td>
+                  <td>{report.autoApplied ? "auto-applied" : report.applyEligible ? "eligible" : "not eligible"}</td>
+                  <td className="max-w-xl text-lab-muted">
+                    {report.summary}
+                    {report.errors.length ? ` Errors: ${report.errors.slice(0, 2).join(" | ")}` : ""}
+                  </td>
+                </tr>
+              )) : (
+                <tr>
+                  <td className="py-2 text-lab-muted" colSpan={7}>No private normalized files found.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </section>
 

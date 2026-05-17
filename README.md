@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.3
+## Что есть в MVP 0.8.4
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Auto Data Gap Resolver + Connector Framework + Normalized Extractor Pipeline: MVP 0.8.4 заставляет `Полный анализ` не только показать missing blocks, но и пройти цепочку разрешённых коннекторов, проверить `data/private-inbox/`, записать resolver attempts в timeline и пересчитать анализ после validated records. `ENABLE_TRUSTED_LOCAL_IMPORTS=false` по умолчанию, поэтому private inbox работает как validation preview, пока trusted local mode явно не включён.
 - Prediction Lifecycle + Full Analysis Jobs: MVP 0.8.3 сохраняет каждый запуск `Полный анализ` как `AnalysisJob`, пишет persistent timeline steps, может сохранить final `PredictionPick` только до старта матча и только при `Real Forecast Ready=true`, а затем через `resolve_prediction_results` связывает pick с outcome и post-match review.
 - User Flow Simplification Phase 1: MVP 0.8.2 оставляет `Полный анализ` главным пользовательским путём, а старые/дублирующие concierge, autopilot, readiness и broad-refresh панели прячет в collapsed Advanced/Analyst sections.
 - One-Click Full Match Analysis UX: MVP 0.8.1 упрощает главный путь до `Обновить список матчей` -> `Найти лучший матч для прогноза` -> `Полный анализ`. Страница матча показывает persistent timeline, прогноз или понятные blockers с одним главным следующим действием.
@@ -66,6 +67,7 @@ npm run build
 - Forecast Concierge: главная и страница матча показывают “что сайт смог получить автоматически”, “что не смог”, “почему”, “лучшее следующее действие” и “где взять недостающие данные”.
 - Forecast Autopilot: Best Match Autopilot без `matchId` выбирает лучший upcoming official real candidate, Current Match Autopilot с `matchId` готовит только открытый матч и сравнивает его с global best.
 - Full Match Analysis: `full_match_analysis` работает только для текущего `matchId`, не переключает target, не применяет CSV/manual data, использует existing legal refresh/check/prepare/autopilot paths и возвращает timeline: матч, рейтинг, roster, player stats, maps, veto, GRID, FACEIT/Leetify explicit IDs, H2H/news и prediction.
+- Data Gap Resolver: `full_match_analysis` вызывает `resolveMatchDataGaps(matchId, mode)`, получает uniform `ConnectorResult` по каждому разрешённому resolver, показывает что уже было в БД, что пытались получить автоматически, что заблокировано и какое одно действие закроет главный gap.
 - Provider Capability Probe: `/admin/sources` проверяет, что реально разблокировали PandaScore, Valve, Steam, GRID, Liquipedia, FACEIT и parsed demo.
 - FACEIT Context Enrichment: FACEIT используется только server-side как optional context source для выбранного матча и только по явно подтверждённым FACEIT IDs. Manual FACEIT ID import создаёт `EntityAlias`, low-confidence совпадения уходят в `EntityMatchCandidate needs_review`, broad crawl/search отключены.
 - GRID Open Access Integration: GRID работает как optional official provider через Central Data / Series State only. Series Events, File Download и Stats Feed отмечены как unavailable on OA и не вызываются.
@@ -124,6 +126,63 @@ MVP 0.8.3 добавляет историю анализа и предиктов
 `/predictions` теперь показывает lifecycle board: активные предикты, ожидающие результата, успешные, ошибочные и требующие ручной проверки результата.
 
 Private extractor interface остаётся безопасным: core app принимает только нормализованные CSV/JSON через existing validation/preview/apply flow. В репозитории нет HLTV scraper, browser crawler, Apify, Telegram scraping, bypass code или crawler config.
+
+## Auto Data Gap Resolver + Normalized Extractor Pipeline
+
+MVP 0.8.4 добавляет resolver поверх `Полный анализ`. Forecast math, Real Forecast Ready gates, source policy, Prisma schema и manual CSV apply-flow не меняются.
+
+Режимы автоматизации:
+
+- Safe mode: API/cache/existing records only. Это режим по умолчанию.
+- Trusted local mode: `ENABLE_TRUSTED_LOCAL_IMPORTS=true`; normalized files из `data/private-inbox/` могут auto-apply только после existing validation/preview checks.
+- Experimental/private extractors: future/outside core. Core app не хранит scraper code, crawler config или bypass logic.
+
+Resolver output:
+
+- `missingBlocks`;
+- `attemptedResolvers`;
+- `connectorResults`;
+- `recordsCreated` / `recordsUpdated`;
+- `stillMissing`;
+- `confidenceWarnings`;
+- `nextAction`;
+- `canRecalculate`;
+- `shouldSavePrediction`.
+
+Каждый connector возвращает uniform `ConnectorResult`: `connectorId`, `label`, `dataTypes`, `status`, `recordsCreated`, `recordsUpdated`, `confidence`, `sourceName`, optional `sourceUrl`, `warnings`, `blockers`, `normalizedPayloadSummary`.
+
+Allowed auto-run connector registry:
+
+- PandaScore Free;
+- Valve Rankings;
+- Steam CS Updates;
+- GRID Central Data;
+- GRID Series State only with known `gridSeriesId`;
+- FACEIT explicit IDs only;
+- Leetify explicit IDs only;
+- LiquipediaDB only if configured;
+- local existing `manual_real` / `parsed_demo` / CSV records;
+- private normalized inbox files that already exist and pass validation.
+
+Forbidden in core:
+
+- HLTV automatic scraper;
+- Apify;
+- browser crawler;
+- Telegram scraping;
+- unsupported GRID APIs;
+- fake/imputed data;
+- betting/odds;
+- page-load sync.
+
+Private normalized inbox:
+
+- default path: `data/private-inbox/`;
+- accepted files: `roster.csv`, `player_stats.csv`, `map_stats.csv`, `veto_history.csv`, `team_form.csv`, `h2h.csv`, `news_events.csv`, `manual_real_pack.json`, `parsed_demo_export.json`;
+- `sourceName` required, `sourceUrl` recommended;
+- raw HTML, scraper config, Apify tokens and crawler settings are ignored/not accepted as evidence.
+
+Generic website table adapter remains disabled metadata only: no domain-specific selectors, no browser automation dependency, no auto-run in full analysis. Any future output must be draft normalized CSV and must pass validation before Apply.
 
 ## One-Click Full Match Analysis UX
 

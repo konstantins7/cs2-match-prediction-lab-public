@@ -4,6 +4,9 @@ import type { ForecastAutopilotMode, ForecastAutopilotNextAction } from "./autoR
 import { getBestNextAction } from "./bestNextAction";
 import { calculatePrediction, buildPredictionInput } from "./predictionEngine";
 import type { CoverageBreakdownItem, ForecastAutopilotProviderContribution } from "./autoResearchShared";
+import { resolveMatchDataGaps, type DataGapResolution } from "./dataGapResolver";
+import type { ConnectorResult } from "./dataConnectorRegistry";
+import { rebuildSnapshots, runPredictionsForUpcomingMatches } from "./sources/sourceScheduler";
 import {
   completeAnalysisJob,
   createAnalysisJob,
@@ -19,6 +22,9 @@ export type FullMatchAnalysisStep = {
   label: string;
   status: FullMatchAnalysisStepStatus;
   explanation: string;
+  sourceUsed?: string;
+  recordsFound?: number;
+  connectorResults?: ConnectorResult[];
 };
 
 export type FullMatchAnalysisResult = {
@@ -51,6 +57,7 @@ export type FullMatchAnalysisResult = {
     selectionReason: string;
     providerContributions: ForecastAutopilotProviderContribution[];
   };
+  dataGapResolution: DataGapResolution;
   prepare: {
     basicHistorySnapshots: number;
     predictionAuditId: string;
@@ -78,12 +85,18 @@ export async function runFullMatchAnalysis(
   const job = await createAnalysisJob(matchId, mode);
   try {
     await runForecastAutopilot(mode, matchId);
+    let candidate = await buildForecastAutopilotCandidate(matchId);
+    const dataGapResolution = await resolveMatchDataGaps(matchId, mode, candidate);
+    if (dataGapResolution.canRecalculate) {
+      await rebuildSnapshots();
+      await runPredictionsForUpcomingMatches();
+    }
     const prepare = await prepareMatchForecast(matchId);
     const input = await buildPredictionInput(matchId);
     const prediction = calculatePrediction(input);
-    const candidate = await buildForecastAutopilotCandidate(matchId);
+    candidate = await buildForecastAutopilotCandidate(matchId);
     const fallback = getBestNextAction(prediction).primaryAction;
-    const primaryNextAction = candidate.nextDataActions[0] ?? {
+    const primaryNextAction = dataGapResolution.nextAction ?? candidate.nextDataActions[0] ?? {
       label: fallback.label,
       reason: fallback.reason,
       target: "research_queue",
@@ -101,7 +114,7 @@ export async function runFullMatchAnalysis(
       blockers
     });
     const progressTimeline = [
-      ...buildProgressTimeline(candidate.coverageBreakdown, candidate.providerContributions, prediction),
+      ...buildProgressTimeline(candidate.coverageBreakdown, candidate.providerContributions, prediction, dataGapResolution),
       predictionPickStep(saveResult.status, saveResult.message)
     ];
 
@@ -148,6 +161,7 @@ export async function runFullMatchAnalysis(
         selectionReason: candidate.selectionReason,
         providerContributions: candidate.providerContributions
       },
+      dataGapResolution,
       prepare: {
         basicHistorySnapshots: prepare.basicHistorySnapshots,
         predictionAuditId: prepare.predictionAuditId,
@@ -172,7 +186,8 @@ export async function runFullMatchAnalysis(
 function buildProgressTimeline(
   breakdown: CoverageBreakdownItem[],
   providers: ForecastAutopilotProviderContribution[],
-  prediction: ReturnType<typeof calculatePrediction>
+  prediction: ReturnType<typeof calculatePrediction>,
+  dataGapResolution: DataGapResolution
 ): FullMatchAnalysisStep[] {
   const item = (id: string) => breakdown.find((entry) => entry.id === id);
   const provider = (name: string) => providers.find((entry) => entry.source.toLowerCase().includes(name));
@@ -188,15 +203,25 @@ function buildProgressTimeline(
   };
 
   const steps: FullMatchAnalysisStep[] = [
-    fromBreakdown("match", "Матч найден", item("fixture"), "Матч есть в local cache и проверен как candidate."),
-    fromBreakdown("ranking", "Рейтинг проверен", item("rank_basic")),
-    fromBreakdown("roster", "Составы проверены", item("roster")),
-    fromBreakdown("player_stats", "Статистика игроков проверена", item("player_stats")),
-    fromBreakdown("maps", "Карты проверены", item("map_stats")),
-    fromBreakdown("veto", "Veto проверено", item("veto")),
-    providerStep("grid", "GRID проверен", "grid"),
-    faceitLeetifyStep(providers),
-    h2hNewsStep(item("optional_context")),
+    {
+      id: "cache",
+      label: "Проверяю кэш",
+      status: "success",
+      explanation: "Полный анализ читает local DB/cache; page-load sync не выполняется.",
+      sourceUsed: "local cache",
+      recordsFound: 1
+    },
+    fromBreakdown("schedule", "Проверяю расписание", item("fixture"), "Матч есть в local cache и проверен как candidate."),
+    resolverStep("ranking", "Проверяю рейтинг", item("rank_basic"), dataGapResolution, ["rank_basic"]),
+    resolverStep("roster", "Проверяю составы", item("roster"), dataGapResolution, ["roster"]),
+    resolverStep("player_stats", "Проверяю player stats", item("player_stats"), dataGapResolution, ["player_stats"]),
+    resolverStep("maps", "Проверяю карты", item("map_stats"), dataGapResolution, ["map_stats"]),
+    resolverStep("veto", "Проверяю veto", item("veto"), dataGapResolution, ["veto"]),
+    resolverStep("team_form", "Проверяю team form/recent results", undefined, dataGapResolution, ["team_form"]),
+    resolverStep("grid", "Проверяю GRID", undefined, dataGapResolution, ["grid_mapping"], providerStep("grid", "GRID проверен", "grid")),
+    resolverStep("faceit_leetify", "Проверяю FACEIT/Leetify", undefined, dataGapResolution, ["roster", "player_stats"], faceitLeetifyStep(providers)),
+    resolverStep("private_inbox", "Проверяю private normalized inbox", undefined, dataGapResolution, ["roster", "player_stats", "map_stats", "veto", "team_form", "h2h_news"]),
+    resolverStep("h2h_news", "Проверяю H2H/news", item("optional_context"), dataGapResolution, ["h2h_news"], h2hNewsStep(item("optional_context"))),
     {
       id: "prediction",
       label: "Прогноз рассчитан",
@@ -207,6 +232,46 @@ function buildProgressTimeline(
     }
   ];
   return steps;
+}
+
+function resolverStep(
+  id: string,
+  label: string,
+  entry: CoverageBreakdownItem | undefined,
+  resolution: DataGapResolution,
+  dataTypes: ConnectorResult["dataTypes"],
+  fallback?: FullMatchAnalysisStep
+): FullMatchAnalysisStep {
+  const connectorResults = resolution.connectorResults.filter((result) => result.dataTypes.some((type) => dataTypes.includes(type)));
+  const recordsFound = connectorResults.reduce((sum, result) => sum + result.recordsCreated + result.recordsUpdated, 0);
+  const successful = connectorResults.some((result) => result.status === "success");
+  const partial = connectorResults.some((result) => result.status === "partial");
+  const blocked = connectorResults.some((result) => result.status === "blocked" || result.status === "error");
+  const coverageStatus = entry ? mapCoverageStatus(entry.status) : undefined;
+  const status: FullMatchAnalysisStepStatus = successful
+    ? "success"
+    : coverageStatus === "success"
+      ? "success"
+      : partial || coverageStatus === "partial"
+        ? "partial"
+        : blocked
+          ? "blocked"
+          : fallback?.status ?? "missing";
+  const connectorSummary = connectorResults.map((result) => `${result.label}: ${result.status}${result.normalizedPayloadSummary ? ` (${result.normalizedPayloadSummary})` : ""}`).join("; ");
+  const explanation = [
+    entry ? (entry.blocker ? `${entry.explanation} Blocker: ${entry.blocker}.` : entry.explanation) : fallback?.explanation,
+    connectorSummary ? `Resolvers: ${connectorSummary}.` : "Resolvers: подходящих usable records не найдено.",
+    id === "private_inbox" && !resolution.trustedLocalImportsEnabled ? "Trusted local imports disabled; private inbox работает в preview-only режиме." : ""
+  ].filter(Boolean).join(" ");
+  return {
+    id,
+    label,
+    status,
+    explanation,
+    sourceUsed: connectorResults.map((result) => result.connectorId).join(", ") || fallback?.sourceUsed,
+    recordsFound,
+    connectorResults
+  };
 }
 
 function faceitLeetifyStep(providers: ForecastAutopilotProviderContribution[]): FullMatchAnalysisStep {

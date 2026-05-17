@@ -18,6 +18,7 @@ dev.db-journal
 # misc
 .DS_Store
 coverage
+data/private-inbox/
 *.log
 dev-server.log
 tsconfig.tsbuildinfo
