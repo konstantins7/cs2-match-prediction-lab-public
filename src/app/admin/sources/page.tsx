@@ -6,7 +6,9 @@ import { ImportProfilesPanel } from "@/components/ImportProfilesPanel";
 import { SourceSyncPanel } from "@/components/SourceSyncPanel";
 import { SourceCoverageMatrix } from "@/components/SourceCoverageMatrix";
 import { SourceHunterPanel } from "@/components/SourceHunterPanel";
+import { RealDataFoundationCoveragePanel } from "@/components/RealDataFoundationCoveragePanel";
 import { PageHeader, SourceStatusCard, StatCard } from "@/components/ui";
+import { buildRealDataFoundationCoverage } from "@/lib/autoResearch/foundationCoverage";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getRankMatchingCandidates } from "@/lib/data/rankMatching";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -70,7 +72,7 @@ const autopilotProviderCards = [
 
 export default async function SourcesPage() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
-  const [statuses, jobs, jobsLastHour, rawRecords, coverage, dataStatus, rankCandidates, readinessDistribution] = await Promise.all([
+  const [statuses, jobs, jobsLastHour, rawRecords, coverage, dataStatus, rankCandidates, readinessDistribution, foundationCoverage] = await Promise.all([
     getSourceStatuses(),
     prisma.dataSyncJob.findMany({ orderBy: { startedAt: "desc" }, take: 20 }),
     prisma.dataSyncJob.groupBy({ by: ["source"], where: { startedAt: { gte: oneHourAgo } }, _count: { source: true } }),
@@ -78,7 +80,8 @@ export default async function SourcesPage() {
     getProFocusCoverage(),
     getDashboardDataStatus(),
     getRankMatchingCandidates(),
-    getReadinessDistribution()
+    getReadinessDistribution(),
+    buildRealDataFoundationCoverage(new Date(), 40)
   ]);
   const rawCounts = new Map(rawRecords.map((record) => [record.source, record._count.source]));
   const requestsUsed = new Map(jobsLastHour.map((record) => [record.source, record._count.source]));
@@ -194,6 +197,8 @@ export default async function SourcesPage() {
       </section>
 
       <SourceHunterPanel />
+
+      <RealDataFoundationCoveragePanel coverage={foundationCoverage} />
 
       <section id="autopilot-provider-contribution" className="rounded-2xl border border-lab-cyan/35 bg-lab-panel/85 p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

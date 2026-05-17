@@ -5,6 +5,7 @@ import { calculatePrediction } from "../prediction/calculatePrediction";
 import { createPredictionFixture } from "../prediction/testFixtures";
 import type { PredictionInput } from "../prediction/types";
 import { rankForecastAutopilotCandidates, scoreForecastAutopilotCandidate } from "./candidateSelector";
+import { summarizeRealDataFoundationCoverage } from "./foundationCoverage";
 
 const now = new Date("2026-05-10T08:00:00.000Z");
 
@@ -116,6 +117,67 @@ describe("MVP 0.7.6 automated legal data autopilot candidate selector", () => {
     expect(selected.matchId).not.toBe("pandascore_match_1488973");
     expect(selected.whySelected).toBeTruthy();
     expect(rankForecastAutopilotCandidates([fixedTarget, better])[1].whyNotSelected).toContain("Не выбран");
+  });
+
+  it("ranks high-coverage NEARLY_READY above lower-coverage BASIC_ONLY", () => {
+    const nearlyReadyInput = manualReadyInput({ match: { ...createPredictionFixture().match, id: "nearly_ready_high_coverage" } });
+    const nearlyReady = score({ ...nearlyReadyInput, mapStatsA: [{ ...nearlyReadyInput.mapStatsA[0], mapsPlayed: 4 }] });
+    const basicOnly = score(createPredictionFixture({
+      match: { ...createPredictionFixture().match, id: "basic_only_low_coverage", startTime: "2026-05-11T18:00:00.000Z" },
+      playersA: [],
+      playersB: [],
+      playerStatsA: [],
+      playerStatsB: [],
+      mapStatsA: [],
+      mapStatsB: [],
+      vetoPatternsA: [],
+      vetoPatternsB: []
+    }));
+    const [selected] = rankForecastAutopilotCandidates([basicOnly, nearlyReady]);
+    expect(nearlyReady.forecastabilityTier).toBe("NEARLY_READY");
+    expect(basicOnly.forecastabilityTier).toBe("BASIC_ONLY");
+    expect(selected.matchId).toBe("nearly_ready_high_coverage");
+    expect(nearlyReady.coverageScore).toBeGreaterThan(basicOnly.coverageScore);
+  });
+
+  it("keeps READY above NEARLY_READY and BLOCKED below usable candidates", () => {
+    const ready = score(manualReadyInput({ match: { ...createPredictionFixture().match, id: "ready_match" } }));
+    const nearlyReadyInput = manualReadyInput({ match: { ...createPredictionFixture().match, id: "nearly_ready_match" } });
+    const nearlyReady = score({ ...nearlyReadyInput, mapStatsA: [{ ...nearlyReadyInput.mapStatsA[0], mapsPlayed: 4 }] });
+    const blocked = score(createPredictionFixture({
+      match: { ...createPredictionFixture().match, id: "blocked_match", startTime: "2026-05-01T08:00:00.000Z" }
+    }));
+    const ranked = rankForecastAutopilotCandidates([blocked, nearlyReady, ready]);
+    expect(ranked[0].matchId).toBe("ready_match");
+    expect(ranked[1].matchId).toBe("nearly_ready_match");
+    expect(ranked[2].matchId).toBe("blocked_match");
+  });
+
+  it("summarizes real-data foundation coverage and next actions", () => {
+    const nearlyReadyInput = manualReadyInput({ match: { ...createPredictionFixture().match, id: "evo_like" } });
+    const nearlyReady = score({ ...nearlyReadyInput, mapStatsA: [{ ...nearlyReadyInput.mapStatsA[0], mapsPlayed: 4 }] });
+    const basicOnly = score(createPredictionFixture({
+      match: { ...createPredictionFixture().match, id: "empty_foundation", startTime: "2026-05-11T18:00:00.000Z" },
+      playersA: [],
+      playersB: [],
+      playerStatsA: [],
+      playerStatsB: [],
+      mapStatsA: [],
+      mapStatsB: [],
+      vetoPatternsA: [],
+      vetoPatternsB: []
+    }));
+    const summary = summarizeRealDataFoundationCoverage(rankForecastAutopilotCandidates([basicOnly, nearlyReady]));
+    expect(summary.tierCounts.NEARLY_READY).toBe(1);
+    expect(summary.tierCounts.BASIC_ONLY).toBe(1);
+    expect(summary.coverageCounts.roster).toBe(1);
+    expect(summary.coverageCounts.playerStats).toBe(1);
+    expect(summary.coverageCounts.mapStats).toBe(0);
+    expect(summary.coverageCounts.veto).toBe(1);
+    expect(summary.topBlockers).toContain("map stats sample below gate");
+    expect(nearlyReady.nextDataActions[0].label).toContain("map_stats.csv");
+    expect(nearlyReady.nextDataActions[0].reason).toContain("4/7");
+    expect(nearlyReady.nextDataActions.some((action) => action.target === "source_url")).toBe(true);
   });
 
   it("keeps Leetify optional unless explicit context is already present", () => {

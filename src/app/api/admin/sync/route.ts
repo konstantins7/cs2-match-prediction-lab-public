@@ -14,6 +14,7 @@ import { prepareMatchForecast, runForecastAutopilot, runOneClickGlobalRefresh } 
 import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
 import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
 import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
+import { refreshMatchFeed } from "@/lib/matchFeedCache";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -39,6 +40,10 @@ export async function POST(request: Request) {
     }
     if (body.action === "forecast_autopilot") {
       const result = await runForecastAutopilot(body.mode ?? "fast", body.matchId);
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "refresh_match_feed") {
+      const result = await refreshMatchFeed();
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "provider_capability_probe") {

@@ -90,6 +90,13 @@ export type ForecastAutopilotProviderContribution = {
   points?: number;
 };
 
+export type ForecastAutopilotNextAction = {
+  label: string;
+  reason: string;
+  target: string;
+  priority: "high" | "medium" | "low";
+};
+
 export type ForecastAutopilotCandidate = {
   matchId: string;
   href: string;
@@ -119,6 +126,26 @@ export type ForecastAutopilotCandidate = {
   blockers: string[];
   missingBlocks: string[];
   providerContributions: ForecastAutopilotProviderContribution[];
+  nextDataActions: ForecastAutopilotNextAction[];
+};
+
+export type RealDataFoundationCoverage = {
+  checkedCandidates: number;
+  tierCounts: Record<ForecastabilityTier, number>;
+  coverageCounts: {
+    roster: number;
+    playerStats: number;
+    mapStats: number;
+    veto: number;
+    gridMapped: number;
+  };
+  blockerFrequency: Array<{ blocker: string; count: number }>;
+  topBlockers: string[];
+  topCandidates: ForecastAutopilotCandidate[];
+  liquipediaSetup: {
+    configured: boolean;
+    message: string;
+  };
 };
 
 export type ForecastAutopilotResult = {

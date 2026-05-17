@@ -1,12 +1,14 @@
 import Link from "next/link";
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { MatchTable } from "@/components/MatchTable";
+import { MatchFeedRefreshButton } from "@/components/MatchFeedRefreshButton";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { PageHeader } from "@/components/ui";
 import { rankForecastAutopilotCandidates, scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
+import { getMatchFeedStatus } from "@/lib/matchFeedCache";
 
 type Search = {
   status?: string;
@@ -28,7 +30,7 @@ function filterLink(label: string, href: string) {
 
 export default async function MatchesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const [rows, status, readinessDistribution] = await Promise.all([
+  const [rows, status, readinessDistribution, matchFeedStatus] = await Promise.all([
     getCalculatedMatches({
       status: params.status,
       format: params.format,
@@ -39,7 +41,8 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
       limit: 60
     }),
     getDashboardDataStatus(),
-    getReadinessDistribution()
+    getReadinessDistribution(),
+    getMatchFeedStatus()
   ]);
   const fullStatus = { ...status, readinessDistribution };
   const sortedRows = params.sort === "forecastable"
@@ -54,6 +57,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         description="По умолчанию включены топовые матчи. Lower-tier, академки и отдельный контур остаются доступны через фильтры, но не подмешиваются в основной путь."
       />
       <DashboardStatusStrip status={fullStatus} />
+      <MatchFeedRefreshButton status={matchFeedStatus} compact />
       <OneClickResearchButton compact />
       <div className="flex flex-wrap gap-2">
         {filterLink("Топовые матчи", "/matches")}

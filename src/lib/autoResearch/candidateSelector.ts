@@ -11,6 +11,7 @@ import type {
   CoverageBreakdownStatus,
   CoverageFreshnessDetails,
   ForecastAutopilotCandidate,
+  ForecastAutopilotNextAction,
   ForecastAutopilotProviderContribution,
   ForecastabilityTier
 } from "../autoResearchShared";
@@ -23,6 +24,14 @@ const tierLabels: Record<ForecastabilityTier, string> = {
   BASIC_ONLY: "Только базовый прогноз",
   BLOCKED: "Заблокирован",
   NOT_ENOUGH_DATA: "Недостаточно данных"
+};
+
+const tierPriority: Record<ForecastabilityTier, number> = {
+  READY: 5,
+  NEARLY_READY: 4,
+  BASIC_ONLY: 3,
+  NOT_ENOUGH_DATA: 2,
+  BLOCKED: 1
 };
 
 function iso(value: Date | string | null | undefined) {
@@ -329,9 +338,11 @@ export function scoreForecastAutopilotCandidate(params: {
     selectionReason: "",
     blockers,
     missingBlocks,
-    providerContributions
+    providerContributions,
+    nextDataActions: []
   };
   candidate.selectionReason = selectionReason(candidate);
+  candidate.nextDataActions = buildNextDataActions(candidate);
   return candidate;
 }
 
@@ -339,15 +350,93 @@ function providerContributionsForCandidate(input: PredictionInput, breakdown: Co
   return providerContributions(input, breakdown);
 }
 
+function breakdownStatus(breakdown: CoverageBreakdownItem[], id: string) {
+  return breakdown.find((entry) => entry.id === id)?.status ?? "no";
+}
+
+function hasGridContribution(contributions: ForecastAutopilotProviderContribution[]) {
+  return contributions.some((entry) => entry.source === "GRID Open Access" && entry.status === "yes");
+}
+
+function hasSourceUrlWarning(breakdown: CoverageBreakdownItem[]) {
+  return breakdown.some((entry) => entry.explanation.toLowerCase().includes("sourceurl missing"));
+}
+
+export function buildNextDataActions(candidate: Pick<ForecastAutopilotCandidate, "coverageBreakdown" | "providerContributions">): ForecastAutopilotNextAction[] {
+  const actions: ForecastAutopilotNextAction[] = [];
+  const add = (action: ForecastAutopilotNextAction) => {
+    if (!actions.some((item) => item.target === action.target)) actions.push(action);
+  };
+
+  if (breakdownStatus(candidate.coverageBreakdown, "roster") !== "yes") {
+    add({
+      label: "Добавить roster.csv",
+      reason: "Roster coverage отсутствует или неполный; LiquipediaDB поможет автоматизировать этот блок, когда ключ доступен.",
+      target: "roster",
+      priority: "high"
+    });
+  }
+  if (breakdownStatus(candidate.coverageBreakdown, "player_stats") !== "yes") {
+    add({
+      label: "Добавить player_stats.csv",
+      reason: "Нужны реальные player stats по обеим командам; parsed demo или Leetify explicit ID могут помочь только при подтверждённых данных.",
+      target: "player_stats",
+      priority: "high"
+    });
+  }
+  if (breakdownStatus(candidate.coverageBreakdown, "map_stats") !== "yes") {
+    const mapExplanation = (candidate.coverageBreakdown.find((entry) => entry.id === "map_stats")?.explanation ?? "map sample ниже gate").replace(/\.+$/, "");
+    add({
+      label: "Добавить реальные карты в map_stats.csv",
+      reason: `${mapExplanation}. Нужен sample не ниже ${MANUAL_REAL_MAP_SAMPLE_THRESHOLD} карт на команду или validated parsed demo/recent maps.`,
+      target: "map_stats",
+      priority: "high"
+    });
+  }
+  if (breakdownStatus(candidate.coverageBreakdown, "rank_basic") !== "yes") {
+    add({
+      label: "Добавить basic recent/team-form context",
+      reason: "Нужен реальный ranking/basic recent context или team form из source-visible результатов; не использовать Kaggle/offline/personal Steam.",
+      target: "rank_basic",
+      priority: "medium"
+    });
+  }
+  if (breakdownStatus(candidate.coverageBreakdown, "veto") !== "yes") {
+    add({
+      label: "Добавить veto_history.csv",
+      reason: "Veto coverage должен быть реальным и source-visible; не добавлять guessed pick/ban.",
+      target: "veto",
+      priority: "high"
+    });
+  }
+  if (!hasGridContribution(candidate.providerContributions)) {
+    add({
+      label: "Связать GRID series id",
+      reason: "GRID mapping полезен только если series назван и confidence достаточный; TBD series не auto-map.",
+      target: "grid_mapping",
+      priority: "medium"
+    });
+  }
+  if (hasSourceUrlWarning(candidate.coverageBreakdown)) {
+    add({
+      label: "Добавить sourceUrl/reference",
+      reason: "sourceUrl снижает uncertainty и source confidence, но сам по себе не является hard blocker.",
+      target: "source_url",
+      priority: "low"
+    });
+  }
+
+  return actions;
+}
+
 function sortCandidates(candidates: ForecastAutopilotCandidate[]) {
-  const tierPenalty = (candidate: ForecastAutopilotCandidate) => candidate.forecastabilityTier === "BLOCKED" ? 1 : 0;
   return [...candidates].sort((a, b) => {
-    const blocked = tierPenalty(a) - tierPenalty(b);
-    if (blocked !== 0) return blocked;
     if (Number(b.realForecastReady) - Number(a.realForecastReady) !== 0) return Number(b.realForecastReady) - Number(a.realForecastReady);
-    if (b.readinessRank - a.readinessRank !== 0) return b.readinessRank - a.readinessRank;
+    const tier = tierPriority[b.forecastabilityTier] - tierPriority[a.forecastabilityTier];
+    if (tier !== 0) return tier;
     if (b.coverageScore - a.coverageScore !== 0) return b.coverageScore - a.coverageScore;
     if (b.realDataDepth - a.realDataDepth !== 0) return b.realDataDepth - a.realDataDepth;
+    if (b.readinessRank - a.readinessRank !== 0) return b.readinessRank - a.readinessRank;
     if ((b.format === "BO3" ? 1 : 0) - (a.format === "BO3" ? 1 : 0) !== 0) return (b.format === "BO3" ? 1 : 0) - (a.format === "BO3" ? 1 : 0);
     if (b.priorityScore - a.priorityScore !== 0) return b.priorityScore - a.priorityScore;
     return new Date(a.startTime).getTime() - new Date(b.startTime).getTime();

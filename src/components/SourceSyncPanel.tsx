@@ -15,6 +15,7 @@ type Action = {
 };
 
 const actions: Action[] = [
+  { label: "Refresh Match Feed Cache", action: "refresh_match_feed", requiredSource: "pandascore" },
   { label: "Sync PandaScore Free Fixtures", action: "pandascore_free", requiredSource: "pandascore" },
   { label: "Sync Valve Rankings", source: "valve-rankings", jobType: "valve_rankings", requiredSource: "valve-rankings" },
   { label: "Sync Steam/CS Updates", source: "cs-updates", jobType: "game_meta_updates", requiredSource: "cs-updates" },

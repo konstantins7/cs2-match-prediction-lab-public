@@ -107,6 +107,13 @@ export function ForecastAutopilotButton({ matchId, compact = false }: { matchId?
             </div>
           ) : null}
           {result.bestCandidate ? <CandidateCard title="Лучший кандидат" candidate={result.bestCandidate} /> : null}
+          {result.bestCandidate?.forecastabilityTier === "NEARLY_READY" && result.bestCandidate.nextDataActions[0] ? (
+            <div className="mt-3 rounded border border-lab-amber/50 bg-lab-amber/10 p-3">
+              <p className="text-xs uppercase text-lab-muted">Одно действие до готовности</p>
+              <p className="mt-1 font-medium text-lab-amber">{result.bestCandidate.nextDataActions[0].label}</p>
+              <p className="mt-1 text-sm text-lab-muted">{result.bestCandidate.nextDataActions[0].reason}</p>
+            </div>
+          ) : null}
           {result.coverageBreakdown?.length ? <CoverageBreakdown items={result.coverageBreakdown} /> : null}
           {result.secondaryActions.length ? (
             <div className="mt-3 flex flex-wrap gap-2">
@@ -130,6 +137,7 @@ export function ForecastAutopilotButton({ matchId, compact = false }: { matchId?
                     <div>
                       <p className="text-white">{index + 1}. {candidate.teamAName} vs {candidate.teamBName}</p>
                       <p className="mt-1 text-lab-muted">{candidate.coverageScore}/100 · {candidate.forecastabilityLabel} · {candidate.whySelected ?? candidate.whyNotSelected ?? candidate.selectionReason}</p>
+                      {candidate.nextDataActions[0] ? <p className="mt-1 text-lab-amber">Следующее действие: {candidate.nextDataActions[0].label}</p> : null}
                     </div>
                     <Link href={candidate.href} className="rounded border border-lab-cyan/50 px-2 py-1 text-lab-cyan hover:bg-lab-cyan/10">Открыть</Link>
                   </div>
@@ -180,6 +188,9 @@ function CandidateCard({ title, candidate }: { title: string; candidate: NonNull
         <Link href={candidate.href} className="rounded bg-lab-cyan px-2 py-1 text-xs font-semibold text-black">Открыть</Link>
       </div>
       <p className="mt-2 text-sm text-lab-muted">{candidate.selectionReason}</p>
+      {candidate.nextDataActions[0] ? (
+        <p className="mt-2 text-sm text-lab-amber">Одно действие до готовности: {candidate.nextDataActions[0].label}</p>
+      ) : null}
     </div>
   );
 }

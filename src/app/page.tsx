@@ -4,25 +4,28 @@ import { ForecastAutopilotButton } from "@/components/ForecastAutopilotButton";
 import { ForecastCommandCenter } from "@/components/ForecastCommandCenter";
 import { ForecastConciergePanel } from "@/components/ForecastConciergePanel";
 import { MatchCard } from "@/components/MatchCard";
+import { MatchFeedRefreshButton } from "@/components/MatchFeedRefreshButton";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { ActionButton, InfoBanner, PageHeader, StatCard } from "@/components/ui";
 import { getAutoResearchMetrics } from "@/lib/autoResearch";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
+import { getMatchFeedStatus } from "@/lib/matchFeedCache";
 import { buildSourceSetupChecklist, isNoExtraApiMode } from "@/lib/sourceSetup";
 import { getBestNextAction } from "@/lib/bestNextAction";
 
 export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
-  const [upcoming, live, finished, status, readinessDistribution, commandMetrics] = await Promise.all([
+  const [upcoming, live, finished, status, readinessDistribution, commandMetrics, matchFeedStatus] = await Promise.all([
     getCalculatedMatches({ status: "upcoming", limit: 6, focus: "pro" }),
     getCalculatedMatches({ status: "live", limit: 3, focus: "pro" }),
     getCalculatedMatches({ status: "finished", limit: 3, focus: "pro" }),
     getDashboardDataStatus(),
     getReadinessDistribution(),
-    getAutoResearchMetrics()
+    getAutoResearchMetrics(),
+    getMatchFeedStatus()
   ]);
   const fullStatus = { ...status, readinessDistribution };
   const sourceSetup = buildSourceSetupChecklist(false, status.teamsWithPlayerRoster > 0 || status.matchesEnoughForBasicPrediction > 0);
@@ -38,7 +41,7 @@ export default async function HomePage() {
         actions={
           <>
             <ActionButton href="#forecast-autopilot">Найти лучший матч для прогноза</ActionButton>
-            <ActionButton href="#auto-refresh" tone="violet">Обновить всё доступное автоматически</ActionButton>
+            <ActionButton href="#auto-refresh" tone="violet">Обновить список матчей</ActionButton>
           </>
         }
       />
@@ -65,6 +68,10 @@ export default async function HomePage() {
       ) : null}
 
       <section id="auto-refresh">
+        <MatchFeedRefreshButton status={matchFeedStatus} />
+      </section>
+
+      <section>
         <OneClickResearchButton />
       </section>
 

@@ -219,15 +219,17 @@ export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast",
   if (matchId) {
     const input = await buildPredictionInput(matchId);
     const prediction = calculatePrediction(input);
-    const currentCandidate = buildForecastAutopilotCandidate(matchId).then((candidate) => rankForecastAutopilotCandidates([candidate, ...topCandidates.filter((item) => item.matchId !== matchId)]).find((item) => item.matchId === matchId) ?? candidate);
+    const currentCandidate = await buildForecastAutopilotCandidate(matchId);
+    const rankedWithCurrent = rankForecastAutopilotCandidates([currentCandidate, ...topCandidates.filter((item) => item.matchId !== matchId)]);
+    const resolvedCurrentCandidate = rankedWithCurrent.find((item) => item.matchId === matchId) ?? currentCandidate;
+    const bestCandidateForCurrent = rankedWithCurrent[0] ?? bestCandidate;
     const pack = await refreshResearchPack(matchId);
     const tasks = JSON.parse(pack.checklistJson) as Array<{ task: string; status: string; id?: string; priority?: string; reason?: string; expectedImpact?: string; sourceSuggestion?: string; actionType?: string; actionState?: string; createdAt?: string; completedAt?: string | null }>;
     const best = getBestNextAction(prediction, tasks as never);
     const state = stateFromReadiness(prediction.realForecast.isReady, prediction.readiness.level);
     const suggestions = getPlaybookEntriesForMissing(prediction.readiness.missingCriticalData);
-    const resolvedCurrentCandidate = await currentCandidate;
-    const whyNotSelected = bestCandidate && bestCandidate.matchId !== matchId
-      ? `Текущий матч имеет ${resolvedCurrentCandidate.coverageScore}/100 (${resolvedCurrentCandidate.forecastabilityLabel}), лучший доступный матч — ${bestCandidate.coverageScore}/100 (${bestCandidate.forecastabilityLabel}). ${resolvedCurrentCandidate.blockers[0] ?? resolvedCurrentCandidate.missingBlocks[0] ?? "У лучшего кандидата больше usable coverage."}`
+    const whyNotSelected = bestCandidateForCurrent && bestCandidateForCurrent.matchId !== matchId
+      ? `Текущий матч имеет ${resolvedCurrentCandidate.coverageScore}/100 (${resolvedCurrentCandidate.forecastabilityLabel}), лучший доступный матч — ${bestCandidateForCurrent.coverageScore}/100 (${bestCandidateForCurrent.forecastabilityLabel}). ${resolvedCurrentCandidate.blockers[0] ?? resolvedCurrentCandidate.missingBlocks[0] ?? "У лучшего кандидата больше usable coverage."}`
       : resolvedCurrentCandidate.selectionReason;
     return {
       ok: oneClick.ok,
@@ -243,9 +245,9 @@ export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast",
       unavailable: oneClick.summary.unavailable,
       sourceSuggestions: suggestions.map((entry) => ({ label: entry.label, sources: entry.sources, actionLabel: entry.actionLabel, href: entry.href })),
       oneClick,
-      bestCandidate,
+      bestCandidate: bestCandidateForCurrent,
       currentCandidate: resolvedCurrentCandidate,
-      topCandidates: topCandidates.slice(0, 5),
+      topCandidates: rankedWithCurrent.slice(0, 5),
       coverageScore: resolvedCurrentCandidate.coverageScore,
       coverageBreakdown: resolvedCurrentCandidate.coverageBreakdown,
       forecastabilityTier: resolvedCurrentCandidate.forecastabilityTier,

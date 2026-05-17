@@ -9,7 +9,9 @@ import { FirstRealForecastSheetSessionPanel } from "@/components/FirstRealForeca
 import { ReadinessBadge } from "@/components/ReadinessBadge";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { SourceHunterPanel } from "@/components/SourceHunterPanel";
+import { RealDataFoundationCoveragePanel } from "@/components/RealDataFoundationCoveragePanel";
 import { ActionButton, DataDepthMeter, PageHeader, StatCard } from "@/components/ui";
+import { buildRealDataFoundationCoverage } from "@/lib/autoResearch/foundationCoverage";
 import { formatDateTime } from "@/lib/format";
 import { getResearchQueueRows, knownTeamMatchingIssues, refreshResearchPack, summarizeResearchQueue } from "@/lib/researchQueue";
 import { getPlaybookEntriesForMissing } from "@/lib/dataAcquisitionPlaybook";
@@ -29,8 +31,11 @@ type Search = { matchId?: string; template?: string };
 
 export default async function ResearchQueuePage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const rows = await getResearchQueueRows(120);
-  const firstRealForecastSession = await getFirstRealForecastTargetSession();
+  const [rows, firstRealForecastSession, foundationCoverage] = await Promise.all([
+    getResearchQueueRows(120),
+    getFirstRealForecastTargetSession(),
+    buildRealDataFoundationCoverage(new Date(), 40)
+  ]);
   const summary = summarizeResearchQueue(rows);
   const analystSampleEnabled = process.env.ENABLE_ANALYST_SAMPLE === "true";
   const selectedMatchId = params.matchId ?? rows[0]?.matchId ?? "pandascore_match_1474573";
@@ -82,6 +87,8 @@ export default async function ResearchQueuePage({ searchParams }: { searchParams
         <StatCard label="Высокий приоритет" value={summary.highPriority} tone="red" />
         <StatCard label="Нужен ручной ввод" value={summary.requiresManualInput} tone="violet" />
       </section>
+
+      <RealDataFoundationCoveragePanel coverage={foundationCoverage} compact />
 
       <section className="rounded-2xl border border-lab-amber/35 bg-lab-panel/85 p-4">
         <h2 className="font-semibold text-white">Что реально нужно для первого прогноза</h2>

@@ -1,9 +1,11 @@
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
+import { MatchFeedRefreshButton } from "@/components/MatchFeedRefreshButton";
 import { PredictionCard } from "@/components/PredictionCard";
 import { PageHeader } from "@/components/ui";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
+import { getMatchFeedStatus } from "@/lib/matchFeedCache";
 
 export const dynamic = "force-dynamic";
 
@@ -11,10 +13,11 @@ type Search = { sourceMode?: string; focus?: MatchFocusFilter };
 
 export default async function PredictionsPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const [rows, status, readinessDistribution] = await Promise.all([
+  const [rows, status, readinessDistribution, matchFeedStatus] = await Promise.all([
     getCalculatedMatches({ status: "upcoming", limit: 20, sourceMode: params.sourceMode, focus: params.focus ?? "pro" }),
     getDashboardDataStatus(),
-    getReadinessDistribution()
+    getReadinessDistribution(),
+    getMatchFeedStatus()
   ]);
 
   return (
@@ -25,6 +28,7 @@ export default async function PredictionsPage({ searchParams }: { searchParams: 
         description="Карточки показывают readiness, глубину данных, risk/confidence и одно главное действие. Lower-tier матчи скрыты из основного фокуса, но доступны фильтрами."
       />
       <DashboardStatusStrip status={{ ...status, readinessDistribution }} />
+      <MatchFeedRefreshButton status={matchFeedStatus} compact />
       <div className="flex flex-wrap gap-2">
         {[
           ["Топовые матчи", "/predictions"],

@@ -37,6 +37,7 @@ import type { ResearchTask } from "@/lib/researchQueueCore";
 import { buildConfidenceRiskExplanation, buildForecastStory, deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
 import type { FirstRealForecastSessionView } from "@/lib/firstRealForecastSheetSession";
 import type { GridMatchStatus } from "@/lib/gridOpenAccess";
+import type { ForecastAutopilotCandidate } from "@/lib/autoResearchShared";
 
 const tabs = ["Обзор", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
 
@@ -48,7 +49,8 @@ export function MatchDetailTabs({
   featureSnapshot,
   sourceCoverageRows = [],
   firstRealForecastSession,
-  gridOpenAccessStatus
+  gridOpenAccessStatus,
+  autopilotCandidate
 }: {
   input: PredictionInput;
   prediction: PredictionOutput;
@@ -58,6 +60,7 @@ export function MatchDetailTabs({
   sourceCoverageRows?: SourceCoverageRow[];
   firstRealForecastSession?: FirstRealForecastSessionView;
   gridOpenAccessStatus?: GridMatchStatus;
+  autopilotCandidate?: ForecastAutopilotCandidate;
 }) {
   const [active, setActive] = useState<(typeof tabs)[number]>("Обзор");
   const hasVetoHistory = input.vetoPatternsA.length > 0 && input.vetoPatternsB.length > 0;
@@ -73,6 +76,7 @@ export function MatchDetailTabs({
     <div className="space-y-5">
       <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
       <ForecastAutopilotButton matchId={input.match.id} compact />
+      {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
       <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
@@ -346,6 +350,40 @@ export function MatchDetailTabs({
         </section>
       )}
     </div>
+  );
+}
+
+function CurrentMatchAutopilotRecommendation({ candidate }: { candidate: ForecastAutopilotCandidate }) {
+  return (
+    <section className="rounded border border-lab-cyan/35 bg-lab-panel2 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-sm uppercase tracking-wide text-lab-cyan">Autopilot match readiness</p>
+          <h2 className="mt-1 font-semibold text-white">{candidate.coverageScore}/100 · {candidate.forecastabilityLabel}</h2>
+          <p className="mt-1 text-sm text-lab-muted">Real Data Depth {candidate.realDataDepth}/5 · readiness {candidate.readinessLevel} · Real Forecast Ready {candidate.realForecastReady ? "yes" : "no"}</p>
+        </div>
+        <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{candidate.format}</span>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded border border-lab-border bg-lab-panel p-3">
+          <p className="text-xs uppercase text-lab-muted">Blockers</p>
+          <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+            {[...candidate.blockers, ...candidate.missingBlocks].slice(0, 6).map((item, index) => <li key={`${candidate.matchId}-blocker-${index}-${item.slice(0, 18)}`}>{item}</li>)}
+          </ul>
+        </div>
+        <div className="rounded border border-lab-border bg-lab-panel p-3">
+          <p className="text-xs uppercase text-lab-muted">Next minimal action</p>
+          {candidate.nextDataActions[0] ? (
+            <>
+              <p className="mt-2 font-medium text-lab-amber">{candidate.nextDataActions[0].label}</p>
+              <p className="mt-1 text-sm text-lab-muted">{candidate.nextDataActions[0].reason}</p>
+            </>
+          ) : (
+            <p className="mt-2 text-sm text-lab-muted">Критичного действия не найдено.</p>
+          )}
+        </div>
+      </div>
+    </section>
   );
 }
 
