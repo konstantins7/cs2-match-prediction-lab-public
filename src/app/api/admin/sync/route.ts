@@ -15,6 +15,7 @@ import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
 import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
 import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
 import { refreshMatchFeed } from "@/lib/matchFeedCache";
+import { runFullMatchAnalysis } from "@/lib/fullMatchAnalysis";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -28,8 +29,12 @@ type SyncRequest = {
   gridSeriesId?: string;
   from?: string;
   to?: string;
-  mode?: ForecastAutopilotMode;
+  mode?: ForecastAutopilotMode | "deep";
 };
+
+function normalizeMode(mode: SyncRequest["mode"]): ForecastAutopilotMode {
+  return mode === "deep" ? "deeper" : mode ?? "fast";
+}
 
 export async function POST(request: Request) {
   try {
@@ -39,7 +44,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "forecast_autopilot") {
-      const result = await runForecastAutopilot(body.mode ?? "fast", body.matchId);
+      const result = await runForecastAutopilot(normalizeMode(body.mode), body.matchId);
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "full_match_analysis") {
+      if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
+      const result = await runFullMatchAnalysis(body.matchId, normalizeMode(body.mode));
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "refresh_match_feed") {

@@ -2,10 +2,9 @@ import Link from "next/link";
 import { formatDateTime } from "@/lib/format";
 import type { CalculatedMatch } from "@/lib/data/matches";
 import { ConfidenceBadge } from "./ConfidenceBadge";
-import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
-import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
+import { SourceLevelBadge } from "./RealForecastBadge";
 import { getBestNextAction, humanForecastStatus } from "@/lib/bestNextAction";
 import { scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { deriveDataDepth } from "@/lib/ui/forecastUx";
@@ -57,8 +56,6 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
               </td>
               <td className="px-3 py-3">
                 <div className="flex flex-wrap gap-2">
-                  <ReadinessBadge level={prediction.readiness.level} />
-                  <RealForecastBadge isReady={prediction.realForecast.isReady} />
                   <StatusPill label={humanForecastStatus(prediction)} tone={prediction.realForecast.isReady ? "green" : "cyan"} />
                   <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
                   {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
@@ -84,8 +81,8 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                 <div>Прогноз пересчитан: {match.audits?.[0]?.createdAt ? formatDateTime(match.audits[0].createdAt) : "нет"}</div>
               </td>
               <td className="px-3 py-3">
-                <Link href={`/match/${match.id}`} className="text-lab-cyan hover:text-cyan-200">
-                  Разбор
+                <Link href={`/match/${match.id}#full-analysis`} className="text-lab-cyan hover:text-cyan-200">
+                  Полный анализ
                 </Link>
                 <div>
                   <Link href={actionHref(nextAction.href, match.id)} className="text-xs text-lab-amber hover:text-amber-200">

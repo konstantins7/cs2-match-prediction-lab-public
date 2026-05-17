@@ -18,6 +18,7 @@ import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
+import { FullMatchAnalysisPanel } from "./FullMatchAnalysisPanel";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
 import { DemoStatExportCta } from "./ImportProfilesPanel";
 import { ManualEnrichmentPanel } from "./ManualEnrichmentPanel";
@@ -74,8 +75,14 @@ export function MatchDetailTabs({
 
   return (
     <div className="space-y-5">
-      <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
-      <ForecastAutopilotButton matchId={input.match.id} compact />
+      <FullMatchAnalysisPanel matchId={input.match.id} />
+      <details className="rounded border border-lab-border bg-lab-panel p-4">
+        <summary className="cursor-pointer font-semibold text-lab-cyan">Advanced: technical readiness and autopilot</summary>
+        <div className="mt-4 space-y-4">
+          <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
+          <ForecastAutopilotButton matchId={input.match.id} compact />
+        </div>
+      </details>
       {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
       <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
       <div className="flex flex-wrap gap-2">
@@ -169,47 +176,52 @@ export function MatchDetailTabs({
               <ProbabilityBar teamAName={input.teamA.name} teamBName={input.teamB.name} teamAProbability={prediction.teamAProbability} teamBProbability={prediction.teamBProbability} />
             </div>
           </div>
-          <DataCoveragePanel input={input} />
-          <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
-          <DataSourcesTable input={input} />
-          {gridOpenAccessStatus ? <GridOpenAccessMatchPanel initialStatus={gridOpenAccessStatus} /> : null}
-          {firstRealForecastSession ? (
-            <FirstRealForecastSheetSessionPanel session={firstRealForecastSession} />
-          ) : (
-            <AnalystSheetImportPanel defaultMatchId={input.match.id} />
-          )}
-          <section className="rounded border border-lab-amber/35 bg-lab-panel p-4">
-            <h2 className="font-semibold text-white">Data onboarding guardrails</h2>
-            <p className="mt-2 text-sm text-lab-muted">
-              Первый реальный прогноз всё ещё требует реальные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для этого матча. Kaggle/offline datasets и personal Steam demos помогают training/calibration или demo pipeline, но не заменяют live match evidence.
-            </p>
-            <p className="mt-2 text-sm text-lab-amber">
-              CS Demo Manager полезен для прошлых матчей текущего состава; демка target match после старта не используется как pre-match evidence.
-            </p>
-          </section>
-          <DemoStatExportCta />
-          <ParsedDemoExportPanel defaultMatchId={input.match.id} />
-          <ManualEnrichmentPanel
-            defaultMatchId={input.match.id}
-            initialTemplate="manual_real_pack"
-            matchOptions={[{
-              matchId: input.match.id,
-              label: `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)}`,
-              teamAName: input.teamA.name,
-              teamBName: input.teamB.name,
-              startTime: input.match.startTime,
-              readinessLevel: prediction.readiness.level,
-              realForecastReady: prediction.realForecast.isReady,
-              sourceLevel: prediction.sourceLevel,
-              previewDataDepth: deriveDataDepth(input, prediction),
-              realDataDepth: deriveRealDataDepth(input, prediction),
-              missingBlocks: [...prediction.readiness.missingCriticalData, ...prediction.realForecast.reasons],
-              tasks: researchTasks
-            }]}
-          />
-          <ForecastReportBuilder input={input} prediction={prediction} featureSnapshot={featureSnapshot} />
-          <FeatureSnapshotPanel snapshot={featureSnapshot} />
-          <SourceCoverageMatrix rows={sourceCoverageRows} compact />
+          <details className="rounded border border-lab-border bg-lab-panel p-4">
+            <summary className="cursor-pointer font-semibold text-lab-cyan">Analyst/Advanced: sources, data pack and diagnostics</summary>
+            <div className="mt-4 space-y-4">
+              <DataCoveragePanel input={input} />
+              <NewsRiskSummary news={input.news} teamAId={input.teamA.id} teamBId={input.teamB.id} />
+              <DataSourcesTable input={input} />
+              {gridOpenAccessStatus ? <GridOpenAccessMatchPanel initialStatus={gridOpenAccessStatus} /> : null}
+              {firstRealForecastSession ? (
+                <FirstRealForecastSheetSessionPanel session={firstRealForecastSession} />
+              ) : (
+                <AnalystSheetImportPanel defaultMatchId={input.match.id} />
+              )}
+              <section className="rounded border border-lab-amber/35 bg-lab-panel p-4">
+                <h2 className="font-semibold text-white">Data onboarding guardrails</h2>
+                <p className="mt-2 text-sm text-lab-muted">
+                  Первый реальный прогноз всё ещё требует реальные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для этого матча. Kaggle/offline datasets и personal Steam demos помогают training/calibration или demo pipeline, но не заменяют live match evidence.
+                </p>
+                <p className="mt-2 text-sm text-lab-amber">
+                  CS Demo Manager полезен для прошлых матчей текущего состава; демка target match после старта не используется как pre-match evidence.
+                </p>
+              </section>
+              <DemoStatExportCta />
+              <ParsedDemoExportPanel defaultMatchId={input.match.id} />
+              <ManualEnrichmentPanel
+                defaultMatchId={input.match.id}
+                initialTemplate="manual_real_pack"
+                matchOptions={[{
+                  matchId: input.match.id,
+                  label: `${input.teamA.name} vs ${input.teamB.name} · ${formatDateTime(input.match.startTime)}`,
+                  teamAName: input.teamA.name,
+                  teamBName: input.teamB.name,
+                  startTime: input.match.startTime,
+                  readinessLevel: prediction.readiness.level,
+                  realForecastReady: prediction.realForecast.isReady,
+                  sourceLevel: prediction.sourceLevel,
+                  previewDataDepth: deriveDataDepth(input, prediction),
+                  realDataDepth: deriveRealDataDepth(input, prediction),
+                  missingBlocks: [...prediction.readiness.missingCriticalData, ...prediction.realForecast.reasons],
+                  tasks: researchTasks
+                }]}
+              />
+              <ForecastReportBuilder input={input} prediction={prediction} featureSnapshot={featureSnapshot} />
+              <FeatureSnapshotPanel snapshot={featureSnapshot} />
+              <SourceCoverageMatrix rows={sourceCoverageRows} compact />
+            </div>
+          </details>
           <section className="rounded border border-lab-border bg-lab-panel p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div>

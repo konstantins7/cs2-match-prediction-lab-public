@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.0
+## Что есть в MVP 0.8.1
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- One-Click Full Match Analysis UX: MVP 0.8.1 упрощает главный путь до `Обновить список матчей` -> `Найти лучший матч для прогноза` -> `Полный анализ`. Страница матча показывает persistent timeline, прогноз или понятные blockers с одним главным следующим действием.
 - Match Feed Cache + Diff: MVP 0.8.0 добавляет явную кнопку `Обновить список матчей`, которая обновляет live/upcoming feed только по запросу пользователя, сравнивает новый список с предыдущим и показывает `new / updated / unchanged / stale`.
 - Roster/Data Coverage Foundation: MVP 0.7.7 исправляет выбор кандидатов так, чтобы `NEARLY_READY` с высоким coverage outrank low-coverage `BASIC_ONLY`, и показывает real-data foundation coverage: roster, player stats, map stats, veto и GRID mapping.
 - Automated Legal Data Autopilot: MVP 0.7.6 добавляет coverage-first выбор лучшего upcoming матча для прогноза без HLTV scraping, browser crawler, Apify, fake data, betting/odds или изменения forecast gates.
@@ -62,6 +63,7 @@ npm run build
 - Human-Friendly Auto Research UX: на главной и `/matches` есть кнопка `Обновить всё доступное автоматически`; после обновления появляется Forecast Command Center с понятными статусами, лучшим следующим действием и честным разделением того, что удалось получить автоматически, а что требует data pack или provider access.
 - Forecast Concierge: главная и страница матча показывают “что сайт смог получить автоматически”, “что не смог”, “почему”, “лучшее следующее действие” и “где взять недостающие данные”.
 - Forecast Autopilot: Best Match Autopilot без `matchId` выбирает лучший upcoming official real candidate, Current Match Autopilot с `matchId` готовит только открытый матч и сравнивает его с global best.
+- Full Match Analysis: `full_match_analysis` работает только для текущего `matchId`, не переключает target, не применяет CSV/manual data, использует existing legal refresh/check/prepare/autopilot paths и возвращает timeline: матч, рейтинг, roster, player stats, maps, veto, GRID, FACEIT/Leetify explicit IDs, H2H/news и prediction.
 - Provider Capability Probe: `/admin/sources` проверяет, что реально разблокировали PandaScore, Valve, Steam, GRID, Liquipedia, FACEIT и parsed demo.
 - FACEIT Context Enrichment: FACEIT используется только server-side как optional context source для выбранного матча и только по явно подтверждённым FACEIT IDs. Manual FACEIT ID import создаёт `EntityAlias`, low-confidence совпадения уходят в `EntityMatchCandidate needs_review`, broad crawl/search отключены.
 - GRID Open Access Integration: GRID работает как optional official provider через Central Data / Series State only. Series Events, File Download и Stats Feed отмечены как unavailable on OA и не вызываются.
@@ -71,8 +73,55 @@ npm run build
 - Persistent Feature Store: `MatchFeatureSnapshot` сохраняет ranking/form/player/map-veto/round-economy/context/quality features, `featureCutoffTime`, `featureSourcesJson`, `featureSchemaVersion` и `dataLeakageCheckPassed`.
 - Model Lab: `/admin/model-lab` показывает feature snapshots, Source Coverage Matrix, calibration by readiness, data leakage summary и export training dataset CSV.
 - News & Insider Intelligence Layer: official/media/manual insider news хранится отдельно через `NewsSource`, `NewsItem`, `NewsImpactSnapshot`; impact жёстко ограничен clamps, rumors в первую очередь повышают risk, а не probability.
-- Sync в MVP 0.8.0 запускается только вручную через кнопки, `/admin/imports` или CLI scripts. Page-load sync запрещён; главная, `/matches` и `/predictions` читают сохранённый local cache.
+- Sync в MVP 0.8.1 запускается только вручную через кнопки, `/admin/imports` или CLI scripts. Page-load sync запрещён; главная, `/matches` и `/predictions` читают сохранённый local cache.
 - Source modes and badges: demo, valve rankings, Steam updates, PandaScore free, manual real, parsed demo, analyst sample, Liquipedia limited, FACEIT optional, GRID Open Access, mixed, partial, needs review.
+
+## One-Click Full Match Analysis UX
+
+MVP 0.8.1 делает default User Mode коротким и продуктовым: главная показывает только основные действия и матчевые блоки, а source/foundation/model/debug детали остаются в свёрнутом `Analyst / Advanced mode`.
+
+Основной flow:
+
+- пользователь открывает главную;
+- при необходимости нажимает `Обновить список матчей`;
+- выбирает матч из `Матчи сейчас`, `Сегодня`, `Ближайшие` или `Лучшие для прогноза`;
+- нажимает `Полный анализ`;
+- сайт показывает persistent progress timeline и итог: финальный прогноз или точные blockers.
+
+`Полный анализ`:
+
+- принимает только `matchId` и mode `fast | deep | max`;
+- никогда не переключает target на другой матч;
+- не применяет CSV/manual data и не вызывает manual apply;
+- может использовать только existing legal refresh/check/prepare/autopilot paths;
+- строит current match coverage, prediction summary, warnings, blockers и одно главное `primaryNextAction`.
+
+Пользовательские статусы:
+
+- `Готов к прогнозу`;
+- `Почти готов`;
+- `Только базовый прогноз`;
+- `Недостаточно данных`;
+- `Заблокирован`.
+
+Технические readiness labels вроде `L0/L1/L2` остаются в advanced/debug details и не являются главным статусом для обычного пользователя.
+
+Если `Real Forecast Ready = true`, результат показывает вероятности команд, confidence, risk, top-5 факторов, map/veto summary и warnings.
+
+Если `Real Forecast Ready = false`, результат показывает `Финальный прогноз пока не готов`, лучший доступный preview, exact blockers, одно главное следующее действие и причину, почему final gates не дают финальный прогноз.
+
+Ограничения неизменны:
+
+- no forecast math changes;
+- no Real Forecast Ready gate changes;
+- no page-load sync;
+- no seed;
+- no HLTV/Telegram scraping;
+- no browser crawler;
+- no Apify;
+- no unsupported GRID APIs;
+- no fake/imputed data;
+- no Kaggle/offline/personal Steam as live evidence.
 
 ## Dark Esport Dashboard UX
 
