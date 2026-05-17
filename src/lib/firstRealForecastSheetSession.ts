@@ -23,6 +23,35 @@ export type FirstRealForecastCandidate = {
   sourceMode: string;
 };
 
+export type ManualRealAppliedDataUsageSessionAudit = {
+  appliedRecordsVisibleToPredictionBuilder: boolean;
+  rootCause: string;
+  previewMismatchRootCause: string;
+  mapSamples: {
+    teamA: { teamName: string; mapsPlayed: number; required: number; complete: boolean };
+    teamB: { teamName: string; mapsPlayed: number; required: number; complete: boolean };
+  };
+  readinessGates: {
+    fixturePresent: boolean;
+    rankPresent: boolean;
+    basicHistoryPresent: boolean;
+    rosterPresent: boolean;
+    playerStatsPresent: boolean;
+    mapStatsPresent: boolean;
+    vetoPresent: boolean;
+    teamFormPresent: boolean;
+    h2hPresent: boolean;
+    newsPresent: boolean;
+    dataQuality: number;
+    readiness: string;
+    realForecastReady: boolean;
+    manualRealPackQuality: number;
+    manualRealPackCanReachL3: boolean;
+  };
+  warnings: string[];
+  nextMinimalSafeAction: string;
+};
+
 export type FirstRealForecastSessionView = {
   matchId: string;
   teams: string;
@@ -39,13 +68,18 @@ export type FirstRealForecastSessionView = {
   workflowReady: boolean;
   readinessBefore: string;
   realForecastReadyBefore: boolean;
+  dataQualityBefore: number;
+  confidenceBefore: number;
   sourceLevel: string;
   previewDataDepth: DataDepth;
   realDataDepth: DataDepth;
+  realCsvLoaded: boolean;
+  emptySessionBlockers: string[];
   missingBlocks: string[];
   blockers: string[];
   warnings: string[];
   nearestFutureMatches: FirstRealForecastCandidate[];
+  manualRealAudit?: ManualRealAppliedDataUsageSessionAudit;
 };
 
 type TargetMatchLike = {
@@ -85,12 +119,14 @@ export function buildFirstRealForecastSessionView({
   input,
   prediction,
   now = new Date(),
-  nearestFutureMatches = []
+  nearestFutureMatches = [],
+  manualRealAudit
 }: {
   input: PredictionInput;
   prediction: PredictionOutput;
   now?: Date;
   nearestFutureMatches?: FirstRealForecastCandidate[];
+  manualRealAudit?: ManualRealAppliedDataUsageSessionAudit;
 }): FirstRealForecastSessionView {
   const match = {
     id: input.match.id,
@@ -120,16 +156,25 @@ export function buildFirstRealForecastSessionView({
     workflowReady: preflight.targetValid,
     readinessBefore: prediction.readiness.level,
     realForecastReadyBefore: prediction.realForecast.isReady,
+    dataQualityBefore: prediction.dataQualityScore,
+    confidenceBefore: prediction.confidenceScore,
     sourceLevel: prediction.sourceLevel,
     previewDataDepth: deriveDataDepth(input, prediction),
     realDataDepth: deriveRealDataDepth(input, prediction),
+    realCsvLoaded: false,
+    emptySessionBlockers: [
+      "Нет real CSV/TSV sheets loaded.",
+      "Нужны roster.csv, player_stats.csv, map_stats.csv и veto_history.csv.",
+      "Target CSV templates содержат placeholders и sampleSize=0/confidence=0, поэтому не проходят validation как real data."
+    ],
     missingBlocks,
     warnings: [
       "Без реальных CSV/TSV данных Apply не запускается.",
       "CSV-шаблоны не считаются real data и должны быть заменены реальными строками.",
       "Real Forecast Ready может стать yes только через существующие Real Forecast gates."
     ],
-    nearestFutureMatches
+    nearestFutureMatches,
+    manualRealAudit
   };
 }
 
@@ -150,9 +195,16 @@ export function buildBlockedFirstRealForecastSessionView(blockers: string[], nea
     workflowReady: false,
     readinessBefore: "L0_FIXTURE_ONLY",
     realForecastReadyBefore: false,
+    dataQualityBefore: 0,
+    confidenceBefore: 0,
     sourceLevel: "Fixture only",
     previewDataDepth: { level: 1, label: "Базовые данные матча", description: "Target не прошёл preflight." },
     realDataDepth: { level: 1, label: "Недостаточно real data", description: "Target не прошёл preflight." },
+    realCsvLoaded: false,
+    emptySessionBlockers: [
+      "Live attempt stopped before CSV validation.",
+      "Выберите один из nearest future matches и загрузите real CSV/TSV sheets."
+    ],
     missingBlocks: ["player roster", "player stats", "map stats", "veto history"],
     blockers,
     warnings: ["Live forecast flow остановлен до выбора настоящего future/upcoming target."],

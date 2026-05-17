@@ -29,6 +29,45 @@ const priorityNotes = [
   "Mock: dev only."
 ];
 
+const autopilotProviderCards = [
+  {
+    title: "PandaScore Free",
+    status: "fixture/basic",
+    body: "Даёт official upcoming fixture, формат, команды, турнир и basic match context для candidate scoring.",
+    limit: "Free/basic plan не заменяет player/map/veto deep layer."
+  },
+  {
+    title: "Valve + Steam CS Updates",
+    status: "ranking/meta",
+    body: "Valve ranking/basic strength и Steam patch/meta могут поднять coverage, если данные свежие и cutoff-safe.",
+    limit: "Не создают roster/player/map/veto records."
+  },
+  {
+    title: "GRID Open Access",
+    status: "official partial",
+    body: "Central Data учитывается как official context. Series State используется только когда known gridSeriesId уже связан.",
+    limit: "Series Events, File Download и Stats Feed недоступны на OA и не вызываются."
+  },
+  {
+    title: "Manual / Parsed",
+    status: "validated evidence",
+    body: "Validated CSV/TSV manual_real и parsed_demo records дают основной вклад в roster/player/map/veto coverage.",
+    limit: "Templates, fake data, Kaggle/offline и personal Steam не live evidence."
+  },
+  {
+    title: "FACEIT / Leetify",
+    status: "explicit IDs only",
+    body: "Optional context учитывается только при существующих подтверждённых IDs или сохранённых records.",
+    limit: "No broad crawl, no nickname search, no Real Forecast Ready alone."
+  },
+  {
+    title: "LiquipediaDB / TheSportsDB",
+    status: "conditional",
+    body: "LiquipediaDB может помочь roster/history, если key есть. TheSportsDB остаётся disabled metadata fallback.",
+    limit: "No player/map/veto/round/economy impact from TheSportsDB."
+  }
+];
+
 export default async function SourcesPage() {
   const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
   const [statuses, jobs, jobsLastHour, rawRecords, coverage, dataStatus, rankCandidates, readinessDistribution] = await Promise.all([
@@ -106,7 +145,7 @@ export default async function SourcesPage() {
             <h2 className="font-semibold text-white">Data Onboarding</h2>
             <p className="mt-1 text-sm text-lab-muted">Что можно подключать сейчас, а что остаётся только training/local guidance. Никакие ключи или personal auth codes здесь не показываются.</p>
           </div>
-          <span className="rounded-full border border-lab-violet/35 bg-lab-violet/10 px-3 py-1 text-xs font-medium text-lab-violet">MVP 0.7.4</span>
+          <span className="rounded-full border border-lab-violet/35 bg-lab-violet/10 px-3 py-1 text-xs font-medium text-lab-violet">MVP 0.7.5</span>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <OnboardingCard
@@ -155,6 +194,28 @@ export default async function SourcesPage() {
       </section>
 
       <SourceHunterPanel />
+
+      <section id="autopilot-provider-contribution" className="rounded-2xl border border-lab-cyan/35 bg-lab-panel/85 p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-white">Autopilot provider contribution</h2>
+            <p className="mt-1 text-sm text-lab-muted">
+              Automated Legal Data Autopilot считает coverage только из разрешённых источников и уже сохранённых records. Он не скрейпит сайты, не запускает browser crawler и не создаёт fake evidence.
+            </p>
+          </div>
+          <span className="rounded-full border border-lab-cyan/35 bg-lab-cyan/10 px-3 py-1 text-xs font-medium text-lab-cyan">MVP 0.7.6</span>
+        </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          {autopilotProviderCards.map((card) => (
+            <article key={card.title} className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-lab-cyan">{card.status}</p>
+              <h3 className="mt-2 font-semibold text-white">{card.title}</h3>
+              <p className="mt-2 text-sm text-lab-muted">{card.body}</p>
+              <p className="mt-2 text-xs text-lab-amber">{card.limit}</p>
+            </article>
+          ))}
+        </div>
+      </section>
 
       <ImportProfilesPanel />
 

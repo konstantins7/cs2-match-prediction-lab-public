@@ -27,7 +27,7 @@ export function OfflineDatasetInspectorPanel() {
   async function loadFile(file: File | undefined) {
     if (!file) return;
     if (!file.name.toLowerCase().match(/\.(csv|tsv|txt)$/)) {
-      setMessage("Для 0.7.4 inspector используйте CSV/TSV/TXT. XLSX остаётся future/inactive.");
+      setMessage("Для 0.7.5 inspector используйте CSV/TSV/TXT. XLSX остаётся future/inactive.");
       return;
     }
     setMessage("Файл прочитан локально в браузере. Ничего не отправлено в live forecast records.");
@@ -40,7 +40,7 @@ export function OfflineDatasetInspectorPanel() {
     <section className="rounded border border-lab-cyan/35 bg-lab-panel p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs uppercase tracking-wide text-lab-cyan">MVP 0.7.4 · inspect-only</p>
+          <p className="text-xs uppercase tracking-wide text-lab-cyan">MVP 0.7.5 · inspect-only</p>
           <h2 className="font-semibold text-white">Offline calibration datasets</h2>
           <p className="mt-1 max-w-3xl text-sm text-lab-muted">
             Kaggle CSV можно анализировать для training/calibration metadata, но эти файлы не являются live forecast source и не могут поднять Real Forecast Ready.

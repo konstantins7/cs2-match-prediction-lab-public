@@ -8,7 +8,7 @@ import {
   firstRealForecastTarget
 } from "./firstRealForecastSheetSession";
 
-describe("MVP 0.7.4 first real forecast from analyst sheets", () => {
+describe("MVP 0.7.5 first real forecast from analyst sheets", () => {
   it("accepts the confirmed Evo Novo vs WAZABI future/upcoming target", () => {
     const result = evaluateFirstRealForecastTarget({
       id: firstRealForecastTarget.matchId,
@@ -71,7 +71,12 @@ describe("MVP 0.7.4 first real forecast from analyst sheets", () => {
 
     expect(view.workflowReady).toBe(true);
     expect(view.realForecastReadyBefore).toBe(false);
+    expect(view.realCsvLoaded).toBe(false);
+    expect(view.dataQualityBefore).toBeGreaterThanOrEqual(0);
+    expect(view.confidenceBefore).toBeGreaterThanOrEqual(0);
     expect(view.missingBlocks).toEqual(expect.arrayContaining(["player roster", "player stats", "map stats", "veto history"]));
+    expect(view.emptySessionBlockers.join(" ")).toContain("roster.csv");
+    expect(view.emptySessionBlockers.join(" ")).toContain("confidence=0");
     expect(view.warnings.join(" ")).toContain("Без реальных CSV/TSV данных");
   });
 
@@ -84,6 +89,10 @@ describe("MVP 0.7.4 first real forecast from analyst sheets", () => {
     expect(panel).toContain("Собрать первый реальный прогноз из analyst sheets");
     expect(panel).toContain("WAZABI");
     expect(panel).toContain("initialContent=\"empty\"");
+    expect(panel).toContain("templateContext");
+    expect(panel).toContain("Data quality before");
+    expect(panel).toContain("Manual Real Applied Data Usage Audit");
+    expect(panel).toContain("map sample");
     expect(matchPage).toContain("firstRealForecastSession");
     expect(queuePage).toContain("FirstRealForecastSheetSessionPanel");
     expect(analystPanel).toContain("/api/admin/analyst-sheet/apply");

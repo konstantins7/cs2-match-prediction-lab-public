@@ -9,10 +9,12 @@ import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { getBestNextAction, humanForecastStatus } from "@/lib/bestNextAction";
 import { ActionButton, DataDepthMeter, StatusPill } from "@/components/ui";
+import { scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { deriveDataDepth, deriveRealDataDepth } from "@/lib/ui/forecastUx";
 
 export function MatchCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
+  const autopilot = scoreForecastAutopilotCandidate({ input: row.input, prediction, priority: row.priority });
   const updatedAt = new Date(match.updatedAt);
   const stale = Number.isFinite(updatedAt.getTime()) ? Date.now() - updatedAt.getTime() > 7 * 24 * 60 * 60 * 1000 : true;
   const recalculatedAt = match.audits?.[0]?.createdAt;
@@ -46,6 +48,9 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
           <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{row.priority.priorityLabel}</span>
           <span className="rounded border border-lab-border px-2 py-1 text-xs text-lab-muted">{row.priority.visibilityTier}</span>
           <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{match.status}</span>
+          <span className="rounded border border-lab-cyan/50 bg-lab-cyan/10 px-2 py-1 text-xs text-lab-cyan">
+            Autopilot {autopilot.coverageScore}/100 · {autopilot.forecastabilityLabel}
+          </span>
         </div>
       </div>
 
@@ -72,9 +77,17 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
         <div className="rounded-xl border border-white/10 bg-white/[0.03] p-3">
           <p className="text-xs uppercase text-lab-muted">Чего не хватает</p>
           <ul className="mt-2 space-y-1 text-sm text-lab-muted">
-            {missingBlocks.map((item) => <li key={`${match.id}-${item}`}>{item}</li>)}
+            {(autopilot.blockers.length ? autopilot.blockers.slice(0, 2) : missingBlocks).map((item) => <li key={`${match.id}-${item}`}>{item}</li>)}
           </ul>
         </div>
+      </div>
+      <div className="mt-3 rounded-xl border border-lab-cyan/30 bg-lab-cyan/10 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <p className="text-xs uppercase text-lab-muted">Forecastability</p>
+          <span className="text-sm font-semibold text-lab-cyan">{autopilot.coverageScore}/100</span>
+        </div>
+        <p className="mt-1 text-sm text-white">{autopilot.forecastabilityLabel}</p>
+        <p className="mt-1 text-xs text-lab-muted">{autopilot.selectionReason}</p>
       </div>
       <div className="mt-3 rounded-xl border border-lab-cyan/30 bg-lab-cyan/10 p-3">
         <p className="text-xs uppercase text-lab-muted">Главное действие</p>

@@ -16,6 +16,9 @@ import { runAutoResearchOrchestrator } from "./orchestrator";
 import { getBestNextAction } from "../bestNextAction";
 import { getPlaybookEntriesForMissing } from "../dataAcquisitionPlaybook";
 import { probeProviderCapabilities } from "../providerCapabilityProbe";
+import { enrichFaceitContextForMatch } from "../faceitContext";
+import { enrichGridOpenAccessMatch, getGridOpenAccessMatchStatus, syncGridCentralData } from "../gridOpenAccess";
+import { buildForecastAutopilotCandidate, getForecastAutopilotCandidates, rankForecastAutopilotCandidates } from "./candidateSelector";
 
 export async function getAutoResearchMetrics(): Promise<AutoResearchMetrics> {
   const [status, distribution, researchRows, mapStatRows, vetoRows] = await Promise.all([
@@ -95,21 +98,137 @@ function messageForState(state: ForecastAutopilotState) {
   return "Прогноз пока не готов: нужно одно главное действие с данными.";
 }
 
-export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast", matchId?: string): Promise<ForecastAutopilotResult> {
+function safeAutopilotOrchestrator(mode: ForecastAutopilotMode) {
+  return async () => {
+    if (mode === "fast") {
+      return {
+        results: [],
+        reports: [
+          {
+            source: "autopilot",
+            dataType: "sync",
+            status: "skipped" as const,
+            message: "Быстрый режим использует сохранённые данные и lightweight rebuild; broad provider refresh не запускается."
+          }
+        ]
+      };
+    }
+    return runAutoResearchOrchestrator(new Date(), "fast");
+  };
+}
+
+async function runAutopilotRefresh(mode: ForecastAutopilotMode) {
   const oneClick = await runOneClickGlobalRefreshWithDeps({
     ...defaultAutoResearchDeps,
-    runOrchestrator: () => runAutoResearchOrchestrator(new Date(), mode === "fast" ? "fast" : "deeper")
+    runOrchestrator: safeAutopilotOrchestrator(mode)
   });
-  const probe = mode === "fast" ? null : await probeProviderCapabilities();
+  if (mode === "fast") {
+    oneClick.summary.succeeded = ["использовать сохранённые данные", "пересчитать прогнозы", "обновить задачи"];
+  }
+  if (mode === "deeper" || mode === "max") {
+    const grid = await syncGridCentralData();
+    oneClick.summary.sourceReports.push({
+      source: "grid",
+      dataType: "series",
+      status: grid.ok ? "success" : grid.enabled ? "partial" : "skipped",
+      message: grid.notes[0] ?? "GRID Central Data checked. Unsupported OA APIs were not called."
+    });
+    if (grid.recordsFetched > 0 || grid.recordsCreated > 0 || grid.recordsUpdated > 0) {
+      await rebuildSnapshots();
+      oneClick.summary.predictionsRecalculated += await runPredictionsForUpcomingMatches();
+      await refreshResearchQueuePacks();
+    }
+  }
+  return oneClick;
+}
+
+async function enrichMappedGridForMode(mode: ForecastAutopilotMode, matchId?: string) {
+  if (mode !== "max" || !matchId) return null;
+  const status = await getGridOpenAccessMatchStatus(matchId);
+  if (!status.gridSeriesId) return null;
+  const result = await enrichGridOpenAccessMatch(matchId);
+  if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
+    await rebuildSnapshots();
+    await runPredictionsForUpcomingMatches();
+    await refreshResearchQueuePacks();
+  }
+  return result;
+}
+
+async function hasCompleteFaceitAliases(matchId: string) {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: {
+      teamA: { include: { players: { where: { isActive: true }, select: { id: true } } } },
+      teamB: { include: { players: { where: { isActive: true }, select: { id: true } } } }
+    }
+  });
+  if (!match) return false;
+  const teamIds = [match.teamAId, match.teamBId];
+  const playerIds = [...match.teamA.players, ...match.teamB.players].map((player) => player.id);
+  if (playerIds.length === 0) return false;
+  const [teamAliases, playerAliases] = await Promise.all([
+    prisma.entityAlias.findMany({ where: { source: "faceit", entityType: "team", entityId: { in: teamIds } }, select: { entityId: true } }),
+    prisma.entityAlias.findMany({ where: { source: "faceit", entityType: "player", entityId: { in: playerIds } }, select: { entityId: true } })
+  ]);
+  const teamAliasIds = new Set(teamAliases.map((alias) => alias.entityId));
+  const playerAliasIds = new Set(playerAliases.map((alias) => alias.entityId));
+  return teamIds.every((id) => teamAliasIds.has(id)) && playerIds.every((id) => playerAliasIds.has(id));
+}
+
+async function enrichMappedFaceitForMode(mode: ForecastAutopilotMode, matchId?: string) {
+  if (mode !== "max" || !matchId) return null;
+  if (!(await hasCompleteFaceitAliases(matchId))) return null;
+  const result = await enrichFaceitContextForMatch(matchId);
+  if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
+    await rebuildSnapshots();
+    await runPredictionsForUpcomingMatches();
+    await refreshResearchQueuePacks();
+  }
+  return result;
+}
+
+export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast", matchId?: string): Promise<ForecastAutopilotResult> {
+  const oneClick = await runAutopilotRefresh(mode);
+  const probe = mode === "max" ? await probeProviderCapabilities() : null;
+  let topCandidates = await getForecastAutopilotCandidates();
+  const initialBest = topCandidates[0] ?? null;
+  const gridTarget = matchId ?? initialBest?.matchId;
+  const gridEnrichment = await enrichMappedGridForMode(mode, gridTarget);
+  const faceitEnrichment = await enrichMappedFaceitForMode(mode, gridTarget);
+  if (gridEnrichment) {
+    topCandidates = await getForecastAutopilotCandidates();
+    oneClick.summary.sourceReports.push({
+      source: "grid",
+      dataType: "series state",
+      status: gridEnrichment.errors.length ? "partial" : "success",
+      message: gridEnrichment.notes[0] ?? "Mapped GRID Series State checked for selected autopilot candidate."
+    });
+  }
+  if (faceitEnrichment) {
+    topCandidates = await getForecastAutopilotCandidates();
+    oneClick.summary.sourceReports.push({
+      source: "faceit",
+      dataType: "explicit context",
+      status: faceitEnrichment.errors.length ? "partial" : "success",
+      message: faceitEnrichment.notes[0] ?? "Mapped FACEIT context checked with explicit IDs only."
+    });
+  }
+  const bestCandidate = topCandidates[0] ?? null;
 
   if (matchId) {
     const input = await buildPredictionInput(matchId);
     const prediction = calculatePrediction(input);
+    const currentCandidate = buildForecastAutopilotCandidate(matchId).then((candidate) => rankForecastAutopilotCandidates([candidate, ...topCandidates.filter((item) => item.matchId !== matchId)]).find((item) => item.matchId === matchId) ?? candidate);
     const pack = await refreshResearchPack(matchId);
     const tasks = JSON.parse(pack.checklistJson) as Array<{ task: string; status: string; id?: string; priority?: string; reason?: string; expectedImpact?: string; sourceSuggestion?: string; actionType?: string; actionState?: string; createdAt?: string; completedAt?: string | null }>;
     const best = getBestNextAction(prediction, tasks as never);
     const state = stateFromReadiness(prediction.realForecast.isReady, prediction.readiness.level);
     const suggestions = getPlaybookEntriesForMissing(prediction.readiness.missingCriticalData);
+    const resolvedCurrentCandidate = await currentCandidate;
+    const whyNotSelected = bestCandidate && bestCandidate.matchId !== matchId
+      ? `Текущий матч имеет ${resolvedCurrentCandidate.coverageScore}/100 (${resolvedCurrentCandidate.forecastabilityLabel}), лучший доступный матч — ${bestCandidate.coverageScore}/100 (${bestCandidate.forecastabilityLabel}). ${resolvedCurrentCandidate.blockers[0] ?? resolvedCurrentCandidate.missingBlocks[0] ?? "У лучшего кандидата больше usable coverage."}`
+      : resolvedCurrentCandidate.selectionReason;
     return {
       ok: oneClick.ok,
       mode,
@@ -123,18 +242,28 @@ export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast",
       succeeded: oneClick.summary.succeeded,
       unavailable: oneClick.summary.unavailable,
       sourceSuggestions: suggestions.map((entry) => ({ label: entry.label, sources: entry.sources, actionLabel: entry.actionLabel, href: entry.href })),
-      oneClick
+      oneClick,
+      bestCandidate,
+      currentCandidate: resolvedCurrentCandidate,
+      topCandidates: topCandidates.slice(0, 5),
+      coverageScore: resolvedCurrentCandidate.coverageScore,
+      coverageBreakdown: resolvedCurrentCandidate.coverageBreakdown,
+      forecastabilityTier: resolvedCurrentCandidate.forecastabilityTier,
+      selectionReason: resolvedCurrentCandidate.selectionReason,
+      whyNotSelected,
+      blockers: resolvedCurrentCandidate.blockers,
+      providerContributions: resolvedCurrentCandidate.providerContributions,
+      syncSummary: oneClick.summary
     };
   }
 
-  const metrics = oneClick.summary.after;
-  const state = metrics.readyForecasts > 0 ? "ready" : metrics.basicPreview > 0 ? "basic" : "missing";
+  const state = bestCandidate?.realForecastReady ? "ready" : bestCandidate?.forecastabilityTier === "BASIC_ONLY" || bestCandidate?.forecastabilityTier === "NEARLY_READY" ? "basic" : "missing";
   const primaryAction =
-    state === "ready"
-      ? { label: "Показать готовые прогнозы", href: "/predictions?forecast=ready", reason: "Есть матчи, которые уже можно анализировать." }
+    bestCandidate
+      ? { label: "Открыть лучший матч", href: bestCandidate.href, reason: bestCandidate.selectionReason }
       : mode === "max"
-        ? { label: "Создать data pack", href: "/admin/research-queue", reason: "Manual data pack или parsed demo сильнее всего поднимут readiness." }
-        : { label: "Загрузить parsed demo", href: "/admin/research-queue?template=parsed_demo", reason: "Самый сильный бесплатный способ улучшить прогноз — загрузить parsed demo." };
+        ? { label: "Создать data pack", href: "/admin/research-queue", reason: "Нет готового кандидата; manual data pack или parsed demo сильнее всего поднимут readiness." }
+        : { label: "Показать матчи", href: "/matches?status=upcoming&focus=all_real&sort=forecastable", reason: "Автопилот не нашёл готовый матч, но можно посмотреть top candidates и blockers." };
   const providerAction = probe?.providers.some((provider) => provider.source === "grid" && provider.configured)
     ? { label: "Открыть источники", href: "/admin/sources", reason: "GRID настроен; проверьте unlocked capabilities." }
     : { label: "Подключить источники", href: "/admin/sources#source-playbook", reason: "GRID/Liquipedia/FACEIT могут дать deep context." };
@@ -142,14 +271,25 @@ export async function runForecastAutopilot(mode: ForecastAutopilotMode = "fast",
     ok: oneClick.ok,
     mode,
     state,
-    message: messageForState(state),
-    realForecastReady: state === "ready",
+    message: bestCandidate ? `${bestCandidate.teamAName} vs ${bestCandidate.teamBName}: ${bestCandidate.forecastabilityLabel}.` : messageForState(state),
+    matchId: bestCandidate?.matchId,
+    readinessLevel: bestCandidate?.readinessLevel,
+    realForecastReady: bestCandidate?.realForecastReady ?? false,
     primaryAction,
-    secondaryActions: [providerAction, { label: "Показать матчи без данных", href: "/matches?focus=needs_data", reason: "Выберите матч, где одно действие даст максимальный прирост." }].slice(0, 2),
+    secondaryActions: [providerAction, { label: "Топ кандидатов", href: "/matches?status=upcoming&focus=all_real&sort=forecastable", reason: "Показать матчи, отсортированные по coverage score." }].slice(0, 2),
     succeeded: oneClick.summary.succeeded,
     unavailable: oneClick.summary.unavailable,
     sourceSuggestions: getPlaybookEntriesForMissing(["roster", "player stats", "map/veto", "round/economy"]).map((entry) => ({ label: entry.label, sources: entry.sources, actionLabel: entry.actionLabel, href: entry.href })),
-    oneClick
+    oneClick,
+    bestCandidate,
+    topCandidates: topCandidates.slice(0, 5),
+    coverageScore: bestCandidate?.coverageScore,
+    coverageBreakdown: bestCandidate?.coverageBreakdown,
+    forecastabilityTier: bestCandidate?.forecastabilityTier,
+    selectionReason: bestCandidate?.selectionReason,
+    blockers: bestCandidate?.blockers ?? [],
+    providerContributions: bestCandidate?.providerContributions ?? [],
+    syncSummary: oneClick.summary
   };
 }
 

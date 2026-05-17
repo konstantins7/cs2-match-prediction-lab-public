@@ -1,9 +1,9 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { analystSheetTemplates, buildAnalystSheetTemplate } from "./analystSheetTemplates";
+import { analystSheetTemplates, buildAnalystSheetTemplate, buildTargetAnalystSheetTemplate } from "./analystSheetTemplates";
 import { detectDelimiter, normalizeMapName, parseDelimitedRows } from "./analystSheetImport";
 
-describe("MVP 0.7.4 CSV/TSV analyst sheet import", () => {
+describe("MVP 0.7.5 CSV/TSV analyst sheet import", () => {
   it("parses comma CSV, semicolon CSV, TSV, BOM, quoted values and ignores empty lines", () => {
     const comma = parseDelimitedRows("\uFEFFmatchId,teamName,nickname\nm1,\"Team, A\",player_one\n\n");
     expect(comma.delimiter).toBe(",");
@@ -29,6 +29,24 @@ describe("MVP 0.7.4 CSV/TSV analyst sheet import", () => {
     expect(analystSheetTemplates.news_events.columns).toContain("publishedAt");
     expect(buildAnalystSheetTemplate("roster")).toContain("Team A");
     expect(buildAnalystSheetTemplate("roster")).toContain("player_name");
+  });
+
+  it("builds target-specific templates that remain invalid until real evidence replaces placeholders", () => {
+    const context = { matchId: "pandascore_match_1488973", teamAName: "Evo Novo", teamBName: "WAZABI" };
+    const roster = buildTargetAnalystSheetTemplate("roster", context);
+    const playerStats = buildTargetAnalystSheetTemplate("player_stats", context);
+    const mapStats = buildTargetAnalystSheetTemplate("map_stats", context);
+    const veto = buildTargetAnalystSheetTemplate("veto_history", context);
+
+    expect(roster).toContain("pandascore_match_1488973");
+    expect(roster).toContain("Evo Novo");
+    expect(roster).toContain("WAZABI");
+    expect(roster.match(/player_name_1/g)?.length).toBe(2);
+    expect(roster.match(/source name/g)?.length).toBe(10);
+    expect(roster).toContain("current_roster,0,0");
+    expect(playerStats).toContain("last_30_days,0,0");
+    expect(mapStats).toContain("Mirage,0,0,0");
+    expect(veto).toContain("last_90_days,0");
   });
 
   it("normalizes common CS2 map names", () => {

@@ -6,6 +6,8 @@ import {
   analystSheetTemplates,
   analystSheetTypes,
   buildAnalystSheetTemplate,
+  buildTargetAnalystSheetTemplate,
+  type AnalystSheetTemplateContext,
   type AnalystSheetType
 } from "@/lib/analystSheetTemplates";
 
@@ -13,6 +15,7 @@ type AnalystSheetImportPanelProps = {
   defaultMatchId: string;
   compact?: boolean;
   initialContent?: "templates" | "empty";
+  templateContext?: AnalystSheetTemplateContext;
 };
 
 type ApiResult = {
@@ -34,10 +37,13 @@ type ApiResult = {
   applyResult?: Record<string, unknown>;
 };
 
-export function AnalystSheetImportPanel({ defaultMatchId, compact = false, initialContent = "templates" }: AnalystSheetImportPanelProps) {
+export function AnalystSheetImportPanel({ defaultMatchId, compact = false, initialContent = "templates", templateContext }: AnalystSheetImportPanelProps) {
   const [selectedSheet, setSelectedSheet] = useState<AnalystSheetType>("roster");
+  const templateContent = (sheetType: AnalystSheetType) => templateContext
+    ? buildTargetAnalystSheetTemplate(sheetType, templateContext)
+    : buildAnalystSheetTemplate(sheetType);
   const [contents, setContents] = useState<Record<AnalystSheetType, string>>(() => Object.fromEntries(
-    analystSheetTypes.map((sheetType) => [sheetType, initialContent === "templates" ? buildAnalystSheetTemplate(sheetType) : ""])
+    analystSheetTypes.map((sheetType) => [sheetType, initialContent === "templates" ? templateContent(sheetType) : ""])
   ) as Record<AnalystSheetType, string>);
   const [result, setResult] = useState<ApiResult | null>(null);
   const [loading, setLoading] = useState<string | null>(null);
@@ -88,13 +94,13 @@ export function AnalystSheetImportPanel({ defaultMatchId, compact = false, initi
   }
 
   async function copyTemplate() {
-    const value = buildAnalystSheetTemplate(selectedSheet);
+    const value = templateContent(selectedSheet);
     await navigator.clipboard.writeText(value);
     setSelectedContent(value);
   }
 
   function downloadTemplate() {
-    const blob = new Blob([buildAnalystSheetTemplate(selectedSheet)], { type: "text/csv;charset=utf-8" });
+    const blob = new Blob([templateContent(selectedSheet)], { type: "text/csv;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement("a");
     anchor.href = url;
@@ -146,6 +152,11 @@ export function AnalystSheetImportPanel({ defaultMatchId, compact = false, initi
             <h3 className="font-semibold text-white">{template.title}</h3>
             <p className="mt-1 text-sm text-lab-muted">{template.description}</p>
             <p className="mt-2 text-xs text-lab-amber">Шаблон — это пример структуры. Его нельзя применить без реальных данных.</p>
+            {templateContext ? (
+              <p className="mt-1 text-xs text-lab-muted">
+                Target template: {templateContext.matchId} · {templateContext.teamAName} vs {templateContext.teamBName}; placeholder rows оставлены с sampleSize=0/confidence=0.
+              </p>
+            ) : null}
             <p className="mt-2 break-words font-mono text-[11px] text-lab-muted">{template.columns.join(", ")}</p>
           </div>
 
@@ -218,6 +229,7 @@ function Action({ label, loading, onClick, tone = "cyan" }: { label: string; loa
 
 function ResultView({ result }: { result: ApiResult }) {
   const applyAfter = result.applyResult?.after && typeof result.applyResult.after === "object" ? result.applyResult.after as Record<string, unknown> : null;
+  const applyChanges = Array.isArray(result.applyResult?.whatChanged) ? result.applyResult.whatChanged.map(String) : [];
   return (
     <div className={`mt-4 rounded-xl border p-3 ${result.ok ? "border-lab-green/35 bg-lab-green/10" : "border-lab-red/35 bg-lab-red/10"}`}>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -232,6 +244,7 @@ function ResultView({ result }: { result: ApiResult }) {
       <List title="Errors" items={result.errors ?? []} tone="text-lab-red" />
       <List title="Warnings" items={result.warnings ?? []} tone="text-lab-amber" />
       <List title="Records that would be created" items={result.recordsPreview ?? []} tone="text-white" />
+      <List title="Records created after apply" items={applyChanges} tone="text-lab-green" />
       <div className="mt-3 grid gap-3 md:grid-cols-2">
         {result.before ? <Snapshot title="Before" snapshot={result.before} /> : null}
         {result.afterPreview ? <Snapshot title="After preview" snapshot={result.afterPreview} /> : null}
@@ -264,11 +277,15 @@ function List({ title, items, tone }: { title: string; items: string[]; tone: st
 
 function Snapshot({ title, snapshot }: { title: string; snapshot: Record<string, unknown> }) {
   const realDepth = snapshot.realDataDepth && typeof snapshot.realDataDepth === "object" ? snapshot.realDataDepth as Record<string, unknown> : null;
+  const dataQuality = snapshot.dataQualityScore ?? snapshot.dataQuality;
+  const confidence = snapshot.confidenceScore ?? snapshot.confidence;
   return (
     <article className="rounded-lg border border-white/10 bg-black/20 p-3 text-sm text-lab-muted">
       <h4 className="font-semibold text-white">{title}</h4>
       <p>Readiness: <span className="text-white">{String(snapshot.readiness ?? "n/a")}</span></p>
       <p>Real Forecast Ready: <span className="text-white">{String(snapshot.realForecastReady ?? "n/a")}</span></p>
+      <p>Data Quality: <span className="text-white">{String(dataQuality ?? "n/a")}</span></p>
+      <p>Confidence: <span className="text-white">{String(confidence ?? "n/a")}</span></p>
       <p>Real Data Depth: <span className="text-white">{realDepth ? `${String(realDepth.level)}/5 · ${String(realDepth.label)}` : "n/a"}</span></p>
     </article>
   );

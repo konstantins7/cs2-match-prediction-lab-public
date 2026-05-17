@@ -12,6 +12,12 @@ export type AnalystSheetTemplate = {
   description: string;
 };
 
+export type AnalystSheetTemplateContext = {
+  matchId: string;
+  teamAName: string;
+  teamBName: string;
+};
+
 export const analystSheetTemplates: Record<AnalystSheetType, AnalystSheetTemplate> = {
   roster: {
     sheetType: "roster",
@@ -71,7 +77,135 @@ export const analystSheetTemplates: Record<AnalystSheetType, AnalystSheetTemplat
 
 export function buildAnalystSheetTemplate(sheetType: AnalystSheetType, delimiter = ",") {
   const template = analystSheetTemplates[sheetType];
-  return `${template.columns.join(delimiter)}\n${template.placeholderRow.map((value) => quoteCsv(value, delimiter)).join(delimiter)}\n`;
+  return buildAnalystSheetTemplateFromRows(template.columns, [template.placeholderRow], delimiter);
+}
+
+export function buildTargetAnalystSheetTemplate(sheetType: AnalystSheetType, context: AnalystSheetTemplateContext, delimiter = ",") {
+  const template = analystSheetTemplates[sheetType];
+  return buildAnalystSheetTemplateFromRows(template.columns, targetPlaceholderRows(sheetType, context), delimiter);
+}
+
+function buildAnalystSheetTemplateFromRows(columns: string[], rows: string[][], delimiter = ",") {
+  return `${columns.join(delimiter)}\n${rows.map((row) => row.map((value) => quoteCsv(value, delimiter)).join(delimiter)).join("\n")}\n`;
+}
+
+function targetPlaceholderRows(sheetType: AnalystSheetType, context: AnalystSheetTemplateContext) {
+  const players = [
+    ...Array.from({ length: 5 }, (_, index) => ({ teamName: context.teamAName, nickname: `player_name_${index + 1}` })),
+    ...Array.from({ length: 5 }, (_, index) => ({ teamName: context.teamBName, nickname: `player_name_${index + 1}` }))
+  ];
+  const teams = [context.teamAName, context.teamBName];
+  const sourceName = "source name";
+  const collectedAt = "2026-05-16T10:00:00Z";
+
+  switch (sheetType) {
+    case "roster":
+      return players.map((player) => [
+        context.matchId,
+        player.teamName,
+        player.nickname,
+        "rifler",
+        "country",
+        sourceName,
+        collectedAt,
+        "current_roster",
+        "0",
+        "0"
+      ]);
+    case "player_stats":
+      return players.map((player) => [
+        context.matchId,
+        player.teamName,
+        player.nickname,
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        sourceName,
+        collectedAt,
+        "last_30_days",
+        "0",
+        "0"
+      ]);
+    case "map_stats":
+      return teams.map((teamName) => [
+        context.matchId,
+        teamName,
+        "Mirage",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        "0",
+        sourceName,
+        collectedAt,
+        "last_90_days",
+        "0",
+        "0"
+      ]);
+    case "veto_history":
+      return teams.map((teamName) => [
+        context.matchId,
+        teamName,
+        "Mirage",
+        "0",
+        "0",
+        "0",
+        "0",
+        sourceName,
+        collectedAt,
+        "last_90_days",
+        "0"
+      ]);
+    case "h2h":
+      return [[
+        context.matchId,
+        "2026-05-16T10:00:00Z",
+        context.teamAName,
+        context.teamBName,
+        context.teamAName,
+        "BO3",
+        "Mirage",
+        "0",
+        "0",
+        "0",
+        sourceName,
+        collectedAt,
+        "current_roster_h2h",
+        "0",
+        "0"
+      ]];
+    case "news_events":
+      return [[
+        context.matchId,
+        sourceName,
+        "official",
+        "Roster update",
+        "Short official note",
+        "2026-05-16T10:00:00Z",
+        context.teamAName,
+        "player_name",
+        "roster",
+        "official",
+        "0",
+        "0"
+      ]];
+  }
 }
 
 export function quoteCsv(value: string, delimiter = ",") {

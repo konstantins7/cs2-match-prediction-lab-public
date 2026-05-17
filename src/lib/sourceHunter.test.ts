@@ -4,7 +4,7 @@ import { dataSourceRegistry } from "./config/dataSourceRegistry";
 import { getImportProfiles } from "./importProfiles";
 import { getSourceHunterRecommendations } from "./sourceHunter";
 
-describe("MVP 0.7.4 Source Hunter and onboarding profiles", () => {
+describe("MVP 0.7.5 Source Hunter and onboarding profiles", () => {
   it("registers new free/optional/future sources with legal modes and statuses", () => {
     const byId = new Map(dataSourceRegistry.map((source) => [source.id, source]));
     expect(byId.get("leetify")).toMatchObject({ accessType: "public_api", legalMode: "api_with_attribution", status: "optional" });

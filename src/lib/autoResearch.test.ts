@@ -22,7 +22,7 @@ function result(source: "pandascore" | "valve-rankings" | "cs-updates", status: 
   } as const;
 }
 
-describe("MVP 0.7.4 auto research workflow", () => {
+describe("MVP 0.7.6 auto research workflow", () => {
   it("global one-click sync calls expected pipeline functions in order", async () => {
     const calls: string[] = [];
     const metrics = (after = false) => ({
@@ -291,13 +291,22 @@ describe("MVP 0.7.4 auto research workflow", () => {
   it("forecast autopilot and provider probe UI contracts are present", () => {
     const route = readFileSync("src/app/api/admin/sync/route.ts", "utf8");
     const autopilot = readFileSync("src/components/ForecastAutopilotButton.tsx", "utf8");
+    const sources = readFileSync("src/app/admin/sources/page.tsx", "utf8");
+    const matches = readFileSync("src/app/matches/page.tsx", "utf8");
     const probe = readFileSync("src/lib/providerCapabilityProbe.ts", "utf8");
     expect(route).toContain("forecast_autopilot");
     expect(route).toContain("provider_capability_probe");
+    expect(autopilot).toContain("Найти лучший матч для прогноза");
+    expect(autopilot).toContain("Подготовить прогноз для этого матча");
+    expect(autopilot).toContain("Найти матч с лучшими данными");
+    expect(autopilot).toContain("Forecastability");
     expect(autopilot).toContain("Быстро");
     expect(autopilot).toContain("Глубже");
     expect(autopilot).toContain("Максимум");
     expect(autopilot).toContain("useState<ForecastAutopilotMode>(\"fast\")");
+    expect(matches).toContain("sort=forecastable");
+    expect(sources).toContain("Autopilot provider contribution");
+    expect(sources).toContain("no Real Forecast Ready alone");
     expect(probe).toContain("Central Data");
     expect(probe).toContain("Series State");
     expect(probe).toContain("File Download");

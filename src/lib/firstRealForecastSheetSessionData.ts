@@ -6,6 +6,7 @@ import {
   firstRealForecastTarget,
   type FirstRealForecastCandidate
 } from "@/lib/firstRealForecastSheetSession";
+import { buildManualRealAppliedDataUsageAudit } from "@/lib/manualRealAppliedDataUsageAudit";
 
 export async function getNearestFutureForecastMatches(now = new Date(), limit = 3): Promise<FirstRealForecastCandidate[]> {
   const matches = await prisma.match.findMany({
@@ -32,9 +33,12 @@ export async function getNearestFutureForecastMatches(now = new Date(), limit = 
 export async function getFirstRealForecastTargetSession(now = new Date()) {
   const nearestFutureMatches = await getNearestFutureForecastMatches(now, 3);
   try {
-    const input = await buildPredictionInput(firstRealForecastTarget.matchId);
+    const [input, manualRealAudit] = await Promise.all([
+      buildPredictionInput(firstRealForecastTarget.matchId),
+      buildManualRealAppliedDataUsageAudit(firstRealForecastTarget.matchId).catch(() => undefined)
+    ]);
     const prediction = calculatePrediction(input);
-    return buildFirstRealForecastSessionView({ input, prediction, now, nearestFutureMatches });
+    return buildFirstRealForecastSessionView({ input, prediction, now, nearestFutureMatches, manualRealAudit });
   } catch {
     return buildBlockedFirstRealForecastSessionView([`Target match not found: ${firstRealForecastTarget.matchId}`], nearestFutureMatches);
   }

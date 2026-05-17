@@ -3,6 +3,7 @@ import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { MatchTable } from "@/components/MatchTable";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { PageHeader } from "@/components/ui";
+import { rankForecastAutopilotCandidates, scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
 import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
 import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
@@ -14,6 +15,7 @@ type Search = {
   confidence?: string;
   sourceMode?: string;
   focus?: MatchFocusFilter;
+  sort?: string;
 };
 
 function filterLink(label: string, href: string) {
@@ -40,6 +42,9 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
     getReadinessDistribution()
   ]);
   const fullStatus = { ...status, readinessDistribution };
+  const sortedRows = params.sort === "forecastable"
+    ? sortByForecastability(rows)
+    : rows;
 
   return (
     <div className="space-y-5">
@@ -61,6 +66,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         {filterLink("Watchlist", "/matches?focus=watchlist")}
         {filterLink("Известные турниры", "/matches?focus=known")}
         {filterLink("All real", "/matches?focus=all_real")}
+        {filterLink("Лучшие для прогноза", "/matches?status=upcoming&focus=all_real&sort=forecastable")}
         {filterLink("Низший тир / академки", "/matches?focus=lower_tier")}
         {filterLink("Отдельный контур", "/matches?focus=separate_circuit")}
         {filterLink("Sample / Dev only", "/matches?focus=sample")}
@@ -68,7 +74,13 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         {filterLink("Needs review", "/matches?focus=needs_review")}
         {filterLink("High confidence", "/matches?confidence=high")}
       </div>
-      <MatchTable rows={rows} />
+      <MatchTable rows={sortedRows} />
     </div>
   );
+}
+
+function sortByForecastability(rows: Awaited<ReturnType<typeof getCalculatedMatches>>) {
+  const scored = rows.map((row) => scoreForecastAutopilotCandidate({ input: row.input, prediction: row.prediction, priority: row.priority }));
+  const order = new Map(rankForecastAutopilotCandidates(scored).map((candidate, index) => [candidate.matchId, index]));
+  return [...rows].sort((a, b) => (order.get(a.match.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.match.id) ?? Number.MAX_SAFE_INTEGER));
 }

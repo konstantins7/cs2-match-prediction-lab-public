@@ -37,7 +37,7 @@ export default async function HomePage() {
         description="Командный центр для объяснимой CS2-аналитики: видно, какие прогнозы готовы, где только basic signal и какое одно действие сильнее всего улучшит матч."
         actions={
           <>
-            <ActionButton href="#forecast-autopilot">Получить лучший возможный прогноз сейчас</ActionButton>
+            <ActionButton href="#forecast-autopilot">Найти лучший матч для прогноза</ActionButton>
             <ActionButton href="#auto-refresh" tone="violet">Обновить всё доступное автоматически</ActionButton>
           </>
         }

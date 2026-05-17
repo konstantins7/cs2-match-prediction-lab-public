@@ -25,6 +25,7 @@ import {
   parseEvidenceDate,
   type RealDataRole
 } from "./realData/dataRole";
+import { MANUAL_REAL_MAP_SAMPLE_THRESHOLD, manualRealMapSampleWarning } from "./manualRealReadinessRules";
 
 export { manualEnrichmentTemplates } from "./manualEnrichmentTemplates";
 
@@ -246,6 +247,8 @@ function manualPackSections(payload: Record<string, unknown>) {
   };
 }
 
+type ManualPackSections = ReturnType<typeof manualPackSections>;
+
 function blockMetadata(payload: Record<string, unknown>, block: ManualPackBlock) {
   const sections = manualPackSections(payload);
   const sectionValue =
@@ -349,6 +352,42 @@ function manualPackSnapshotFrom(
     previewDataDepth: expectedDepth,
     realDataDepth: expectedDepth,
     missingBlocks: params.missing.filter((item) => !["bind roster", "import player stats", "import map stats", "import veto history"].includes(item))
+  };
+}
+
+function statusComplete(blockStatuses: ManualBlockPreview[], block: ManualPackBlock) {
+  return blockStatuses.some((status) => status.block === block && (status.status === "valid" || status.status === "applied"));
+}
+
+function statusPresent(blockStatuses: ManualBlockPreview[], block: ManualPackBlock) {
+  return blockStatuses.some((status) => status.block === block && (status.status === "valid" || status.status === "applied" || status.status === "partial"));
+}
+
+function manualPackCoverageForFinalReadiness(teams: MatchTeams, sections: ManualPackSections, blockStatuses: ManualBlockPreview[]) {
+  const mapSamplesByTeamId = new Map<string, { teamName: string; sample: number }>();
+  if (teams) {
+    for (const team of teams.teams) mapSamplesByTeamId.set(team.id, { teamName: team.name, sample: 0 });
+    for (const row of sections.mapStats) {
+      const team = resolveTeamFromRow(teams, row);
+      if (!team) continue;
+      const current = mapSamplesByTeamId.get(team.id) ?? { teamName: team.name, sample: 0 };
+      current.sample += Math.max(0, Math.round(num(row.mapsPlayed, 0)));
+      mapSamplesByTeamId.set(team.id, current);
+    }
+  }
+  const mapSampleWarnings = [...mapSamplesByTeamId.values()]
+    .filter((entry) => entry.sample < MANUAL_REAL_MAP_SAMPLE_THRESHOLD)
+    .map((entry) => manualRealMapSampleWarning(entry.teamName, entry.sample));
+  const mapStatsComplete = statusComplete(blockStatuses, "map_stats") && mapSampleWarnings.length === 0;
+  return {
+    rosterComplete: statusComplete(blockStatuses, "roster"),
+    playerStatsComplete: statusComplete(blockStatuses, "player_stats"),
+    mapStatsComplete,
+    vetoComplete: statusComplete(blockStatuses, "veto_history"),
+    h2hPresent: statusPresent(blockStatuses, "h2h"),
+    newsChecked: statusPresent(blockStatuses, "news"),
+    warnings: mapSampleWarnings,
+    blockers: mapSampleWarnings
   };
 }
 
@@ -766,6 +805,8 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
   }
 
   const qualityByBlock = new Map(blockStatuses.map((status) => [status.block, calculateManualBlockQuality(status.block, blockMetadata(payload, status.block), status.status !== "invalid" && status.status !== "missing")]));
+  const finalCoverage = sample ? null : manualPackCoverageForFinalReadiness(teams, manualPackSections(payload), blockStatuses);
+  if (finalCoverage) warnings.push(...finalCoverage.warnings);
   const manualRealPackQuality = sample ? undefined : calculateManualRealPackQuality({
     roster: qualityByBlock.get("roster") ?? calculateManualBlockQuality("roster", {}, false),
     playerStats: qualityByBlock.get("player_stats") ?? calculateManualBlockQuality("player_stats", {}, false),
@@ -773,15 +814,15 @@ export async function validateManualEnrichment(text: string): Promise<Preview> {
     veto: qualityByBlock.get("veto_history") ?? calculateManualBlockQuality("veto_history", {}, false),
     h2h: qualityByBlock.get("h2h") ?? calculateManualBlockQuality("h2h", {}, false),
     news: qualityByBlock.get("news") ?? calculateManualBlockQuality("news", {}, false),
-    rosterComplete: blockStatuses.some((status) => status.block === "roster" && (status.status === "valid" || status.status === "applied")),
-    playerStatsComplete: blockStatuses.some((status) => status.block === "player_stats" && (status.status === "valid" || status.status === "applied")),
-    mapStatsComplete: blockStatuses.some((status) => status.block === "map_stats" && (status.status === "valid" || status.status === "applied")),
-    vetoComplete: blockStatuses.some((status) => status.block === "veto_history" && (status.status === "valid" || status.status === "applied")),
-    h2hPresent: blockStatuses.some((status) => status.block === "h2h" && (status.status === "valid" || status.status === "applied" || status.status === "partial")),
-    newsChecked: blockStatuses.some((status) => status.block === "news" && (status.status === "valid" || status.status === "applied" || status.status === "partial"))
+    rosterComplete: finalCoverage?.rosterComplete ?? false,
+    playerStatsComplete: finalCoverage?.playerStatsComplete ?? false,
+    mapStatsComplete: finalCoverage?.mapStatsComplete ?? false,
+    vetoComplete: finalCoverage?.vetoComplete ?? false,
+    h2hPresent: finalCoverage?.h2hPresent ?? false,
+    newsChecked: finalCoverage?.newsChecked ?? false
   });
   const before = teams ? await snapshot(matchId) : null;
-  const missing = missingAfterBlocks(blockStatuses);
+  const missing = [...missingAfterBlocks(blockStatuses), ...(finalCoverage?.blockers ?? [])];
   const qualityView = manualRealPackQuality
     ? {
         score: manualRealPackQuality.score,

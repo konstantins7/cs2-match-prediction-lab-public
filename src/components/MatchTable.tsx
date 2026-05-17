@@ -7,6 +7,7 @@ import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
 import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { getBestNextAction, humanForecastStatus } from "@/lib/bestNextAction";
+import { scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { deriveDataDepth } from "@/lib/ui/forecastUx";
 import { StatusPill } from "@/components/ui";
 
@@ -36,6 +37,7 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
             const nextAction = getBestNextAction(prediction).primaryAction;
             const depth = deriveDataDepth(row.input, prediction);
             const missing = prediction.readiness.missingCriticalData.slice(0, 2);
+            const autopilot = scoreForecastAutopilotCandidate({ input: row.input, prediction, priority });
             return (
             <tr key={match.id} className="hover:bg-lab-panel2/60">
               <td className="px-3 py-3 text-lab-muted">{formatDateTime(match.startTime)}</td>
@@ -61,8 +63,11 @@ export function MatchTable({ rows }: { rows: CalculatedMatch[] }) {
                   <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
                   {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
                   <span className="rounded border border-lab-cyan/50 px-2 py-1 text-xs text-lab-cyan">Data Depth {depth.level}/5</span>
+                  <span className="rounded border border-lab-cyan/50 bg-lab-cyan/10 px-2 py-1 text-xs text-lab-cyan">
+                    {autopilot.coverageScore}/100 · {autopilot.forecastabilityLabel}
+                  </span>
                 </div>
-                <div className="mt-2 text-xs text-lab-muted">{missing.length ? missing.join(" · ") : "Критичных пропусков нет"}</div>
+                <div className="mt-2 text-xs text-lab-muted">{autopilot.blockers.length ? autopilot.blockers.slice(0, 2).join(" · ") : missing.length ? missing.join(" · ") : "Критичных пропусков нет"}</div>
               </td>
               <td className="px-3 py-3">
                 <div className="flex flex-wrap gap-2">

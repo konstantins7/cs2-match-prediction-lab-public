@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { dataSourceRegistry } from "./config/dataSourceRegistry";
 import { inspectOfflineDatasetCsv, offlineDatasetProfiles } from "./offlineDatasetInspector";
 
-describe("MVP 0.7.4 Data Onboarding", () => {
+describe("MVP 0.7.5 Data Onboarding", () => {
   it("inspects results CSV metadata without live forecast semantics", () => {
     const result = inspectOfflineDatasetCsv({
       datasetType: "results",

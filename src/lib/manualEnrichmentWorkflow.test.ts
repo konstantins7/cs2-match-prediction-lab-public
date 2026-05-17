@@ -26,6 +26,13 @@ describe("first real forecast pack workflow safeguards", () => {
     expect(source).toContain("deriveRealDataDepth");
   });
 
+  it("keeps preview aligned with final per-team map sample gates", () => {
+    expect(source).toContain("MANUAL_REAL_MAP_SAMPLE_THRESHOLD");
+    expect(source).toContain("manualPackCoverageForFinalReadiness");
+    expect(source).toContain("mapStatsComplete: finalCoverage?.mapStatsComplete");
+    expect(source).toContain("manualRealMapSampleWarning");
+  });
+
   it("keeps invalid packs from creating domain records", () => {
     const invalidReturnIndex = source.indexOf("if (!validation.ok)");
     const applyIndex = source.indexOf("const raw = await saveRaw(payload, \"valid\", baseMeta)");
