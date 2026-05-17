@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private normalized team_form.csv future schema",
+  "description": "Schema-only in MVP 0.8.5. The app accepts the filename by contract but does not expose standalone team_form apply yet.",
+  "type": "object",
+  "required": ["matchId", "teamName", "matchesPlayed", "wins", "losses", "sourceName", "collectedAt", "period", "sampleSize", "confidence"],
+  "properties": {
+    "matchId": { "type": "string", "minLength": 1 },
+    "teamName": { "type": "string", "minLength": 1 },
+    "matchesPlayed": { "type": "number", "exclusiveMinimum": 0 },
+    "wins": { "type": "number" },
+    "losses": { "type": "number" },
+    "mapWinRate": { "type": "number" },
+    "sourceName": { "type": "string", "minLength": 1 },
+    "collectedAt": { "type": "string" },
+    "period": { "type": "string", "minLength": 1 },
+    "sampleSize": { "type": "number", "exclusiveMinimum": 0 },
+    "confidence": { "type": "number", "exclusiveMinimum": 0 },
+    "sourceUrl": { "type": "string" }
+  }
+}

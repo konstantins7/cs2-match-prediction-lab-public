@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private normalized veto_history.csv",
+  "type": "object",
+  "required": ["matchId", "teamName", "mapName", "sampleSize", "sourceName", "collectedAt", "period", "confidence"],
+  "properties": {
+    "matchId": { "type": "string", "minLength": 1 },
+    "teamName": { "type": "string", "minLength": 1 },
+    "mapName": { "type": "string", "enum": ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Dust2", "Train"] },
+    "sampleSize": { "type": "number", "exclusiveMinimum": 0 },
+    "pickRate": { "type": "number" },
+    "banRate": { "type": "number" },
+    "deciderRate": { "type": "number" },
+    "sourceName": { "type": "string", "minLength": 1 },
+    "collectedAt": { "type": "string" },
+    "period": { "type": "string", "minLength": 1 },
+    "confidence": { "type": "number", "exclusiveMinimum": 0 },
+    "sourceUrl": { "type": "string" }
+  }
+}

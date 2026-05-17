@@ -1,0 +1,2 @@
+matchId,teamName,mapName,mapsPlayed,wins,losses,winRate,roundsWon,roundsLost,ctRoundWinRate,tRoundWinRate,pickRate,banRate,deciderRate,sourceName,collectedAt,period,sampleSize,confidence,sourceUrl
+pandascore_match_1488973,Evo Novo,Ancient,7,4,3,0.5714,86,77,0.55,0.51,0.22,0.1,0.08,Manual copied table,2026-05-17T10:00:00Z,last_3_months,7,0.65,

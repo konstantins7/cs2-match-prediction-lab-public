@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private normalized player_stats.csv",
+  "type": "object",
+  "required": ["matchId", "teamName", "nickname", "maps", "kd", "rating", "sourceName", "collectedAt", "period", "sampleSize", "confidence"],
+  "properties": {
+    "matchId": { "type": "string", "minLength": 1 },
+    "teamName": { "type": "string", "minLength": 1 },
+    "nickname": { "type": "string", "minLength": 1 },
+    "maps": { "type": "number", "exclusiveMinimum": 0 },
+    "kills": { "type": "number" },
+    "deaths": { "type": "number" },
+    "assists": { "type": "number" },
+    "kd": { "type": "number", "exclusiveMinimum": 0 },
+    "rating": { "type": "number", "exclusiveMinimum": 0 },
+    "adr": { "type": "number" },
+    "kast": { "type": "number" },
+    "impact": { "type": "number" },
+    "openingKills": { "type": "number" },
+    "openingDeaths": { "type": "number" },
+    "clutchesWon": { "type": "number" },
+    "clutchesAttempted": { "type": "number" },
+    "sourceName": { "type": "string", "minLength": 1 },
+    "collectedAt": { "type": "string" },
+    "period": { "type": "string", "minLength": 1 },
+    "sampleSize": { "type": "number", "exclusiveMinimum": 0 },
+    "confidence": { "type": "number", "exclusiveMinimum": 0 },
+    "sourceUrl": { "type": "string" }
+  }
+}

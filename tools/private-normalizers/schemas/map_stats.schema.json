@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Private normalized map_stats.csv",
+  "type": "object",
+  "required": ["matchId", "teamName", "mapName", "mapsPlayed", "sourceName", "collectedAt", "period", "sampleSize", "confidence"],
+  "properties": {
+    "matchId": { "type": "string", "minLength": 1 },
+    "teamName": { "type": "string", "minLength": 1 },
+    "mapName": { "type": "string", "enum": ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Dust2", "Train"] },
+    "mapsPlayed": { "type": "number", "exclusiveMinimum": 0 },
+    "wins": { "type": "number" },
+    "losses": { "type": "number" },
+    "winRate": { "type": "number" },
+    "roundsWon": { "type": "number" },
+    "roundsLost": { "type": "number" },
+    "ctRoundWinRate": { "type": "number" },
+    "tRoundWinRate": { "type": "number" },
+    "pickRate": { "type": "number" },
+    "banRate": { "type": "number" },
+    "deciderRate": { "type": "number" },
+    "sourceName": { "type": "string", "minLength": 1 },
+    "collectedAt": { "type": "string" },
+    "period": { "type": "string", "minLength": 1 },
+    "sampleSize": { "type": "number", "exclusiveMinimum": 0 },
+    "confidence": { "type": "number", "exclusiveMinimum": 0 },
+    "sourceUrl": { "type": "string" }
+  }
+}

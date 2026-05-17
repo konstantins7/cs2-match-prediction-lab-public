@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.4
+## Что есть в MVP 0.8.5
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Private Normalized Extractor Pack: MVP 0.8.5 добавляет local-only tools в `tools/private-normalizers/`, которые превращают user-pasted table text или локальный CSV/text export в нормализованные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для `data/private-inbox/`. Tools не делают HTTP requests, scraping, browser automation, Apify, crawler/bypass code, DB mutations или direct Apply.
 - Auto Data Gap Resolver + Connector Framework + Normalized Extractor Pipeline: MVP 0.8.4 заставляет `Полный анализ` не только показать missing blocks, но и пройти цепочку разрешённых коннекторов, проверить `data/private-inbox/`, записать resolver attempts в timeline и пересчитать анализ после validated records. `ENABLE_TRUSTED_LOCAL_IMPORTS=false` по умолчанию, поэтому private inbox работает как validation preview, пока trusted local mode явно не включён.
 - Prediction Lifecycle + Full Analysis Jobs: MVP 0.8.3 сохраняет каждый запуск `Полный анализ` как `AnalysisJob`, пишет persistent timeline steps, может сохранить final `PredictionPick` только до старта матча и только при `Real Forecast Ready=true`, а затем через `resolve_prediction_results` связывает pick с outcome и post-match review.
 - User Flow Simplification Phase 1: MVP 0.8.2 оставляет `Полный анализ` главным пользовательским путём, а старые/дублирующие concierge, autopilot, readiness и broad-refresh панели прячет в collapsed Advanced/Analyst sections.
@@ -126,6 +127,52 @@ MVP 0.8.3 добавляет историю анализа и предиктов
 `/predictions` теперь показывает lifecycle board: активные предикты, ожидающие результата, успешные, ошибочные и требующие ручной проверки результата.
 
 Private extractor interface остаётся безопасным: core app принимает только нормализованные CSV/JSON через existing validation/preview/apply flow. В репозитории нет HLTV scraper, browser crawler, Apify, Telegram scraping, bypass code или crawler config.
+
+## Private Normalized Extractor Pack
+
+MVP 0.8.5 добавляет отдельный local-only слой `tools/private-normalizers/`. Это не provider integration и не scraper: scripts берут только user-pasted table text или local saved CSV/text files и создают normalized CSV для `data/private-inbox/`.
+
+Поддерживаемые outputs:
+
+- `roster.csv`;
+- `player_stats.csv`;
+- `map_stats.csv`;
+- `veto_history.csv`.
+
+`team_form.csv` в 0.8.5 остаётся schema/docs-only: private inbox уже принимает имя файла по contract, но core app пока не имеет standalone apply path для team form CSV.
+
+File write policy:
+
+- default: если target file существует, normalizer останавливается;
+- `--append` добавляет rows без второго header;
+- `--replace` перезаписывает file;
+- `--out <filename>` пишет draft file, но app автоматически увидит только accepted private inbox basenames.
+
+Пример:
+
+```bash
+tsx tools/private-normalizers/scripts/normalize_generic_table_paste.ts \
+  --type player_stats \
+  --matchId pandascore_match_1488973 \
+  --teamName "Evo Novo" \
+  --sourceName "HLTV copied table" \
+  --sourceUrl "https://www.hltv.org/..." \
+  --collectedAt "2026-05-17T10:00:00Z" \
+  --period "last_3_months" \
+  --confidence 65 \
+  --input ./tmp/evo_players.txt \
+  --out data/private-inbox/player_stats.csv
+```
+
+Validation:
+
+```bash
+tsx tools/private-normalizers/scripts/validate_normalized_file.ts \
+  --type map_stats \
+  --input data/private-inbox/map_stats.csv
+```
+
+Safety: tools do not make HTTP requests, do not automate browsers, do not call Apify, do not bypass login/captcha/protection, do not write DB records and do not call app Apply. The app continues to handle validation / preview / apply through the existing private inbox and `ENABLE_TRUSTED_LOCAL_IMPORTS=false` remains the default.
 
 ## Auto Data Gap Resolver + Normalized Extractor Pipeline
 
