@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.1
+## Что есть в MVP 0.8.2
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- User Flow Simplification Phase 1: MVP 0.8.2 оставляет `Полный анализ` главным пользовательским путём, а старые/дублирующие concierge, autopilot, readiness и broad-refresh панели прячет в collapsed Advanced/Analyst sections.
 - One-Click Full Match Analysis UX: MVP 0.8.1 упрощает главный путь до `Обновить список матчей` -> `Найти лучший матч для прогноза` -> `Полный анализ`. Страница матча показывает persistent timeline, прогноз или понятные blockers с одним главным следующим действием.
 - Match Feed Cache + Diff: MVP 0.8.0 добавляет явную кнопку `Обновить список матчей`, которая обновляет live/upcoming feed только по запросу пользователя, сравнивает новый список с предыдущим и показывает `new / updated / unchanged / stale`.
 - Roster/Data Coverage Foundation: MVP 0.7.7 исправляет выбор кандидатов так, чтобы `NEARLY_READY` с высоким coverage outrank low-coverage `BASIC_ONLY`, и показывает real-data foundation coverage: roster, player stats, map stats, veto и GRID mapping.
@@ -73,8 +74,29 @@ npm run build
 - Persistent Feature Store: `MatchFeatureSnapshot` сохраняет ranking/form/player/map-veto/round-economy/context/quality features, `featureCutoffTime`, `featureSourcesJson`, `featureSchemaVersion` и `dataLeakageCheckPassed`.
 - Model Lab: `/admin/model-lab` показывает feature snapshots, Source Coverage Matrix, calibration by readiness, data leakage summary и export training dataset CSV.
 - News & Insider Intelligence Layer: official/media/manual insider news хранится отдельно через `NewsSource`, `NewsItem`, `NewsImpactSnapshot`; impact жёстко ограничен clamps, rumors в первую очередь повышают risk, а не probability.
-- Sync в MVP 0.8.1 запускается только вручную через кнопки, `/admin/imports` или CLI scripts. Page-load sync запрещён; главная, `/matches` и `/predictions` читают сохранённый local cache.
+- Sync в MVP 0.8.2 запускается только вручную через кнопки, `/admin/imports` или CLI scripts. Page-load sync запрещён; главная, `/matches` и `/predictions` читают сохранённый local cache.
 - Source modes and badges: demo, valve rankings, Steam updates, PandaScore free, manual real, parsed demo, analyst sample, Liquipedia limited, FACEIT optional, GRID Open Access, mixed, partial, needs review.
+
+## User Flow Simplification Phase 1
+
+MVP 0.8.2 не меняет API, прогнозную математику, Real Forecast Ready gates, Prisma schema или источники. Это UI-only cleanup после 0.8.1.
+
+Default user flow:
+
+- `/` показывает короткий путь: обновить match feed, найти лучший матч и открыть `Полный анализ`;
+- `/matches` показывает controlled `Обновить список матчей`, фильтры, coverage/tier и `Полный анализ`;
+- `/predictions` ведёт карточки прогноза в `/match/[id]#full-analysis`;
+- `/match/[id]` держит `Полный анализ` как единственный главный CTA/result surface.
+
+Что спрятано в collapsed Advanced/Analyst:
+
+- global one-click refresh / command-center style panels;
+- dashboard readiness distribution;
+- technical readiness/autopilot details;
+- Forecast Concierge duplicate blockers/next-action copy;
+- source/data-pack/debug diagnostics.
+
+User-facing statuses остаются человеческими: `Готов к прогнозу`, `Почти готов`, `Только базовый прогноз`, `Недостаточно данных`, `Заблокирован`. Internal readiness labels `L0/L1/L2/L3/L4` остаются только в Advanced/Admin/debug context.
 
 ## One-Click Full Match Analysis UX
 

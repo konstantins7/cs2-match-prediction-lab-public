@@ -1,13 +1,13 @@
 import type { CalculatedMatch } from "@/lib/data/matches";
 import { ConfidenceBadge } from "./ConfidenceBadge";
 import { ProbabilityBar } from "./ProbabilityBar";
-import { ReadinessBadge } from "./ReadinessBadge";
 import { RiskBadge } from "./RiskBadge";
 import { SourceModeBadge } from "./SourceModeBadge";
-import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
+import { SourceLevelBadge } from "./RealForecastBadge";
 import { predictionHeadline, predictionReadinessCopy } from "@/lib/predictionCopy";
 import { getBestNextAction } from "@/lib/bestNextAction";
-import { ActionButton, DataDepthMeter } from "@/components/ui";
+import { ActionButton, DataDepthMeter, StatusPill } from "@/components/ui";
+import { scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { deriveDataDepth } from "@/lib/ui/forecastUx";
 
 export function PredictionCard({ row }: { row: CalculatedMatch }) {
@@ -27,6 +27,7 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
     .slice(0, 3);
   const nextAction = getBestNextAction(prediction).primaryAction;
   const depth = deriveDataDepth(row.input, prediction);
+  const autopilot = scoreForecastAutopilotCandidate({ input: row.input, prediction, priority: row.priority });
   const missingBlocks = prediction.readiness.missingCriticalData.length
     ? prediction.readiness.missingCriticalData.slice(0, 2)
     : ["Критичных пропусков нет"];
@@ -44,8 +45,7 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
         </div>
         <div className="flex flex-wrap gap-2">
           <SourceModeBadge sourceMode={match.sourceMode} needsReview={match.needsReview} />
-          <ReadinessBadge level={prediction.readiness.level} />
-          <RealForecastBadge isReady={prediction.realForecast.isReady} />
+          <StatusPill label={autopilot.forecastabilityLabel} tone={prediction.realForecast.isReady ? "green" : autopilot.forecastabilityTier === "BLOCKED" ? "red" : autopilot.forecastabilityTier === "NEARLY_READY" ? "amber" : "cyan"} />
           <SourceLevelBadge sourceLevel={prediction.sourceLevel} />
           {prediction.sourceLevel === "Sample only" && <span className="rounded border border-violet-400/70 px-2 py-1 text-xs text-violet-300">SAMPLE ONLY</span>}
           <span className="rounded border border-lab-border px-2 py-1 text-xs uppercase text-lab-muted">{row.priority.priorityLabel}</span>
@@ -87,7 +87,7 @@ export function PredictionCard({ row }: { row: CalculatedMatch }) {
         </div>
       </div>
       <div className="mt-4 flex flex-wrap gap-2">
-        <ActionButton href={`/match/${match.id}`}>Разбор</ActionButton>
+        <ActionButton href={`/match/${match.id}#full-analysis`}>Полный анализ</ActionButton>
         <ActionButton href={actionHref(nextAction.href, match.id)} tone="ghost">Добавить данные</ActionButton>
       </div>
     </article>

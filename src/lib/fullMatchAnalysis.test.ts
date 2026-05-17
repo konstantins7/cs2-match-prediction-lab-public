@@ -27,6 +27,9 @@ describe("full match analysis UX", () => {
     expect(panel).toContain("Progress timeline");
     expect(panel).toContain("Финальный прогноз пока не готов");
     expect(matchTabs).toContain("FullMatchAnalysisPanel");
+    expect(matchTabs.indexOf("<FullMatchAnalysisPanel")).toBeLessThan(matchTabs.indexOf("Advanced: technical readiness and autopilot"));
+    expect(matchTabs.indexOf("<ForecastConciergePanel")).toBeGreaterThan(matchTabs.indexOf("Advanced: technical readiness and autopilot"));
+    expect(matchTabs.indexOf("<CurrentMatchAutopilotRecommendation")).toBeGreaterThan(matchTabs.indexOf("Advanced: technical readiness and autopilot"));
   });
 
   it("keeps the home page user mode simple and advanced internals collapsed", () => {
@@ -46,5 +49,22 @@ describe("full match analysis UX", () => {
     expect(card).toContain("Полный анализ");
     expect(home).not.toContain("refreshMatchFeed(");
     expect(all).not.toMatch(/HLTV scraper|Apify|browser crawler|fake data/i);
+  });
+
+  it("keeps /matches broad refresh and dashboard status inside advanced mode", () => {
+    const matches = readFileSync("src/app/matches/page.tsx", "utf8");
+    expect(matches).toContain("Analyst / Advanced mode");
+    expect(matches.indexOf("<DashboardStatusStrip")).toBeGreaterThan(matches.indexOf("Analyst / Advanced mode"));
+    expect(matches.indexOf("<OneClickResearchButton compact />")).toBeGreaterThan(matches.indexOf("Analyst / Advanced mode"));
+    expect(matches.indexOf("<MatchFeedRefreshButton")).toBeLessThan(matches.indexOf("Analyst / Advanced mode"));
+  });
+
+  it("routes prediction cards through the full analysis flow without primary readiness badges", () => {
+    const predictionCard = readFileSync("src/components/PredictionCard.tsx", "utf8");
+    expect(predictionCard).toContain("Полный анализ");
+    expect(predictionCard).toContain("#full-analysis");
+    expect(predictionCard).toContain("StatusPill");
+    expect(predictionCard).not.toContain("<ReadinessBadge");
+    expect(predictionCard).not.toContain("<RealForecastBadge");
   });
 });

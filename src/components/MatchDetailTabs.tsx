@@ -81,10 +81,10 @@ export function MatchDetailTabs({
         <div className="mt-4 space-y-4">
           <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
           <ForecastAutopilotButton matchId={input.match.id} compact />
+          {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
+          <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
         </div>
       </details>
-      {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
-      <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
       <div className="flex flex-wrap gap-2">
         {tabs.map((tab) => (
           <button

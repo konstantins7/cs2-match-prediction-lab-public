@@ -56,9 +56,7 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         title="Матчи"
         description="По умолчанию включены топовые матчи. Lower-tier, академки и отдельный контур остаются доступны через фильтры, но не подмешиваются в основной путь."
       />
-      <DashboardStatusStrip status={fullStatus} />
       <MatchFeedRefreshButton status={matchFeedStatus} compact />
-      <OneClickResearchButton compact />
       <div className="flex flex-wrap gap-2">
         {filterLink("Топовые матчи", "/matches")}
         {filterLink("Upcoming", "/matches?status=upcoming")}
@@ -78,6 +76,13 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
         {filterLink("Needs review", "/matches?focus=needs_review")}
         {filterLink("High confidence", "/matches?confidence=high")}
       </div>
+      <details className="rounded border border-lab-border bg-lab-panel p-4">
+        <summary className="cursor-pointer font-semibold text-lab-cyan">Analyst / Advanced mode</summary>
+        <div className="mt-4 space-y-4">
+          <DashboardStatusStrip status={fullStatus} />
+          <OneClickResearchButton compact />
+        </div>
+      </details>
       <MatchTable rows={sortedRows} />
     </div>
   );
