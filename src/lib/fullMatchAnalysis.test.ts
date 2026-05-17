@@ -9,6 +9,8 @@ describe("full match analysis UX", () => {
     expect(route).toContain("runFullMatchAnalysis");
     expect(implementation).toContain("progressTimeline");
     expect(implementation).toContain("primaryNextAction");
+    expect(implementation).toContain("lifecycle");
+    expect(implementation).toContain("createAnalysisJob");
     expect(implementation).not.toContain("applyAnalystSheetImport");
     expect(implementation).not.toContain("manual-enrichment/apply");
   });
@@ -25,6 +27,8 @@ describe("full match analysis UX", () => {
     const matchTabs = readFileSync("src/components/MatchDetailTabs.tsx", "utf8");
     expect(panel).toContain("Полный анализ");
     expect(panel).toContain("Progress timeline");
+    expect(panel).toContain("Prediction lifecycle");
+    expect(panel).toContain("savePrediction");
     expect(panel).toContain("Финальный прогноз пока не готов");
     expect(matchTabs).toContain("FullMatchAnalysisPanel");
     expect(matchTabs.indexOf("<FullMatchAnalysisPanel")).toBeLessThan(matchTabs.indexOf("Advanced: technical readiness and autopilot"));

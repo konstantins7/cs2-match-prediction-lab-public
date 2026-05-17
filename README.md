@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.2
+## Что есть в MVP 0.8.3
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Prediction Lifecycle + Full Analysis Jobs: MVP 0.8.3 сохраняет каждый запуск `Полный анализ` как `AnalysisJob`, пишет persistent timeline steps, может сохранить final `PredictionPick` только до старта матча и только при `Real Forecast Ready=true`, а затем через `resolve_prediction_results` связывает pick с outcome и post-match review.
 - User Flow Simplification Phase 1: MVP 0.8.2 оставляет `Полный анализ` главным пользовательским путём, а старые/дублирующие concierge, autopilot, readiness и broad-refresh панели прячет в collapsed Advanced/Analyst sections.
 - One-Click Full Match Analysis UX: MVP 0.8.1 упрощает главный путь до `Обновить список матчей` -> `Найти лучший матч для прогноза` -> `Полный анализ`. Страница матча показывает persistent timeline, прогноз или понятные blockers с одним главным следующим действием.
 - Match Feed Cache + Diff: MVP 0.8.0 добавляет явную кнопку `Обновить список матчей`, которая обновляет live/upcoming feed только по запросу пользователя, сравнивает новый список с предыдущим и показывает `new / updated / unchanged / stale`.
@@ -97,6 +98,32 @@ Default user flow:
 - source/data-pack/debug diagnostics.
 
 User-facing statuses остаются человеческими: `Готов к прогнозу`, `Почти готов`, `Только базовый прогноз`, `Недостаточно данных`, `Заблокирован`. Internal readiness labels `L0/L1/L2/L3/L4` остаются только в Advanced/Admin/debug context.
+
+## Prediction Lifecycle + Full Analysis Jobs
+
+MVP 0.8.3 добавляет историю анализа и предиктов поверх существующей прогнозной логики. Forecast math, Real Forecast Ready gates, источники и page-load policy не меняются.
+
+Основной lifecycle:
+
+- пользователь запускает `Полный анализ`;
+- приложение создаёт `AnalysisJob` и persistent `AnalysisJobStep` timeline;
+- если пользователь явно включил сохранение и `Real Forecast Ready=true`, до старта матча создаётся один final `PredictionPick`;
+- повторный анализ не перезаписывает уже сохранённый final pick;
+- после матча action `resolve_prediction_results` сравнивает predicted winner с actual winner и записывает `PredictionOutcome`;
+- `PredictionErrorAnalysis` хранит reason tags для won/lost/void/unknown без автоматического retraining и без изменения весов.
+
+Правила сохранения final pick:
+
+- `savePrediction=true`;
+- матч ещё не начался (`now < match.startTime`);
+- `Real Forecast Ready=true`;
+- для `matchId` ещё нет final pick.
+
+Если матч live/finished, full analysis может сохранить job/timeline, но не создаёт pre-match final pick. Not-ready анализ сохраняет blockers и next action, но не сохраняет scored prediction.
+
+`/predictions` теперь показывает lifecycle board: активные предикты, ожидающие результата, успешные, ошибочные и требующие ручной проверки результата.
+
+Private extractor interface остаётся безопасным: core app принимает только нормализованные CSV/JSON через existing validation/preview/apply flow. В репозитории нет HLTV scraper, browser crawler, Apify, Telegram scraping, bypass code или crawler config.
 
 ## One-Click Full Match Analysis UX
 

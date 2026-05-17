@@ -116,6 +116,8 @@ model Match {
   researchPacks    ResearchPack[]
   featureSnapshots MatchFeatureSnapshot[]
   newsImpactSnapshots NewsImpactSnapshot[]
+  analysisJobs     AnalysisJob[]
+  predictionPicks  PredictionPick[]
 
   @@index([status, startTime])
   @@index([teamAId])
@@ -787,6 +789,114 @@ model PredictionAudit {
   match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
 
   @@index([matchId])
+}
+
+model AnalysisJob {
+  id            String   @id @default(cuid())
+  matchId       String
+  mode          String
+  status        String   @default("queued")
+  startedAt     DateTime @default(now())
+  finishedAt    DateTime?
+  currentStep   String?
+  error         String?
+  createdBy     String   @default("local_user")
+  resultState   String?
+  blockersJson  String   @default("[]")
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  match          Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  steps          AnalysisJobStep[]
+  predictionPicks PredictionPick[]
+
+  @@index([matchId, startedAt])
+  @@index([status, startedAt])
+}
+
+model AnalysisJobStep {
+  id            String   @id @default(cuid())
+  jobId         String
+  stepKey       String
+  status        String
+  explanation   String
+  recordsFound  Int      @default(0)
+  blockerCode   String?
+  sourceUsed    String?
+  createdAt     DateTime @default(now())
+
+  job           AnalysisJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+  @@index([stepKey, status])
+}
+
+model PredictionPick {
+  id                    String   @id @default(cuid())
+  matchId               String
+  analysisJobId         String?
+  pickType              String   @default("final")
+  status                String   @default("pending")
+  predictedWinnerTeamId String?
+  teamAProbability      Float
+  teamBProbability      Float
+  confidence            Float
+  risk                  String
+  readiness             String
+  realForecastReady     Boolean  @default(false)
+  dataQuality           Float
+  coverageScore         Float
+  forecastabilityTier   String
+  realDataDepth         Int      @default(1)
+  topFactorsJson        String
+  warningsJson          String
+  blockersJson          String
+  sourceSummaryJson     String
+  missingDataJson       String
+  createdAt             DateTime @default(now())
+  matchStartTime        DateTime
+  lockedAt              DateTime?
+
+  match                 Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  analysisJob           AnalysisJob? @relation(fields: [analysisJobId], references: [id], onDelete: SetNull)
+  outcome               PredictionOutcome?
+  errorAnalysis         PredictionErrorAnalysis?
+
+  @@unique([matchId, pickType])
+  @@index([status, matchStartTime])
+  @@index([predictedWinnerTeamId])
+  @@index([analysisJobId])
+}
+
+model PredictionOutcome {
+  id                  String   @id @default(cuid())
+  predictionPickId    String   @unique
+  actualWinnerTeamId  String?
+  actualScore         String?
+  resultSource        String
+  status              String
+  resolvedAt          DateTime @default(now())
+  notes               String?
+
+  predictionPick      PredictionPick @relation(fields: [predictionPickId], references: [id], onDelete: Cascade)
+
+  @@index([status, resolvedAt])
+}
+
+model PredictionErrorAnalysis {
+  id                          String   @id @default(cuid())
+  predictionPickId            String   @unique
+  resultStatus                String
+  suspectedErrorReasonsJson   String
+  missingDataAtPredictionJson String
+  mainFactorsJson             String
+  suggestedImprovementsJson   String
+  notes                       String?
+  createdAt                   DateTime @default(now())
+
+  predictionPick              PredictionPick @relation(fields: [predictionPickId], references: [id], onDelete: Cascade)
+
+  @@index([resultStatus, createdAt])
 }
 
 model MatchFeatureSnapshot {

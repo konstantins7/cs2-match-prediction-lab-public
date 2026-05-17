@@ -4,8 +4,15 @@ import type { ForecastAutopilotMode, ForecastAutopilotNextAction } from "./autoR
 import { getBestNextAction } from "./bestNextAction";
 import { calculatePrediction, buildPredictionInput } from "./predictionEngine";
 import type { CoverageBreakdownItem, ForecastAutopilotProviderContribution } from "./autoResearchShared";
+import {
+  completeAnalysisJob,
+  createAnalysisJob,
+  failAnalysisJob,
+  saveFinalPredictionPickIfAllowed,
+  type FullAnalysisLifecycle
+} from "./predictionLifecycle";
 
-export type FullMatchAnalysisStepStatus = "success" | "partial" | "missing" | "blocked";
+export type FullMatchAnalysisStepStatus = "success" | "partial" | "missing" | "blocked" | "error";
 
 export type FullMatchAnalysisStep = {
   id: string;
@@ -60,68 +67,106 @@ export type FullMatchAnalysisResult = {
       confidenceScore: number;
     };
   };
+  lifecycle: FullAnalysisLifecycle;
 };
 
-export async function runFullMatchAnalysis(matchId: string, mode: ForecastAutopilotMode = "fast"): Promise<FullMatchAnalysisResult> {
-  await runForecastAutopilot(mode, matchId);
-  const prepare = await prepareMatchForecast(matchId);
-  const input = await buildPredictionInput(matchId);
-  const prediction = calculatePrediction(input);
-  const candidate = await buildForecastAutopilotCandidate(matchId);
-  const fallback = getBestNextAction(prediction).primaryAction;
-  const primaryNextAction = candidate.nextDataActions[0] ?? {
-    label: fallback.label,
-    reason: fallback.reason,
-    target: "research_queue",
-    priority: "medium" as const
-  };
-  const blockers = [...new Set([...candidate.blockers, ...prediction.realForecast.reasons, ...prediction.readiness.missingCriticalData])].slice(0, 8);
-  const ready = prediction.realForecast.isReady;
-  const resultState = ready ? "ready" : candidate.forecastabilityTier === "BLOCKED" ? "blocked" : "not_ready";
+export async function runFullMatchAnalysis(
+  matchId: string,
+  mode: ForecastAutopilotMode = "fast",
+  options: { savePrediction?: boolean } = {}
+): Promise<FullMatchAnalysisResult> {
+  const job = await createAnalysisJob(matchId, mode);
+  try {
+    await runForecastAutopilot(mode, matchId);
+    const prepare = await prepareMatchForecast(matchId);
+    const input = await buildPredictionInput(matchId);
+    const prediction = calculatePrediction(input);
+    const candidate = await buildForecastAutopilotCandidate(matchId);
+    const fallback = getBestNextAction(prediction).primaryAction;
+    const primaryNextAction = candidate.nextDataActions[0] ?? {
+      label: fallback.label,
+      reason: fallback.reason,
+      target: "research_queue",
+      priority: "medium" as const
+    };
+    const blockers = [...new Set([...candidate.blockers, ...prediction.realForecast.reasons, ...prediction.readiness.missingCriticalData])].slice(0, 8);
+    const ready = prediction.realForecast.isReady;
+    const resultState = ready ? "ready" : candidate.forecastabilityTier === "BLOCKED" ? "blocked" : "not_ready";
+    const saveResult = await saveFinalPredictionPickIfAllowed({
+      savePrediction: options.savePrediction,
+      analysisJobId: job.id,
+      input,
+      prediction,
+      candidate,
+      blockers
+    });
+    const progressTimeline = [
+      ...buildProgressTimeline(candidate.coverageBreakdown, candidate.providerContributions, prediction),
+      predictionPickStep(saveResult.status, saveResult.message)
+    ];
 
-  return {
-    ok: true,
-    mode,
-    matchId,
-    resultState,
-    message: ready ? "Прогноз готов" : "Финальный прогноз пока не готов",
-    progressTimeline: buildProgressTimeline(candidate.coverageBreakdown, candidate.providerContributions, prediction),
-    forecast: {
-      teamAName: input.teamA.name,
-      teamBName: input.teamB.name,
-      teamAProbability: prediction.teamAProbability,
-      teamBProbability: prediction.teamBProbability,
-      confidenceScore: prediction.confidenceScore,
-      riskLevel: prediction.riskLevel,
-      dataQualityScore: prediction.dataQualityScore,
-      realForecastReady: ready,
-      readinessLevel: prediction.readiness.level,
-      forecastabilityLabel: candidate.forecastabilityLabel,
-      coverageScore: candidate.coverageScore,
-      topFactors: prediction.factors
-        .slice()
-        .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
-        .slice(0, 5)
-        .map((factor) => ({ factorName: factor.factorName, impact: factor.impact, explanation: factor.explanation })),
-      mapVetoSummary: prediction.vetoScenarios.length
-        ? prediction.vetoScenarios[0].explanation
-        : "Map/veto summary недоступен без валидной map/veto истории.",
-      warnings: prediction.warnings,
-      previewAllowed: true
-    },
-    blockers,
-    primaryNextAction,
-    autopilot: {
-      selectionReason: candidate.selectionReason,
-      providerContributions: candidate.providerContributions
-    },
-    prepare: {
-      basicHistorySnapshots: prepare.basicHistorySnapshots,
-      predictionAuditId: prepare.predictionAuditId,
-      before: prepare.before,
-      after: prepare.after
-    }
-  };
+    await completeAnalysisJob({
+      jobId: job.id,
+      resultState,
+      blockers,
+      timeline: progressTimeline
+    });
+
+    return {
+      ok: true,
+      mode,
+      matchId,
+      resultState,
+      message: ready ? "Прогноз готов" : "Финальный прогноз пока не готов",
+      progressTimeline,
+      forecast: {
+        teamAName: input.teamA.name,
+        teamBName: input.teamB.name,
+        teamAProbability: prediction.teamAProbability,
+        teamBProbability: prediction.teamBProbability,
+        confidenceScore: prediction.confidenceScore,
+        riskLevel: prediction.riskLevel,
+        dataQualityScore: prediction.dataQualityScore,
+        realForecastReady: ready,
+        readinessLevel: prediction.readiness.level,
+        forecastabilityLabel: candidate.forecastabilityLabel,
+        coverageScore: candidate.coverageScore,
+        topFactors: prediction.factors
+          .slice()
+          .sort((a, b) => Math.abs(b.impact) - Math.abs(a.impact))
+          .slice(0, 5)
+          .map((factor) => ({ factorName: factor.factorName, impact: factor.impact, explanation: factor.explanation })),
+        mapVetoSummary: prediction.vetoScenarios.length
+          ? prediction.vetoScenarios[0].explanation
+          : "Map/veto summary недоступен без валидной map/veto истории.",
+        warnings: prediction.warnings,
+        previewAllowed: true
+      },
+      blockers,
+      primaryNextAction,
+      autopilot: {
+        selectionReason: candidate.selectionReason,
+        providerContributions: candidate.providerContributions
+      },
+      prepare: {
+        basicHistorySnapshots: prepare.basicHistorySnapshots,
+        predictionAuditId: prepare.predictionAuditId,
+        before: prepare.before,
+        after: prepare.after
+      },
+      lifecycle: {
+        analysisJobId: job.id,
+        predictionSaved: saveResult.status === "saved",
+        predictionSaveStatus: saveResult.status,
+        predictionPickId: saveResult.predictionPickId,
+        existingPredictionPickId: saveResult.existingPredictionPickId,
+        message: saveResult.message
+      }
+    };
+  } catch (error) {
+    await failAnalysisJob(job.id, error instanceof Error ? error.message : "Full match analysis failed.");
+    throw error;
+  }
 }
 
 function buildProgressTimeline(
@@ -204,4 +249,15 @@ function mapCoverageStatus(status: "yes" | "partial" | "no"): FullMatchAnalysisS
   if (status === "yes") return "success";
   if (status === "partial") return "partial";
   return "missing";
+}
+
+function predictionPickStep(status: string, message: string): FullMatchAnalysisStep {
+  const ok = status === "saved";
+  const neutral = status === "not_requested" || status === "existing_final_pick";
+  return {
+    id: "pick_saved",
+    label: "Предикт сохранён",
+    status: ok ? "success" : neutral ? "partial" : "blocked",
+    explanation: message
+  };
 }

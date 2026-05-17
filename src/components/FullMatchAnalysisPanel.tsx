@@ -17,6 +17,7 @@ const modes = [
 
 export function FullMatchAnalysisPanel({ matchId }: { matchId: string }) {
   const [mode, setMode] = useState<(typeof modes)[number]["value"]>("fast");
+  const [savePrediction, setSavePrediction] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<FullMatchAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +29,7 @@ export function FullMatchAnalysisPanel({ matchId }: { matchId: string }) {
       const response = await fetch("/api/admin/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "full_match_analysis", matchId, mode })
+        body: JSON.stringify({ action: "full_match_analysis", matchId, mode, savePrediction })
       });
       const json = (await response.json()) as ApiResponse;
       if (!json.ok || !json.result) throw new Error(json.error ?? "Полный анализ не удалось выполнить.");
@@ -67,6 +68,12 @@ export function FullMatchAnalysisPanel({ matchId }: { matchId: string }) {
           </label>
         ))}
       </div>
+      <label className="mt-3 flex max-w-3xl items-start gap-2 rounded border border-lab-border bg-lab-panel2 p-3 text-sm text-lab-muted">
+        <input className="mt-1" type="checkbox" checked={savePrediction} onChange={(event) => setSavePrediction(event.target.checked)} />
+        <span>
+          Сохранить final предикт, если Real Forecast Ready=true. Если матч уже начался или final pick уже есть, система сохранит только AnalysisJob и не перезапишет исходный предикт.
+        </span>
+      </label>
       {error ? <p className="mt-3 text-sm text-lab-red">{error}</p> : null}
       {result ? <AnalysisResult result={result} /> : null}
     </section>
@@ -120,6 +127,16 @@ function AnalysisResult({ result }: { result: FullMatchAnalysisResult }) {
         </div>
       </div>
 
+      <div className="rounded border border-lab-border bg-lab-panel2 p-4">
+        <p className="text-xs uppercase text-lab-muted">Prediction lifecycle</p>
+        <p className="mt-2 font-semibold text-white">{result.lifecycle.message}</p>
+        <p className="mt-1 text-sm text-lab-muted">
+          AnalysisJob: {result.lifecycle.analysisJobId}
+          {result.lifecycle.predictionPickId ? ` · PredictionPick: ${result.lifecycle.predictionPickId}` : ""}
+          {result.lifecycle.existingPredictionPickId ? ` · Existing final pick: ${result.lifecycle.existingPredictionPickId}` : ""}
+        </p>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-2">
         <div className="rounded border border-lab-border bg-lab-panel2 p-4">
           <p className="text-xs uppercase text-lab-muted">Top factors</p>
@@ -159,6 +176,7 @@ function statusLabel(status: FullMatchAnalysisStepStatus) {
   if (status === "success") return "ok";
   if (status === "partial") return "partial";
   if (status === "blocked") return "blocked";
+  if (status === "error") return "error";
   return "missing";
 }
 
@@ -166,5 +184,6 @@ function statusClass(status: FullMatchAnalysisStepStatus) {
   if (status === "success") return "text-lab-green";
   if (status === "partial") return "text-lab-amber";
   if (status === "blocked") return "text-lab-red";
+  if (status === "error") return "text-lab-red";
   return "text-lab-muted";
 }

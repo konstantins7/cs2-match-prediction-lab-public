@@ -16,6 +16,7 @@ import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceit
 import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
 import { refreshMatchFeed } from "@/lib/matchFeedCache";
 import { runFullMatchAnalysis } from "@/lib/fullMatchAnalysis";
+import { resolvePredictionResultManually, resolvePredictionResults } from "@/lib/predictionLifecycle";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -30,6 +31,12 @@ type SyncRequest = {
   from?: string;
   to?: string;
   mode?: ForecastAutopilotMode | "deep";
+  savePrediction?: boolean;
+  predictionPickId?: string;
+  actualWinnerTeamId?: string;
+  actualScore?: string;
+  resultSource?: string;
+  notes?: string;
 };
 
 function normalizeMode(mode: SyncRequest["mode"]): ForecastAutopilotMode {
@@ -49,8 +56,23 @@ export async function POST(request: Request) {
     }
     if (body.action === "full_match_analysis") {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
-      const result = await runFullMatchAnalysis(body.matchId, normalizeMode(body.mode));
+      const result = await runFullMatchAnalysis(body.matchId, normalizeMode(body.mode), { savePrediction: body.savePrediction === true });
       return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "resolve_prediction_results") {
+      const result = await resolvePredictionResults();
+      return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "manual_prediction_result") {
+      if (!body.predictionPickId) return NextResponse.json({ ok: false, error: "predictionPickId is required." }, { status: 400 });
+      const result = await resolvePredictionResultManually({
+        predictionPickId: body.predictionPickId,
+        actualWinnerTeamId: body.actualWinnerTeamId,
+        actualScore: body.actualScore,
+        resultSource: body.resultSource,
+        notes: body.notes
+      });
+      return NextResponse.json(result, { status: result.ok ? 200 : 400 });
     }
     if (body.action === "refresh_match_feed") {
       const result = await refreshMatchFeed();

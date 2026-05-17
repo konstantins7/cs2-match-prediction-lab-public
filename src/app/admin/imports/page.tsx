@@ -39,6 +39,36 @@ export default async function ImportsPage() {
       <SourceSyncPanel statuses={statuses} />
 
       <section className="rounded border border-lab-border bg-lab-panel p-4">
+        <p className="text-xs uppercase tracking-wide text-lab-cyan">Private data extractor interface</p>
+        <h2 className="mt-1 font-semibold text-white">Нормализованные private drops</h2>
+        <p className="mt-2 max-w-4xl text-sm text-lab-muted">
+          Core app не содержит HLTV scraper, browser crawler, Apify, Telegram scraping, bypass code или crawler config.
+          Если внешний локальный инструмент уже подготовил данные, импортируйте только нормализованные CSV/JSON через существующий Validate / Preview / Apply flow.
+        </p>
+        <div className="mt-3 grid gap-3 md:grid-cols-2">
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <h3 className="font-medium text-white">Accepted normalized files</h3>
+            <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+              <li>normalized_player_stats.csv</li>
+              <li>normalized_map_stats.csv</li>
+              <li>normalized_veto_history.csv</li>
+              <li>manual_real_pack.json</li>
+              <li>parsed_demo_export.json</li>
+            </ul>
+          </div>
+          <div className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <h3 className="font-medium text-white">Rules</h3>
+            <ul className="mt-2 space-y-1 text-sm text-lab-muted">
+              <li>sourceName обязателен, sourceUrl/reference желателен.</li>
+              <li>Никакой Apply без existing validation/preview.</li>
+              <li>Core app не знает, как файл был собран.</li>
+              <li>Real Forecast gates и source policy не меняются.</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Последние DataSyncJob</h2>
         <div className="mt-3 overflow-x-auto">
           <table className="min-w-full text-left text-sm">
