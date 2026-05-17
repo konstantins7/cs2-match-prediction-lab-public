@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "0.8.5",
+  "version": "0.8.6",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -17,7 +17,12 @@
     "sync:all": "tsx src/scripts/sync.ts all",
     "sync:pandascore-free": "tsx src/scripts/sync.ts pandascore-free",
     "sync:snapshots": "tsx src/scripts/sync.ts snapshots",
-    "sync:predictions": "tsx src/scripts/sync.ts predictions"
+    "sync:predictions": "tsx src/scripts/sync.ts predictions",
+    "data:fetch-esportis": "tsx tools/data-fetchers/fetch-esportis.ts --force",
+    "data:fetch-grid": "tsx tools/data-fetchers/fetch-grid.ts --force",
+    "data:fetch-liquipedia-rosters": "tsx tools/data-fetchers/fetch-liquipedia-rosters.ts --force",
+    "data:fetch-valve-rankings": "tsx tools/data-fetchers/fetch-valve-rankings.ts --force",
+    "data:fetch-all": "tsx tools/run-all-fetchers.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",

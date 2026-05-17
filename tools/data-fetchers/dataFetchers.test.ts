@@ -1,0 +1,181 @@
+import { mkdtemp, readFile, rm } from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { describe, expect, it } from "vitest";
+import { runAllFetchers } from "../run-all-fetchers";
+import { runEsportIsFetcher } from "./fetch-esportis";
+import { normalizeGridMapRows, normalizeGridVetoRows, runGridFetcher } from "./fetch-grid";
+import { extractRosterNicknames, runLiquipediaRosterFetcher } from "./fetch-liquipedia-rosters";
+import { parseStandingsMarkdown, runValveRankingsFetcher } from "./fetch-valve-rankings";
+import { mergeSheetRows } from "./utils";
+
+const matchId = "pandascore_match_1488973";
+const teams = ["Evo Novo", "WAZABI"];
+
+describe("Safe DAL Phase 1 fetchers", () => {
+  it("merges exact accepted private inbox CSV names idempotently", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-"));
+    try {
+      const options = { inboxPath: path.join(temp, "private-inbox") };
+      const row = {
+        matchId,
+        teamName: "Evo Novo",
+        nickname: "evoRifler",
+        role: "rifler",
+        country: "KZ",
+        sourceName: "test source",
+        collectedAt: "2026-05-17T10:00:00Z",
+        period: "current_roster",
+        sampleSize: "1",
+        confidence: "0.7"
+      };
+      const first = await mergeSheetRows("roster", [row], ["matchId", "teamName", "nickname", "sourceName"], options);
+      const second = await mergeSheetRows("roster", [row], ["matchId", "teamName", "nickname", "sourceName"], options);
+      expect(path.basename(first.filePath)).toBe("roster.csv");
+      expect(first.rowsInserted).toBe(1);
+      expect(second.rowsInserted).toBe(0);
+      expect(second.rowsSkipped).toBe(1);
+      const content = await readFile(path.join(temp, "private-inbox", "roster.csv"), "utf8");
+      expect(content.trim().split(/\r?\n/)).toHaveLength(2);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("fetches esport.is with mocked endpoints and writes target news_events.csv only", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-esportis-"));
+    try {
+      const report = await runEsportIsFetcher({
+        force: true,
+        matchId,
+        teamNames: teams,
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: mockFetch({
+          "matches/upcoming": { matches: [{ id: "m1" }] },
+          "matches/live": { matches: [] },
+          "rankings/cs2": { rankings: [{ rank: 1, team: { name: "Evo Novo" } }] },
+          "news?game=cs2": { news: [{ title: "Evo Novo roster note", summary: "Evo Novo confirms lineup.", publishedAt: "2026-05-16T10:00:00Z" }] }
+        })
+      });
+      expect(report.status).toBe("success");
+      expect(report.writes[0]?.fileName).toBe("news_events.csv");
+      const content = await readFile(path.join(temp, "private-inbox", "news_events.csv"), "utf8");
+      expect(content).toContain("Evo Novo roster note");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("fetches GRID only when enabled/keyed and maps complete map/veto rows", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-grid-"));
+    try {
+      const payload = {
+        data: {
+          allSeries: [{
+            maps: [{ name: "Ancient", winnerTeamName: "Evo Novo" }],
+            vetoEvents: [{ mapName: "Nuke", teamName: "WAZABI", action: "ban" }]
+          }]
+        }
+      };
+      const report = await runGridFetcher({
+        env: { ENABLE_GRID_SYNC: "true", GRID_API_KEY: "test-key" },
+        matchId,
+        teamNames: teams,
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: mockFetch({ "central-data/graphql": payload })
+      });
+      expect(report.status).toBe("success");
+      expect(report.writes.map((write) => write.fileName).sort()).toEqual(["map_stats.csv", "veto_history.csv"]);
+      expect(await readFile(path.join(temp, "private-inbox", "map_stats.csv"), "utf8")).toContain("Ancient");
+      expect(await readFile(path.join(temp, "private-inbox", "veto_history.csv"), "utf8")).toContain("Nuke");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("normalizes GRID rows conservatively without inventing map stats", () => {
+    expect(normalizeGridMapRows([{ maps: [{ name: "Ancient" }] }], { matchId, teamNames: teams, collectedAt: "2026-05-17T10:00:00Z" })).toEqual([]);
+    expect(normalizeGridMapRows([{ maps: [{ name: "Ancient", winnerTeamName: "Evo Novo" }] }], { matchId, teamNames: teams, collectedAt: "2026-05-17T10:00:00Z" })).toHaveLength(2);
+    expect(normalizeGridVetoRows([{ vetoEvents: [{ mapName: "Nuke", teamName: "WAZABI", action: "ban" }] }], { matchId, teamNames: teams, collectedAt: "2026-05-17T10:00:00Z" })).toHaveLength(1);
+  });
+
+  it("fetches Liquipedia MediaWiki roster with rate limit configurable for tests", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-liquipedia-"));
+    try {
+      const html = '<table><tr class="Player"><td><span class="ID"><a title="evoRifler">evoRifler</a></span></td></tr></table>';
+      expect(extractRosterNicknames(html)).toEqual(["evoRifler"]);
+      const report = await runLiquipediaRosterFetcher({
+        env: { ENABLE_LIQUIPEDIA_SYNC: "true" },
+        matchId,
+        teamNames: ["Evo Novo"],
+        delayMs: 0,
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: mockFetch({ "api.php": { parse: { text: { "*": html } } } })
+      });
+      expect(report.status).toBe("success");
+      expect(report.writes[0]?.fileName).toBe("roster.csv");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("fetches Valve rankings safely but does not write unsupported ranking CSV", async () => {
+    const markdown = "| 1 | 2000 | Team Vitality | apEX, ZywOo |\n| 2 | 1800 | Natus Vincere | b1t, w0nderful |";
+    expect(parseStandingsMarkdown(markdown, { name: "standings_global_2026_05_17.md", path: "live/2026/standings_global_2026_05_17.md", type: "file", download_url: "https://example.test/standings.md" })).toHaveLength(2);
+    const report = await runValveRankingsFetcher({
+      env: { ENABLE_VALVE_RANKINGS_SYNC: "true" },
+      fetchImpl: mockFetch({
+        "contents/live": [{ name: "2026", path: "live/2026", type: "dir" }],
+        "contents/live/2026": [{ name: "standings_global_2026_05_17.md", path: "live/2026/standings_global_2026_05_17.md", type: "file", download_url: "https://example.test/standings.md" }],
+        "standings.md": markdown
+      })
+    });
+    expect(report.status).toBe("partial");
+    expect(report.fetched.rankings).toBe(2);
+    expect(report.writes).toEqual([]);
+    expect(report.warnings.join(" ")).toMatch(/no accepted ranking CSV schema/);
+  });
+
+  it("run-all respects disabled flags and does not mutate DB", async () => {
+    const result = await runAllFetchers({
+      matchId,
+      teamNames: teams,
+      dryRun: true
+    });
+    expect(result.status).toBe("completed");
+    expect(result.reports.every((report) => report.status === "skipped")).toBe(true);
+  });
+
+  it("keeps DAL tools free of forbidden automation and Prisma writes", async () => {
+    const files = [
+      "tools/data-fetchers/utils.ts",
+      "tools/data-fetchers/fetch-esportis.ts",
+      "tools/data-fetchers/fetch-grid.ts",
+      "tools/data-fetchers/fetch-liquipedia-rosters.ts",
+      "tools/data-fetchers/fetch-valve-rankings.ts",
+      "tools/run-all-fetchers.ts"
+    ];
+    const combined = (await Promise.all(files.map((file) => readFile(path.join(process.cwd(), file), "utf8")))).join("\n").toLowerCase();
+    expect(combined).not.toContain("prisma");
+    expect(combined).not.toContain("hltv.org");
+    expect(combined).not.toContain("telegram");
+    expect(combined).not.toContain("apify");
+    expect(combined).not.toContain("puppeteer");
+    expect(combined).not.toContain("playwright");
+    expect(combined).not.toContain("selenium");
+    expect(combined).not.toContain("cheerio");
+    expect(combined).not.toContain("series events");
+    expect(combined).not.toContain("stats feed");
+    expect(combined).not.toContain("file download");
+  });
+});
+
+function mockFetch(routes: Record<string, unknown>) {
+  return async (input: string | URL) => {
+    const url = String(input);
+    const key = Object.keys(routes).sort((a, b) => b.length - a.length).find((route) => url.includes(route));
+    if (!key) return new Response(JSON.stringify({ error: `No mock for ${url}` }), { status: 404 });
+    const body = routes[key];
+    return new Response(typeof body === "string" ? body : JSON.stringify(body), { status: 200 });
+  };
+}

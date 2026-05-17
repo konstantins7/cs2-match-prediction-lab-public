@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.5
+## Что есть в MVP 0.8.6
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Safe DAL Phase 1: MVP 0.8.6 добавляет tools-only Data Acquisition Layer в `tools/data-fetchers/`. Fetchers для esport.is, GRID Open Access, Liquipedia MediaWiki и Valve Rankings пишут только exact accepted normalized files в `data/private-inbox/`, не вызывают app Apply, не мутируют БД и не меняют core ingestion. `data:fetch-all` запускает enabled fetchers последовательно.
 - Private Normalized Extractor Pack: MVP 0.8.5 добавляет local-only tools в `tools/private-normalizers/`, которые превращают user-pasted table text или локальный CSV/text export в нормализованные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для `data/private-inbox/`. Tools не делают HTTP requests, scraping, browser automation, Apify, crawler/bypass code, DB mutations или direct Apply.
 - Auto Data Gap Resolver + Connector Framework + Normalized Extractor Pipeline: MVP 0.8.4 заставляет `Полный анализ` не только показать missing blocks, но и пройти цепочку разрешённых коннекторов, проверить `data/private-inbox/`, записать resolver attempts в timeline и пересчитать анализ после validated records. `ENABLE_TRUSTED_LOCAL_IMPORTS=false` по умолчанию, поэтому private inbox работает как validation preview, пока trusted local mode явно не включён.
 - Prediction Lifecycle + Full Analysis Jobs: MVP 0.8.3 сохраняет каждый запуск `Полный анализ` как `AnalysisJob`, пишет persistent timeline steps, может сохранить final `PredictionPick` только до старта матча и только при `Real Forecast Ready=true`, а затем через `resolve_prediction_results` связывает pick с outcome и post-match review.
@@ -173,6 +174,35 @@ tsx tools/private-normalizers/scripts/validate_normalized_file.ts \
 ```
 
 Safety: tools do not make HTTP requests, do not automate browsers, do not call Apify, do not bypass login/captcha/protection, do not write DB records and do not call app Apply. The app continues to handle validation / preview / apply through the existing private inbox and `ENABLE_TRUSTED_LOCAL_IMPORTS=false` remains the default.
+
+## Safe DAL Phase 1
+
+MVP 0.8.6 добавляет безопасный local tools слой для добычи данных через разрешённые API и записи только в `data/private-inbox/`. Это не core provider integration и не auto-apply path.
+
+Scripts:
+
+```bash
+npm run data:fetch-esportis -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+npm run data:fetch-grid -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+npm run data:fetch-liquipedia-rosters -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+npm run data:fetch-valve-rankings
+npm run data:fetch-all -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+```
+
+Flags and paths:
+
+- `PRIVATE_INBOX_PATH="./data/private-inbox"` controls where normalized files are written.
+- `ENABLE_ESPORTIS_SYNC`, `ENABLE_GRID_SYNC`, `ENABLE_LIQUIPEDIA_SYNC`, `ENABLE_VALVE_RANKINGS_SYNC` control `data:fetch-all`.
+- Individual scripts pass `--force` from package scripts for manual one-shot use; API keys are still required where applicable.
+
+DAL output policy:
+
+- writes only exact accepted private inbox basenames: `roster.csv`, `player_stats.csv`, `map_stats.csv`, `veto_history.csv`, `h2h.csv`, `news_events.csv`, plus existing accepted JSON drops;
+- uses idempotent CSV merge, so repeated runs skip duplicate rows instead of appending duplicates;
+- skips fetched data if the current private inbox has no exact schema for it, for example generic match feed/ranking rows;
+- never imports Prisma, never writes DB records, never calls validation Apply, never runs seed.
+
+Source policy remains strict: no HLTV automation, no Telegram scraping, no Apify, no browser automation/crawler packages, no unsupported GRID endpoints and no fake/imputed data. HLTV remains manual reference / paste-normalizer only.
 
 ## Auto Data Gap Resolver + Normalized Extractor Pipeline
 
