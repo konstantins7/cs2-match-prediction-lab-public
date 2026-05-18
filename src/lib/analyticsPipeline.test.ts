@@ -121,6 +121,19 @@ function makeDeps(events: string[] = []): AnalyticsPipelineDeps {
         skippedRows: 0
       };
     },
+    runAutoFill: async (options) => {
+      events.push(`autofill:${options.matchId}:${options.teamNames.join("|")}:${options.dryRun ? "dry" : "write"}`);
+      return {
+        dryRun: Boolean(options.dryRun),
+        filesBefore: [],
+        writes: [{ file: "map_stats.csv", source: "test", rows: 2 }],
+        filesAfter: options.dryRun ? [] : ["map_stats.csv"],
+        stillMissing: ["player_stats.csv", "veto_history.csv"],
+        templateCommands: [],
+        nextAction: "Still missing player_stats.csv, veto_history.csv.",
+        sourceReports: [{ source: "test", status: "partial", message: "mock" }]
+      };
+    },
     scanInbox: async (_id, options = {}) => {
       events.push(`inbox:${options.trustedLocalImports ? "trusted" : "preview"}`);
       return {
@@ -182,6 +195,17 @@ describe("MVP 0.8.7 analytics pipeline", () => {
     expect(events).toContain(`fetchers:${matchId}:Evo Novo|WAZABI:dry`);
   });
 
+  it("runs auto-fill before private inbox validation when requested", async () => {
+    const events: string[] = [];
+    const result = await runAnalyticsPipeline(matchId, { mode: "fast", autoFill: true, dryRun: true }, makeDeps(events));
+
+    expect(result.autoFillResult?.writes[0]?.file).toBe("map_stats.csv");
+    expect(result.steps.find((step) => step.id === "auto_fill")?.status).toBe("partial");
+    expect(events).toContain(`autofill:${matchId}:Evo Novo|WAZABI:dry`);
+    expect(events.some((event) => event.startsWith("fetchers:"))).toBe(false);
+    expect(events.indexOf(`autofill:${matchId}:Evo Novo|WAZABI:dry`)).toBeLessThan(events.indexOf("inbox:preview"));
+  });
+
   it("keeps parser adapter registry disabled and blocks forbidden URLs", () => {
     expect(parserAdapterRegistry.filter((adapter) => adapter.legalStatus === "forbidden").every((adapter) => adapter.canAutoRun === false)).toBe(true);
     expect(validateParserDraftRequest({ adapterId: "generic_public_table_draft", enabled: true, url: "https://example.test/table" }).ok).toBe(false);
@@ -196,6 +220,7 @@ describe("MVP 0.8.7 analytics pipeline", () => {
     expect(route).toContain("analytics_pipeline");
     expect(route).toContain("runAnalyticsPipeline");
     expect(JSON.parse(pkg).scripts["data:pipeline"]).toContain("src/scripts/analyticsPipeline.ts");
+    expect(JSON.parse(pkg).scripts["data:auto-fill"]).toContain("scripts/auto-fill.ts");
   });
 
   it("keeps model dataset export read-only and leakage-filtered", async () => {
@@ -209,7 +234,11 @@ describe("MVP 0.8.7 analytics pipeline", () => {
     const files = [
       "src/lib/analyticsPipeline.ts",
       "src/scripts/analyticsPipeline.ts",
-      "src/lib/parserAdapterRegistry.ts"
+      "src/lib/parserAdapterRegistry.ts",
+      "tools/auto-fill/auto-fill-service.ts",
+      "tools/auto-fill/csstats-importer.ts",
+      "scripts/auto-fill.ts",
+      "scripts/awpy-batch.ts"
     ];
     const combined = (await Promise.all(files.map((file) => readFile(path.join(process.cwd(), file), "utf8")))).join("\n").toLowerCase();
     expect(combined).not.toContain("puppeteer");

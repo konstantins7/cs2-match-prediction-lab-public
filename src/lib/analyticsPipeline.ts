@@ -9,6 +9,7 @@ import { prisma } from "./prisma";
 import { parserAdapterPolicySummary, type ParserAdapterPolicy } from "./parserAdapterRegistry";
 import { runAllFetchers, type RunAllFetchersOptions } from "../../tools/run-all-fetchers";
 import type { FetcherReport } from "../../tools/data-fetchers/utils";
+import { runAutoFill, type AutoFillResult } from "../../tools/auto-fill";
 
 export type AnalyticsPipelineStepStatus = "success" | "partial" | "skipped" | "blocked" | "error";
 
@@ -53,6 +54,7 @@ export type AnalyticsPipelineResult = {
   steps: AnalyticsPipelineStep[];
   fetcherReports: FetcherReport[];
   privateInboxSummary: AnalyticsPrivateInboxSummary;
+  autoFillResult?: AutoFillResult;
   coverageBefore: AnalyticsCoverageSummary | null;
   coverageAfter: AnalyticsCoverageSummary | null;
   analysisJobId?: string;
@@ -72,6 +74,7 @@ export type AnalyticsPipelineOptions = {
   dryRun?: boolean;
   force?: boolean;
   savePrediction?: boolean;
+  autoFill?: boolean;
 };
 
 type MatchContext = {
@@ -83,6 +86,7 @@ export type AnalyticsPipelineDeps = {
   getMatchContext: (matchId: string) => Promise<MatchContext | null>;
   getCoverage: (matchId: string) => Promise<AnalyticsCoverageSummary>;
   runFetchers: (options: RunAllFetchersOptions) => Promise<{ status: string; reports: FetcherReport[]; createdOrInsertedRows: number; skippedRows: number }>;
+  runAutoFill: typeof runAutoFill;
   scanInbox: typeof scanPrivateNormalizedInbox;
   runAnalysis: typeof runFullMatchAnalysis;
   saveFeatureSnapshot: typeof saveMatchFeatureSnapshot;
@@ -101,6 +105,7 @@ const defaultDeps: AnalyticsPipelineDeps = {
   },
   getCoverage: async (matchId) => summarizeCoverage(await buildForecastAutopilotCandidate(matchId)),
   runFetchers: runAllFetchers,
+  runAutoFill,
   scanInbox: scanPrivateNormalizedInbox,
   runAnalysis: runFullMatchAnalysis,
   saveFeatureSnapshot: saveMatchFeatureSnapshot,
@@ -119,6 +124,7 @@ export async function runAnalyticsPipeline(
   const steps: AnalyticsPipelineStep[] = [];
   const parserPolicy = deps.parserPolicySummary();
   let fetcherReports: FetcherReport[] = [];
+  let autoFillResult: AutoFillResult | undefined;
   let coverageBefore: AnalyticsCoverageSummary | null = null;
   let coverageAfter: AnalyticsCoverageSummary | null = null;
   let privateInboxSummary: AnalyticsPrivateInboxSummary = emptyInboxSummary();
@@ -162,24 +168,39 @@ export async function runAnalyticsPipeline(
     explanation: `${coverage.forecastabilityLabel}: ${coverage.coverageScore}/100.`
   }));
 
-  const fetcherRun = await stepResult(
-    steps,
-    "safe_fetchers",
-    "Safe DAL fetchers",
-    async () => deps.runFetchers({ matchId, teamNames: context.teamNames, dryRun, force: options.force }),
-    (result) => {
-      fetcherReports = result.reports;
-      const enabled = result.reports.filter((report) => report.status !== "skipped").length;
-      const failed = result.reports.filter((report) => report.status === "failed").length;
-      return {
-        status: failed ? "partial" : enabled ? "success" : "skipped",
-        explanation: `${enabled} enabled fetcher(s), ${result.reports.length - enabled} skipped; inserted=${result.createdOrInsertedRows}, skippedRows=${result.skippedRows}.`,
-        recordsFound: result.createdOrInsertedRows,
-        sourceUsed: "tools/data-fetchers"
-      };
-    }
-  );
-  if (fetcherRun) fetcherReports = fetcherRun.reports;
+  if (options.autoFill) {
+    autoFillResult = await stepResult(
+      steps,
+      "auto_fill",
+      "Safe auto-fill",
+      async () => deps.runAutoFill({ matchId, teamNames: [context.teamNames[0] ?? "", context.teamNames[1] ?? ""], mode, dryRun }),
+      (result) => ({
+        status: result.stillMissing.length ? "partial" : "success",
+        explanation: `${result.writes.reduce((sum, write) => sum + write.rows, 0)} row(s) prepared; stillMissing=${result.stillMissing.join(", ") || "none"}.`,
+        recordsFound: result.writes.reduce((sum, write) => sum + write.rows, 0),
+        sourceUsed: "tools/auto-fill"
+      })
+    ) ?? undefined;
+  } else {
+    const fetcherRun = await stepResult(
+      steps,
+      "safe_fetchers",
+      "Safe DAL fetchers",
+      async () => deps.runFetchers({ matchId, teamNames: context.teamNames, dryRun, force: options.force }),
+      (result) => {
+        fetcherReports = result.reports;
+        const enabled = result.reports.filter((report) => report.status !== "skipped").length;
+        const failed = result.reports.filter((report) => report.status === "failed").length;
+        return {
+          status: failed ? "partial" : enabled ? "success" : "skipped",
+          explanation: `${enabled} enabled fetcher(s), ${result.reports.length - enabled} skipped; inserted=${result.createdOrInsertedRows}, skippedRows=${result.skippedRows}.`,
+          recordsFound: result.createdOrInsertedRows,
+          sourceUsed: "tools/data-fetchers"
+        };
+      }
+    );
+    if (fetcherRun) fetcherReports = fetcherRun.reports;
+  }
 
   const inboxScan = await stepResult(
     steps,
@@ -280,6 +301,7 @@ export async function runAnalyticsPipeline(
     mode,
     steps,
     fetcherReports,
+    autoFillResult,
     privateInboxSummary,
     coverageBefore,
     coverageAfter,

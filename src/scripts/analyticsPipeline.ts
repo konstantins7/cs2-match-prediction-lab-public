@@ -11,7 +11,7 @@ function parseArgs(argv: string[]) {
     const arg = argv[index];
     if (!arg.startsWith("--")) continue;
     const key = arg.slice(2);
-    if (["dry-run", "force", "savePrediction"].includes(key)) {
+    if (["dry-run", "force", "savePrediction", "auto-fill"].includes(key)) {
       parsed[key] = true;
       continue;
     }
@@ -49,7 +49,8 @@ async function main() {
     mode: normalizeMode(stringArg(args, "mode")),
     dryRun: Boolean(args["dry-run"]),
     force: Boolean(args.force),
-    savePrediction: Boolean(args.savePrediction)
+    savePrediction: Boolean(args.savePrediction),
+    autoFill: Boolean(args["auto-fill"])
   });
   console.log(JSON.stringify(result, null, 2));
   if (!result.ok) process.exitCode = 1;

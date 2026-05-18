@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.9.3
+## Что есть в MVP 0.9.4
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Safe Auto-Fill Pipeline: MVP 0.9.4 добавляет `data:auto-fill`, `data:pipeline --auto-fill`, explicit CSStats/csgostats CSV URL/file import, PandaScore auto-fill wrapper и AWPy batch JSON merge. Auto-fill пишет только normalized files в `data/private-inbox/`; Apply остаётся через `/admin/imports`.
 - Real Data Completion Helpers: MVP 0.9.3 добавляет local-only CLI для target CSV templates, dry-run reality check и AWPy JSON normalizer scaffold. Это ускоряет путь `copy/export -> normalized CSV/JSON -> data/private-inbox -> /admin/imports -> data:pipeline` без API keys, scraping, DB writes from tools или gate lowering.
 - Policy-Compliant Data Maximizer: MVP 0.9.2 добавляет safe harvester поверх разрешённых API-style источников. Он усиливает Liquipedia MediaWiki, GRID Open Access matching, optional PandaScore Free enrichment и private inbox orchestration, но не добавляет HLTV automation, browser crawler, Apify, Telegram scraping, Cheerio, DB writes from tools, fake data или gate lowering.
 - Extended Analytics + ML Preparation: MVP 0.9.1 добавляет rule-based факторы `Map Pool Depth` и `Individual Skill`, problem-matches drilldown на `/admin/data-quality`, model router scaffold для будущего A/B и Advanced-блок признаков на странице матча. Эти факторы намеренно меняют rule-based score, но Real Forecast Ready gates, source policy, page-load sync, seed и provider behavior не меняются.
@@ -202,6 +203,64 @@ npm run demo:normalize-awpy -- \
 ```
 
 The app does not run AWPy or parse `.dem` files in this release. It only normalizes an already-produced local JSON export into the existing parsed demo intake shape.
+
+## Auto-Fill Pipeline
+
+MVP 0.9.4 добавляет безопасный auto-fill слой: одна команда пытается закрыть missing private-inbox files через разрешённые источники и user-provided CSV, но не вызывает Apply и не пишет в БД.
+
+With PandaScore API key:
+
+```bash
+# .env.local
+PANDASCORE_API_KEY="your_key"
+ENABLE_PANDASCORE_AUTO_FETCH=false
+```
+
+Включайте auto fetch явно только для локального запуска:
+
+```bash
+ENABLE_PANDASCORE_AUTO_FETCH=true npm run data:pipeline -- \
+  --matchId pandascore_match_1488973 \
+  --mode fast \
+  --auto-fill \
+  --savePrediction
+```
+
+Without API keys, use explicit CSStats/csgostats CSV URL or local CSV file:
+
+```bash
+npm run data:auto-fill -- \
+  --matchId pandascore_match_1488973 \
+  --teamA "Evo Novo" \
+  --teamB "WAZABI" \
+  --teamA-map-url "https://csstats.gg/path/to/user-export.csv" \
+  --teamB-map-file ./tmp/wazabi_maps.csv \
+  --dry-run
+```
+
+Rules:
+
+- CSStats/csgostats import is explicit user-provided CSV only: no search, no guessed endpoints, no crawling.
+- Allowed CSV hosts are `csgostats.gg` and `csstats.gg`; local files are supported.
+- `data:auto-fill` writes only exact app-visible files such as `map_stats.csv` and `player_stats.csv`.
+- If auto-fill cannot close a block, it returns exact template commands and the next action.
+- HLTV remains manual/paste-only; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included.
+
+AWPy batch JSON merge:
+
+```bash
+npm run demo:batch -- \
+  --folder ./demos \
+  --matchId pandascore_match_1488973 \
+  --teams "Evo Novo,WAZABI" \
+  --sourceName "AWPy batch export" \
+  --collectedAt "2026-05-04T00:00:00Z" \
+  --period "last_3_months" \
+  --confidence 85 \
+  --out data/private-inbox/parsed_demo_export.json
+```
+
+`demo:batch` reads local AWPy JSON exports only. It does not download demos, parse `.dem`, call Python, scrape websites or mutate the DB.
 
 ## User Flow Simplification Phase 1
 

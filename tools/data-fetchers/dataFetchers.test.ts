@@ -312,6 +312,7 @@ describe("Safe DAL Phase 1 fetchers", () => {
       "tools/data-fetchers/utils.ts",
       "tools/data-fetchers/fetch-esportis.ts",
       "tools/data-fetchers/fetch-pandascore.ts",
+      "tools/data-fetchers/fetch-pandascore-enhanced.ts",
       "tools/data-fetchers/fetch-grid.ts",
       "tools/data-fetchers/fetch-liquipedia-rosters.ts",
       "tools/data-fetchers/fetch-valve-rankings.ts",

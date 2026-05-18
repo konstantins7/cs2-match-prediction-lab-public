@@ -71,9 +71,9 @@ function parsedDemoFixture(overrides: Record<string, unknown> = {}) {
 }
 
 describe("real forecast readiness", () => {
-it("keeps package version at 0.9.3", () => {
+it("keeps package version at 0.9.4", () => {
   const pkg = JSON.parse(readFileSync("package.json", "utf8")) as { version: string };
-  expect(pkg.version).toBe("0.9.3");
+  expect(pkg.version).toBe("0.9.4");
 });
 
   it("does not promote sample-only L3 to a real forecast", () => {

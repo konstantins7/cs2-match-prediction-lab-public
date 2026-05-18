@@ -1,6 +1,6 @@
 import { runGridFetcher } from "../data-fetchers/fetch-grid";
 import { runLiquipediaRosterFetcher } from "../data-fetchers/fetch-liquipedia-rosters";
-import { runPandaScoreFetcher } from "../data-fetchers/fetch-pandascore";
+import { runPandaScoreEnhancedFetcher } from "../data-fetchers/fetch-pandascore-enhanced";
 import { runValveRankingsFetcher } from "../data-fetchers/fetch-valve-rankings";
 import { getISODate, type FetcherReport, type FetcherRunOptions } from "../data-fetchers/utils";
 
@@ -37,7 +37,7 @@ export async function safeHarvest(options: SafeHarvestOptions): Promise<SafeHarv
   const reports: FetcherReport[] = [];
 
   reports.push(await runLiquipediaRosterFetcher(common));
-  reports.push(await runPandaScoreFetcher(common));
+  reports.push(await runPandaScoreEnhancedFetcher(common));
   reports.push(await runGridFetcher({ ...common, targetDate: options.matchDate }));
   if (mode !== "fast") {
     reports.push(await runValveRankingsFetcher(common));
