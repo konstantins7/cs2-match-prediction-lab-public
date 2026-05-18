@@ -3,9 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { runAllFetchers } from "../run-all-fetchers";
+import { safeHarvest } from "../data-harvesters/safe-orchestrator";
 import { runEsportIsFetcher } from "./fetch-esportis";
-import { normalizeGridMapRows, normalizeGridVetoRows, runGridFetcher } from "./fetch-grid";
-import { extractRosterNicknames, runLiquipediaRosterFetcher } from "./fetch-liquipedia-rosters";
+import { findGridSeriesId, normalizeGridMapRows, normalizeGridVetoRows, runGridFetcher } from "./fetch-grid";
+import { extractRosterEntries, extractRosterHintEntries, extractRosterNicknames, runLiquipediaRosterFetcher } from "./fetch-liquipedia-rosters";
+import { normalizePandaScorePlayerStat, runPandaScoreFetcher } from "./fetch-pandascore";
 import { parseStandingsMarkdown, runValveRankingsFetcher } from "./fetch-valve-rankings";
 import { mergeSheetRows } from "./utils";
 
@@ -72,6 +74,9 @@ describe("Safe DAL Phase 1 fetchers", () => {
       const payload = {
         data: {
           allSeries: [{
+            id: "grid-series-1",
+            startTime: "2026-05-17T10:00:00Z",
+            teams: [{ name: "Evo Novo" }, { name: "WAZABI" }],
             maps: [{ name: "Ancient", winnerTeamName: "Evo Novo" }],
             vetoEvents: [{ mapName: "Nuke", teamName: "WAZABI", action: "ban" }]
           }]
@@ -93,6 +98,15 @@ describe("Safe DAL Phase 1 fetchers", () => {
     }
   });
 
+  it("finds a GRID series by fuzzy teams and date without unsupported endpoints", () => {
+    const match = findGridSeriesId([
+      { id: "wrong", startTime: "2026-05-17T10:00:00Z", teams: [{ name: "Other Team" }, { name: "WAZABI" }] },
+      { id: "grid-series-1", startTime: "2026-05-17T12:00:00Z", teams: [{ name: "Evo Novo" }, { name: "WAZABI" }] }
+    ], teams, new Date("2026-05-17T12:30:00Z"));
+    expect(match.seriesId).toBe("grid-series-1");
+    expect(match.score).toBeGreaterThan(0.9);
+  });
+
   it("normalizes GRID rows conservatively without inventing map stats", () => {
     expect(normalizeGridMapRows([{ maps: [{ name: "Ancient" }] }], { matchId, teamNames: teams, collectedAt: "2026-05-17T10:00:00Z" })).toEqual([]);
     expect(normalizeGridMapRows([{ maps: [{ name: "Ancient", winnerTeamName: "Evo Novo" }] }], { matchId, teamNames: teams, collectedAt: "2026-05-17T10:00:00Z" })).toHaveLength(2);
@@ -104,6 +118,11 @@ describe("Safe DAL Phase 1 fetchers", () => {
     try {
       const html = '<table><tr class="Player"><td><span class="ID"><a title="evoRifler">evoRifler</a></span></td></tr></table>';
       expect(extractRosterNicknames(html)).toEqual(["evoRifler"]);
+      expect(extractRosterEntries('<table><tr class="Player"><td><img src="Flag_kz.png"><span class="ID"><a title="evoRifler">evoRifler</a></span> IGL</td></tr></table>')[0]).toMatchObject({
+        nickname: "evoRifler",
+        role: "IGL",
+        country: "kz"
+      });
       const report = await runLiquipediaRosterFetcher({
         env: { ENABLE_LIQUIPEDIA_SYNC: "true" },
         matchId,
@@ -114,6 +133,148 @@ describe("Safe DAL Phase 1 fetchers", () => {
       });
       expect(report.status).toBe("success");
       expect(report.writes[0]?.fileName).toBe("roster.csv");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("uses Liquipedia search fallback for roster hints from the target standings row only", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-liquipedia-hint-"));
+    try {
+      const standingsHtml = `
+        <table>
+          <tr>
+            <td><span class="team-template-text">Other Team</span></td>
+            <td>
+              <div class="block-player"><span class="name">WrongA</span></div>
+              <div class="block-player"><span class="name">WrongB</span></div>
+              <div class="block-player"><span class="name">WrongC</span></div>
+              <div class="block-player"><span class="name">WrongD</span></div>
+              <div class="block-player"><span class="name">WrongE</span></div>
+            </td>
+          </tr>
+          <tr>
+            <td><span class="team-template-text">Evo Novo</span></td>
+            <td>
+              <div class="block-player"><span class="name">Blamz</span></div>
+              <div class="block-player"><span class="name">Borsty</span></div>
+              <div class="block-player"><span class="name">Gleerup</span></div>
+              <div class="block-player"><span class="name">PederseNN</span></div>
+              <div class="block-player"><span class="name">Xywzz</span></div>
+            </td>
+          </tr>
+        </table>
+      `;
+      expect(extractRosterHintEntries(standingsHtml, "Evo Novo").map((entry) => entry.nickname)).toEqual([
+        "Blamz",
+        "Borsty",
+        "Gleerup",
+        "PederseNN",
+        "Xywzz"
+      ]);
+      const report = await runLiquipediaRosterFetcher({
+        env: { ENABLE_LIQUIPEDIA_SYNC: "true" },
+        matchId,
+        teamNames: ["Evo Novo"],
+        delayMs: 0,
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: async (input: string | URL) => {
+          const url = String(input);
+          if (url.includes("list=search")) {
+            return new Response(JSON.stringify({
+              query: {
+                search: [
+                  { title: "Some Irrelevant Page" },
+                  { title: "Valve Regional Standings/Data/2026-05-04" }
+                ]
+              }
+            }), { status: 200 });
+          }
+          if (url.includes("Valve+Regional+Standings") || url.includes("Valve%20Regional%20Standings")) {
+            return new Response(JSON.stringify({ parse: { text: { "*": standingsHtml } } }), { status: 200 });
+          }
+          return new Response(JSON.stringify({ parse: { text: { "*": "<table></table>" } } }), { status: 200 });
+        }
+      });
+      expect(report.status).toBe("success");
+      expect(report.warnings.join(" ")).toContain("Roster extracted from standings/tournament context");
+      const content = await readFile(path.join(temp, "private-inbox", "roster.csv"), "utf8");
+      expect(content).toContain("Liquipedia MediaWiki API roster hint");
+      expect(content).toContain("current_roster_hint");
+      expect(content).toContain("2026-05-04T00:00:00.000Z");
+      expect(content).toContain("0.58");
+      expect(content.trim().split(/\r?\n/)).toHaveLength(6);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("rejects Liquipedia roster hints unless exactly five plausible target-row names exist", () => {
+    const fourPlayers = `
+      <table><tr><td>Evo Novo</td><td>
+        <div class="block-player"><span class="name">Blamz</span></div>
+        <div class="block-player"><span class="name">Borsty</span></div>
+        <div class="block-player"><span class="name">Gleerup</span></div>
+        <div class="block-player"><span class="name">PederseNN</span></div>
+      </td></tr></table>
+    `;
+    const sixPlayers = `
+      <table><tr><td>Evo Novo</td><td>
+        <div class="block-player"><span class="name">Blamz</span></div>
+        <div class="block-player"><span class="name">Borsty</span></div>
+        <div class="block-player"><span class="name">Gleerup</span></div>
+        <div class="block-player"><span class="name">PederseNN</span></div>
+        <div class="block-player"><span class="name">Xywzz</span></div>
+        <div class="block-player"><span class="name">Extra</span></div>
+      </td></tr></table>
+    `;
+    expect(extractRosterHintEntries(fourPlayers, "Evo Novo")).toEqual([]);
+    expect(extractRosterHintEntries(sixPlayers, "Evo Novo")).toEqual([]);
+  });
+
+  it("fetches PandaScore roster/stats only when enabled/keyed and never invents stats", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-pandascore-"));
+    try {
+      expect(normalizePandaScorePlayerStat({ name: "NoStats" }, { matchId, teamName: "Evo Novo", collectedAt: "2026-05-17T10:00:00Z" })).toBeNull();
+      const report = await runPandaScoreFetcher({
+        env: { ENABLE_PANDASCORE_SYNC: "true", PANDASCORE_API_KEY: "test-key" },
+        matchId,
+        teamNames: ["Evo Novo"],
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: mockFetch({
+          "/csgo/teams": [{
+            name: "Evo Novo",
+            players: [
+              { name: "evoRifler", role: "rifler", nationality: "KZ", maps: 12, rating: 1.08, adr: 74.4, kills: 190, deaths: 176 }
+            ]
+          }]
+        })
+      });
+      expect(report.status).toBe("success");
+      expect(report.writes.map((write) => write.fileName).sort()).toEqual(["player_stats.csv", "roster.csv"]);
+      expect(await readFile(path.join(temp, "private-inbox", "player_stats.csv"), "utf8")).toContain("evoRifler");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("safe harvester dry-run composes only safe fetchers and writes nothing", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-harvest-"));
+    try {
+      const result = await safeHarvest({
+        matchId,
+        teamNames: teams,
+        mode: "fast",
+        dryRun: true,
+        inboxPath: path.join(temp, "private-inbox"),
+        env: { ENABLE_LIQUIPEDIA_SYNC: "true", ENABLE_PANDASCORE_SYNC: "false", ENABLE_GRID_SYNC: "false" },
+        fetchImpl: mockFetch({
+          "api.php": { parse: { text: { "*": '<table><tr class="Player"><td><span class="ID"><a title="evoRifler">evoRifler</a></span></td></tr></table>' } } }
+        })
+      });
+      expect(result.status).toBe("partial");
+      expect(result.recordsCreated).toBeGreaterThan(0);
+      await expect(readFile(path.join(temp, "private-inbox", "roster.csv"), "utf8")).rejects.toThrow();
     } finally {
       await rm(temp, { recursive: true, force: true });
     }
@@ -150,10 +311,13 @@ describe("Safe DAL Phase 1 fetchers", () => {
     const files = [
       "tools/data-fetchers/utils.ts",
       "tools/data-fetchers/fetch-esportis.ts",
+      "tools/data-fetchers/fetch-pandascore.ts",
       "tools/data-fetchers/fetch-grid.ts",
       "tools/data-fetchers/fetch-liquipedia-rosters.ts",
       "tools/data-fetchers/fetch-valve-rankings.ts",
-      "tools/run-all-fetchers.ts"
+      "tools/run-all-fetchers.ts",
+      "tools/data-harvesters/safe-orchestrator.ts",
+      "tools/data-harvesters/harvest-all.ts"
     ];
     const combined = (await Promise.all(files.map((file) => readFile(path.join(process.cwd(), file), "utf8")))).join("\n").toLowerCase();
     expect(combined).not.toContain("prisma");

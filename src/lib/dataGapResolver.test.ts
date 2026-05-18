@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { dataConnectors } from "./dataConnectorRegistry";
+import { connectorsForMissingBlocks, dataConnectors } from "./dataConnectorRegistry";
 import { detectPrivateInboxFileType, isTrustedLocalImportEnabled } from "./privateNormalizedInbox";
 
 describe("MVP 0.8.4 data gap resolver", () => {
@@ -28,7 +28,22 @@ describe("MVP 0.8.4 data gap resolver", () => {
       expect(byId.get(id)?.canAutoRun).toBe(false);
     }
     expect(byId.get("private_normalized_inbox")).toMatchObject({ canAutoRun: true, legalStatus: "user_provided" });
+    expect(byId.get("safe_harvester")).toMatchObject({ autoRunFlag: "ENABLE_SAFE_HARVESTER", legalStatus: "allowed" });
+    expect(byId.get("esic_future")).toMatchObject({ canAutoRun: false, legalStatus: "future" });
     expect(byId.get("generic_website_table_adapter")).toMatchObject({ canAutoRun: false, mode: "disabled" });
+  });
+
+  it("auto-runs safe harvester only when ENABLE_SAFE_HARVESTER is enabled", () => {
+    const previous = process.env.ENABLE_SAFE_HARVESTER;
+    try {
+      process.env.ENABLE_SAFE_HARVESTER = "false";
+      expect(connectorsForMissingBlocks(["roster"]).some((connector) => connector.id === "safe_harvester")).toBe(false);
+      process.env.ENABLE_SAFE_HARVESTER = "true";
+      expect(connectorsForMissingBlocks(["roster"]).some((connector) => connector.id === "safe_harvester")).toBe(true);
+    } finally {
+      if (previous === undefined) delete process.env.ENABLE_SAFE_HARVESTER;
+      else process.env.ENABLE_SAFE_HARVESTER = previous;
+    }
   });
 
   it("detects accepted private inbox files and rejects unsupported/raw inputs", () => {

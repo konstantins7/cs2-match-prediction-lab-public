@@ -348,6 +348,25 @@ function convertRowsToManualRealPack(matchId: string, rows: RowWithSheet[], cont
       if (!team) continue;
       rosters[team.name] = [...(rosters[team.name] ?? []), row.values.nickname];
     }
+    if (
+      rowsByType.player_stats.length === 0 &&
+      rowsByType.map_stats.length === 0 &&
+      rowsByType.veto_history.length === 0 &&
+      rowsByType.h2h.length === 0 &&
+      rowsByType.news_events.length === 0
+    ) {
+      return {
+        type: "roster",
+        matchId,
+        sourceName: allMetadata.sourceName,
+        collectedAt: allMetadata.collectedAt,
+        period: allMetadata.period,
+        sampleSize: allMetadata.sampleSize,
+        confidence: allMetadata.confidence,
+        teams: rosters,
+        rosterMetadata: metadataFromRows(rowsByType.roster, "current_roster")
+      };
+    }
     pack.rosters = rosters;
     pack.rosterMetadata = metadataFromRows(rowsByType.roster, "current_roster");
   }

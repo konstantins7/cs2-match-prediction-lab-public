@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "0.9.1",
+  "version": "0.9.2",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -19,10 +19,12 @@
     "sync:snapshots": "tsx src/scripts/sync.ts snapshots",
     "sync:predictions": "tsx src/scripts/sync.ts predictions",
     "data:fetch-esportis": "tsx tools/data-fetchers/fetch-esportis.ts --force",
+    "data:fetch-pandascore": "tsx tools/data-fetchers/fetch-pandascore.ts --force",
     "data:fetch-grid": "tsx tools/data-fetchers/fetch-grid.ts --force",
     "data:fetch-liquipedia-rosters": "tsx tools/data-fetchers/fetch-liquipedia-rosters.ts --force",
     "data:fetch-valve-rankings": "tsx tools/data-fetchers/fetch-valve-rankings.ts --force",
     "data:fetch-all": "tsx tools/run-all-fetchers.ts",
+    "harvest": "tsx tools/data-harvesters/harvest-all.ts",
     "data:pipeline": "tsx src/scripts/analyticsPipeline.ts"
   },
   "dependencies": {

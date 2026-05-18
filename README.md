@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.9.1
+## Что есть в MVP 0.9.2
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Policy-Compliant Data Maximizer: MVP 0.9.2 добавляет safe harvester поверх разрешённых API-style источников. Он усиливает Liquipedia MediaWiki, GRID Open Access matching, optional PandaScore Free enrichment и private inbox orchestration, но не добавляет HLTV automation, browser crawler, Apify, Telegram scraping, Cheerio, DB writes from tools, fake data или gate lowering.
 - Extended Analytics + ML Preparation: MVP 0.9.1 добавляет rule-based факторы `Map Pool Depth` и `Individual Skill`, problem-matches drilldown на `/admin/data-quality`, model router scaffold для будущего A/B и Advanced-блок признаков на странице матча. Эти факторы намеренно меняют rule-based score, но Real Forecast Ready gates, source policy, page-load sync, seed и provider behavior не меняются.
 - Data Quality + ML Foundation: MVP 0.9.0 добавляет core normalized CSV validator, расширяет `/admin/data-quality`, интегрирует раннюю validation в `data/private-inbox/` и сохраняет raw ML-friendly поля в `MatchFeatureSnapshot` без изменения forecast math или Real Forecast Ready gates.
 - Analytics Pipeline Platform: MVP 0.8.7 добавляет единый Node/TypeScript orchestrator `data:pipeline` и API action `analytics_pipeline`. Он связывает safe DAL fetchers, private inbox validation, Data Gap Resolver, `full_match_analysis`, persistent `AnalysisJob` timeline, feature snapshot generation и read-only model-ready dataset export без изменения forecast math или Real Forecast Ready gates.
@@ -113,6 +114,26 @@ MVP 0.9.1 расширяет аналитический слой без осла
 - `modelRouter` добавляет безопасный путь A/B: default остаётся rule-based, а ML placeholder возвращает нейтральный 50/50 до обучения модели.
 - `/admin/data-quality?includeProblemMatches=true` показывает nearly-ready/problem matches: высокий coverage, но `Real Forecast Ready=false`.
 - `/match/[id]` в Advanced показывает raw ML-friendly признаки и lineage из последнего feature snapshot.
+
+## Policy-Compliant Data Maximizer
+
+MVP 0.9.2 добавляет безопасный harvester, который автоматизирует только разрешённые API-style источники и пишет результат в `data/private-inbox/` через exact accepted CSV filenames.
+
+CLI:
+
+```bash
+npm run harvest -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI" --mode fast --dry-run
+```
+
+Behavior:
+
+- `ENABLE_SAFE_HARVESTER=false` по умолчанию; Data Gap Resolver вызывает harvester только если flag явно включён.
+- Liquipedia использует только официальный MediaWiki API `action=parse&prop=text` с User-Agent и rate limit. `prop=infobox` не используется, потому что MediaWiki API возвращает `Unrecognized value for parameter "prop": infobox`.
+- GRID использует только Open Access Central Data / allowed Series State context и пытается найти `gridSeriesId` по названиям команд и окну даты.
+- PandaScore enrichment optional/capability-gated: если key/endpoint/plan недоступны, источник возвращает blocked/missing report без fake rows.
+- ESIC остаётся disabled future metadata: network calls к `api.esic.gg` не выполняются, пока нет официальной документации и схемы.
+
+Still forbidden: HLTV automatic scraping, Telegram scraping, Apify, browser automation/crawler packages, captcha/login/protection bypass, unsupported GRID endpoints, fake/imputed data, betting/odds, seed and page-load sync.
 
 ## User Flow Simplification Phase 1
 
@@ -215,10 +236,12 @@ Scripts:
 
 ```bash
 npm run data:fetch-esportis -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+npm run data:fetch-pandascore -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
 npm run data:fetch-grid -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
 npm run data:fetch-liquipedia-rosters -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
 npm run data:fetch-valve-rankings
 npm run data:fetch-all -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI"
+npm run harvest -- --matchId pandascore_match_1488973 --teams "Evo Novo,WAZABI" --mode fast --dry-run
 ```
 
 Flags and paths:

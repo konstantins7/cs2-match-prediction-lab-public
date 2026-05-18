@@ -25,6 +25,7 @@ export type GridOptions = FetcherRunOptions & {
   teamNames?: string[];
   daysBack?: number;
   daysForward?: number;
+  targetDate?: Date;
 };
 
 const seriesWindowQuery = `
@@ -58,11 +59,13 @@ export async function runGridFetcher(options: GridOptions = {}): Promise<Fetcher
   }
 
   const now = options.now ?? new Date();
-  const from = new Date(now.getTime() - (options.daysBack ?? 7) * 24 * 60 * 60 * 1000).toISOString();
-  const to = new Date(now.getTime() + (options.daysForward ?? 7) * 24 * 60 * 60 * 1000).toISOString();
+  const targetDate = options.targetDate ?? now;
+  const from = new Date(targetDate.getTime() - (options.daysBack ?? 7) * 24 * 60 * 60 * 1000).toISOString();
+  const to = new Date(targetDate.getTime() + (options.daysForward ?? 7) * 24 * 60 * 60 * 1000).toISOString();
   const warnings: string[] = [];
   const errors: string[] = [];
   const writes: CsvMergeResult[] = [];
+  const fetched: Record<string, number> = {};
 
   try {
     const payload = await fetchJson(gridCentralDataUrl, {
@@ -74,22 +77,53 @@ export async function runGridFetcher(options: GridOptions = {}): Promise<Fetcher
       body: JSON.stringify({ query: seriesWindowQuery, variables: { from, to } })
     }, options.fetchImpl);
     const series = rowsFromPayload((payload as Record<string, unknown>).data ?? payload, ["allSeries", "series", "data"]);
+    fetched.series = series.length;
     if (!options.matchId || !options.teamNames?.length) {
       warnings.push("GRID series fetched but not written: provide --matchId and --teams to create exact private inbox map/veto rows.");
     } else {
+      const matched = findGridSeriesId(series, options.teamNames, targetDate);
+      if (!matched.seriesId) {
+        warnings.push("GRID returned no confident team/date series match for target match context.");
+      }
       const context = { matchId: options.matchId, teamNames: options.teamNames, collectedAt: getISODate(now) };
-      const mapRows = normalizeGridMapRows(series, context);
-      const vetoRows = normalizeGridVetoRows(series, context);
+      const targetSeries = matched.seriesId ? [matched.series] : [];
+      const mapRows = normalizeGridMapRows(targetSeries, context);
+      const vetoRows = normalizeGridVetoRows(targetSeries, context);
       if (mapRows.length) writes.push(await mergeSheetRows("map_stats", mapRows, ["matchId", "teamName", "mapName", "sourceName", "collectedAt"], options));
       else warnings.push("GRID returned no cutoff-safe completed map rows with winner/team context.");
       if (vetoRows.length) writes.push(await mergeSheetRows("veto_history", vetoRows, ["matchId", "teamName", "mapName", "sourceName", "collectedAt"], options));
       else warnings.push("GRID returned no usable veto rows for target teams.");
+      if (matched.seriesId) fetched.matchedSeries = 1;
     }
-    return makeReport(source, { fetched: { series: series.length }, writes, warnings, errors });
+    return makeReport(source, { fetched, writes, warnings, errors });
   } catch (error) {
     errors.push(error instanceof Error ? error.message : "GRID fetch failed.");
     return makeReport(source, { status: "failed", fetched: {}, writes, warnings, errors });
   }
+}
+
+export function findGridSeriesId(series: unknown[], teamNames: string[], targetDate: Date, windowDays = 7) {
+  const candidates = series
+    .map((item) => {
+      const seriesTeams = rowsFromPayload(valueOrEmpty(item, "teams"), ["teams"]).map((team) => textAt(team, ["name"])).filter(Boolean);
+      const startTimeRaw = textAt(item, ["startTime", "startDate", "beginAt"]);
+      const startTime = startTimeRaw ? new Date(startTimeRaw) : null;
+      const dateScore = startTime && Number.isFinite(startTime.getTime())
+        ? Math.max(0, 1 - Math.abs(startTime.getTime() - targetDate.getTime()) / (windowDays * 24 * 60 * 60 * 1000))
+        : 0.25;
+      const teamScore = teamNames.reduce((sum, teamName) => sum + bestTeamScore(teamName, seriesTeams), 0) / Math.max(teamNames.length, 1);
+      return {
+        series: item,
+        seriesId: textAt(item, ["id", "seriesId"]),
+        score: Number((teamScore * 0.8 + dateScore * 0.2).toFixed(3)),
+        teamScore
+      };
+    })
+    .filter((candidate) => candidate.seriesId && candidate.teamScore >= 0.72)
+    .sort((a, b) => b.score - a.score);
+  const best = candidates[0];
+  if (!best || best.score < 0.68) return { seriesId: "", series: null, score: 0 };
+  return best;
 }
 
 export function normalizeGridMapRows(series: unknown[], context: { matchId: string; teamNames: string[]; collectedAt: string }) {
@@ -174,7 +208,27 @@ function valueOrEmpty(record: unknown, key: string) {
 }
 
 function matchingTeam(teamNames: string[], raw: string) {
-  return teamNames.find((teamName) => teamName.toLowerCase() === raw.toLowerCase()) ?? "";
+  return teamNames.find((teamName) => fuzzyScore(teamName, raw) >= 0.72) ?? "";
+}
+
+function bestTeamScore(teamName: string, seriesTeams: string[]) {
+  return Math.max(0, ...seriesTeams.map((seriesTeam) => fuzzyScore(teamName, seriesTeam)));
+}
+
+function fuzzyScore(left: string, right: string) {
+  const a = stableName(left);
+  const b = stableName(right);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.86;
+  const aTokens = new Set(a.split("_").filter(Boolean));
+  const bTokens = new Set(b.split("_").filter(Boolean));
+  const shared = [...aTokens].filter((token) => bTokens.has(token)).length;
+  return shared / Math.max(aTokens.size, bTokens.size, 1);
+}
+
+function stableName(value: string) {
+  return value.toLowerCase().replace(/^team\s+/i, "").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
 }
 
 if (isDirectRun(import.meta.url)) {

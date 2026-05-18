@@ -3,6 +3,7 @@ import { getGridOpenAccessMatchStatus } from "./gridOpenAccess";
 import { prisma } from "./prisma";
 import { scanPrivateNormalizedInbox } from "./privateNormalizedInbox";
 import type { ForecastAutopilotCandidate, ForecastAutopilotMode } from "./autoResearchShared";
+import { safeHarvest, summarizeSafeHarvest } from "../../tools/data-harvesters/safe-orchestrator";
 
 export type DataGapBlock =
   | "rank_basic"
@@ -52,6 +53,7 @@ export type DataConnector = {
   mode: ConnectorMode;
   legalStatus: ConnectorLegalStatus;
   canAutoRun: boolean;
+  autoRunFlag?: string;
   requiresKey: string[];
   rateLimit: string;
   confidence: number;
@@ -170,6 +172,35 @@ async function gridResult(context: ConnectorRunContext, connector: DataConnector
   });
 }
 
+async function safeHarvesterResult(context: ConnectorRunContext, connector: DataConnector) {
+  if (!flag("ENABLE_SAFE_HARVESTER")) {
+    return makeResult(connector, {
+      status: "blocked",
+      sourceName: "Safe harvester",
+      blockers: ["ENABLE_SAFE_HARVESTER=false."],
+      normalizedPayloadSummary: "safe harvester disabled"
+    });
+  }
+  const result = await safeHarvest({
+    matchId: context.matchId,
+    teamNames: [context.candidate.teamAName, context.candidate.teamBName],
+    matchDate: context.candidate.startTime ? new Date(context.candidate.startTime) : undefined,
+    mode: context.mode,
+    dryRun: false
+  });
+  const summary = summarizeSafeHarvest(result);
+  return makeResult(connector, {
+    status: result.status === "failed" ? "error" : result.status === "skipped" ? "missing" : result.recordsCreated + result.recordsUpdated > 0 ? "success" : "partial",
+    recordsCreated: result.recordsCreated,
+    recordsUpdated: result.recordsUpdated,
+    confidence: result.recordsCreated + result.recordsUpdated > 0 ? 0.74 : 0.42,
+    sourceName: "Safe harvester",
+    warnings: result.warnings,
+    blockers: result.errors,
+    normalizedPayloadSummary: JSON.stringify(summary)
+  });
+}
+
 function envBackedResult(connector: DataConnector, envKey: string, enableKey: string, availableMessage: string) {
   const configured = hasEnv(envKey);
   const enabled = configured && flag(enableKey);
@@ -183,6 +214,20 @@ function envBackedResult(connector: DataConnector, envKey: string, enableKey: st
 }
 
 export const dataConnectors: DataConnector[] = [
+  {
+    id: "safe_harvester",
+    label: "Safe API harvester",
+    dataTypes: ["rank_basic", "roster", "player_stats", "map_stats", "veto", "team_form", "h2h_news", "grid_mapping"],
+    mode: "official_api",
+    legalStatus: "allowed",
+    canAutoRun: false,
+    autoRunFlag: "ENABLE_SAFE_HARVESTER",
+    requiresKey: ["ENABLE_SAFE_HARVESTER"],
+    rateLimit: "per-source API guards",
+    confidence: 0.74,
+    limitations: ["Only allowed API-style fetchers; writes normalized private inbox CSV; no DB writes or Apply calls."],
+    run: (context) => safeHarvesterResult(context, dataConnectorsById.safe_harvester)
+  },
   {
     id: "local_existing_records",
     label: "Local existing records",
@@ -311,6 +356,24 @@ export const dataConnectors: DataConnector[] = [
     run: (context) => privateInboxResult(context, dataConnectorsById.private_normalized_inbox)
   },
   {
+    id: "esic_future",
+    label: "ESIC API",
+    dataTypes: ["roster", "player_stats", "map_stats", "team_form"],
+    mode: "disabled",
+    legalStatus: "future",
+    canAutoRun: false,
+    requiresKey: ["ESIC_API_KEY"],
+    rateLimit: "disabled until official docs/schema are verified",
+    confidence: 0,
+    limitations: ["Future metadata only; no network calls until official API documentation and response schema are provided."],
+    run: async () => makeResult(dataConnectorsById.esic_future, {
+      status: "blocked",
+      sourceName: "ESIC API",
+      blockers: ["ESIC API is disabled until official docs/schema are verified."],
+      normalizedPayloadSummary: "future connector metadata"
+    })
+  },
+  {
     id: "generic_website_table_adapter",
     label: "Generic website table adapter",
     dataTypes: ["roster", "player_stats", "map_stats", "veto", "team_form", "h2h_news"],
@@ -352,7 +415,11 @@ export const dataConnectorsById = Object.fromEntries(dataConnectors.map((connect
 
 export function connectorsForMissingBlocks(blocks: DataGapBlock[]) {
   const set = new Set(blocks);
-  return dataConnectors.filter((connector) => connector.canAutoRun && connector.dataTypes.some((type) => set.has(type)));
+  return dataConnectors.filter((connector) => connectorCanAutoRun(connector) && connector.dataTypes.some((type) => set.has(type)));
+}
+
+function connectorCanAutoRun(connector: DataConnector) {
+  return connector.canAutoRun || Boolean(connector.autoRunFlag && flag(connector.autoRunFlag));
 }
 
 export async function countManualOrParsedRecords(matchId: string) {

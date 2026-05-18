@@ -1,6 +1,7 @@
 import { runEsportIsFetcher } from "./data-fetchers/fetch-esportis";
 import { runGridFetcher } from "./data-fetchers/fetch-grid";
 import { runLiquipediaRosterFetcher } from "./data-fetchers/fetch-liquipedia-rosters";
+import { runPandaScoreFetcher } from "./data-fetchers/fetch-pandascore";
 import { runValveRankingsFetcher } from "./data-fetchers/fetch-valve-rankings";
 import { isDirectRun, listArg, parseCliArgs, printReport, stringArg, type FetcherReport } from "./data-fetchers/utils";
 
@@ -14,6 +15,7 @@ export type RunAllFetchersOptions = {
 export async function runAllFetchers(options: RunAllFetchersOptions = {}) {
   const reports: FetcherReport[] = [];
   reports.push(await runEsportIsFetcher(options));
+  reports.push(await runPandaScoreFetcher(options));
   reports.push(await runGridFetcher(options));
   reports.push(await runLiquipediaRosterFetcher(options));
   reports.push(await runValveRankingsFetcher(options));

@@ -135,7 +135,7 @@ export function connectorPolicySummary() {
     dataTypes: connector.dataTypes,
     mode: connector.mode,
     legalStatus: connector.legalStatus,
-    canAutoRun: connector.canAutoRun,
+    canAutoRun: connector.canAutoRun || Boolean(connector.autoRunFlag && String(process.env[connector.autoRunFlag] ?? "false").toLowerCase() === "true"),
     requiresKey: connector.requiresKey,
     limitations: connector.limitations
   }));
