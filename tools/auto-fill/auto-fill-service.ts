@@ -35,6 +35,7 @@ export type AutoFillOptions = FetcherRunOptions & {
   runLiquipedia?: typeof runLiquipediaRosterFetcher;
   runSteam?: typeof runSteamFetcher;
   resolveCsstats?: typeof resolveCsstatsTeamId;
+  onProgress?: (event: AutoFillProgressEvent) => void | Promise<void>;
 };
 
 export type AutoFillWrite = {
@@ -54,6 +55,13 @@ export type AutoFillResult = {
   sourceReports: Array<{ source: string; status: string; message: string }>;
 };
 
+export type AutoFillProgressEvent = {
+  source: "csstats" | "pandascore" | "grid" | "steam" | "liquipedia" | "private_inbox";
+  status: "pending" | "running" | "success" | "partial" | "skipped" | "failed";
+  message: string;
+  rows?: number;
+};
+
 const requiredFiles = ["map_stats.csv", "player_stats.csv", "veto_history.csv"];
 const watchedFiles = ["roster.csv", ...requiredFiles, "parsed_demo_export.json"];
 
@@ -67,6 +75,7 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
   const sourceReports: AutoFillResult["sourceReports"] = [];
 
   const directRequests = buildCsstatsRequests(options, inboxPath);
+  await emitProgress(options, { source: "csstats", status: "running", message: "Checking explicit CSStats CSV inputs and optional team lookup." });
   for (const request of directRequests) {
     try {
       const result = await importCsstatsCsv({
@@ -114,6 +123,12 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
   } else {
     sourceReports.push({ source: "csstats-auto-lookup", status: "skipped", message: "ENABLE_CSSTATS_AUTO_LOOKUP=false. Automatic CSStats team ID lookup skipped." });
   }
+  await emitProgress(options, {
+    source: "csstats",
+    status: sourceStatus(sourceReports.filter((report) => report.source.startsWith("csstats"))),
+    message: sourceReports.filter((report) => report.source.startsWith("csstats")).map((report) => report.message).join(" ") || "CSStats had no work.",
+    rows: writes.filter((write) => write.source.toLowerCase().includes("csstats")).reduce((sum, write) => sum + write.rows, 0)
+  });
 
   const fetcherOptions = {
     matchId: options.matchId,
@@ -124,14 +139,27 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
     fetchImpl: options.fetchImpl,
     now: options.now
   };
-  const reports = [
-    await (options.runPandaScore ?? runPandaScoreEnhancedFetcher)(fetcherOptions),
-    await (options.runGrid ?? runGridEnhancedFetcher)({ ...fetcherOptions, targetDate: options.targetDate ?? options.now, tournament: options.tournament }),
-    await (options.runSteam ?? runSteamFetcher)({ ...fetcherOptions, explicitPlayers: [] }),
-    ...(options.mode === "fast"
-      ? []
-      : [await (options.runLiquipedia ?? runLiquipediaRosterFetcher)({ ...fetcherOptions, delayMs: 2000 })])
-  ];
+  await emitProgress(options, { source: "pandascore", status: "running", message: "Checking PandaScore enhanced auto-fetch." });
+  const pandaScoreReport = await (options.runPandaScore ?? runPandaScoreEnhancedFetcher)(fetcherOptions);
+  await emitFetcherProgress(options, "pandascore", pandaScoreReport);
+
+  await emitProgress(options, { source: "grid", status: "running", message: "Checking GRID enhanced matcher." });
+  const gridReport = await (options.runGrid ?? runGridEnhancedFetcher)({ ...fetcherOptions, targetDate: options.targetDate ?? options.now, tournament: options.tournament });
+  await emitFetcherProgress(options, "grid", gridReport);
+
+  await emitProgress(options, { source: "steam", status: "running", message: "Checking Steam supplemental context." });
+  const steamReport = await (options.runSteam ?? runSteamFetcher)({ ...fetcherOptions, explicitPlayers: [] });
+  await emitFetcherProgress(options, "steam", steamReport);
+
+  const reports = [pandaScoreReport, gridReport, steamReport];
+  if (options.mode === "fast") {
+    await emitProgress(options, { source: "liquipedia", status: "skipped", message: "Fast mode skips Liquipedia roster hints." });
+  } else {
+    await emitProgress(options, { source: "liquipedia", status: "running", message: "Checking Liquipedia MediaWiki roster hints." });
+    const liquipediaReport = await (options.runLiquipedia ?? runLiquipediaRosterFetcher)({ ...fetcherOptions, delayMs: 2000 });
+    reports.push(liquipediaReport);
+    await emitFetcherProgress(options, "liquipedia", liquipediaReport);
+  }
   for (const report of reports) {
     writes.push(...writesFromReport(report));
     sourceReports.push(sourceReport(report));
@@ -140,6 +168,12 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
   const filesAfter = await listPrivateInboxFiles(inboxPath);
   const effectiveFiles = options.dryRun ? filesBefore : filesAfter;
   const stillMissing = requiredFiles.filter((file) => !effectiveFiles.includes(file));
+  await emitProgress(options, {
+    source: "private_inbox",
+    status: stillMissing.length ? "partial" : "success",
+    message: stillMissing.length ? `Still missing ${stillMissing.join(", ")}.` : "Core private-inbox files are present.",
+    rows: writes.reduce((sum, write) => sum + write.rows, 0)
+  });
   return {
     dryRun: Boolean(options.dryRun),
     filesBefore,
@@ -232,6 +266,27 @@ function sourceReport(report: FetcherReport) {
     status: report.status,
     message: errors || warnings || `${report.writes.length} write target(s).`
   };
+}
+
+async function emitProgress(options: AutoFillOptions, event: AutoFillProgressEvent) {
+  await options.onProgress?.(event);
+}
+
+async function emitFetcherProgress(options: AutoFillOptions, source: AutoFillProgressEvent["source"], report: FetcherReport) {
+  await emitProgress(options, {
+    source,
+    status: sourceStatus([{ source: report.source, status: report.status, message: sourceReport(report).message }]),
+    message: sourceReport(report).message,
+    rows: report.writes.reduce((sum, write) => sum + write.rowsInserted, 0)
+  });
+}
+
+function sourceStatus(reports: Array<{ status: string; source?: string; message?: string }>): AutoFillProgressEvent["status"] {
+  if (!reports.length) return "skipped";
+  if (reports.some((report) => report.status === "success")) return "success";
+  if (reports.some((report) => report.status === "partial" || report.status === "missing")) return "partial";
+  if (reports.some((report) => report.status === "failed" || report.status === "error")) return "failed";
+  return "skipped";
 }
 
 function validateOptions(options: AutoFillOptions) {

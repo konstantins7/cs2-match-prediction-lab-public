@@ -145,6 +145,40 @@ describe("MVP 0.9.5 safe auto-fill helpers", () => {
     }
   });
 
+  it("emits ordered progress events for UI polling", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "auto-fill-progress-"));
+    try {
+      const events: string[] = [];
+      await runAutoFill({
+        matchId,
+        teamNames: teams,
+        mode: "deeper",
+        dryRun: true,
+        inboxPath: temp,
+        onProgress: async (event) => { events.push(`${event.source}:${event.status}`); },
+        runPandaScore: async () => report("pandascore-enhanced", "skipped"),
+        runGrid: async () => report("grid-enhanced", "partial"),
+        runSteam: async () => report("steam-web-api", "skipped"),
+        runLiquipedia: async () => report("liquipedia", "skipped")
+      });
+      expect(events).toEqual([
+        "csstats:running",
+        "csstats:skipped",
+        "pandascore:running",
+        "pandascore:skipped",
+        "grid:running",
+        "grid:partial",
+        "steam:running",
+        "steam:skipped",
+        "liquipedia:running",
+        "liquipedia:skipped",
+        "private_inbox:partial"
+      ]);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
   it("auto-fill can use CSStats lookup/export in dry-run without writing files", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "auto-all-"));
     try {

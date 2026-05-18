@@ -3,6 +3,7 @@ import { formatDateTime } from "@/lib/format";
 import type { CalculatedMatch } from "@/lib/data/matches";
 import { scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
 import { StatusPill } from "@/components/ui";
+import { AutoAllButton } from "./AutoAllButton";
 
 export function MatchCard({ row }: { row: CalculatedMatch }) {
   const { match, prediction } = row;
@@ -41,6 +42,11 @@ export function MatchCard({ row }: { row: CalculatedMatch }) {
           Открыть
         </Link>
       </div>
+      {match.status === "upcoming" ? (
+        <div className="mt-4">
+          <AutoAllButton matchId={match.id} teamA={match.teamA.name} teamB={match.teamB.name} compact />
+        </div>
+      ) : null}
     </article>
   );
 }
