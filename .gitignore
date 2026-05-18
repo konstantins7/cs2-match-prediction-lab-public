@@ -18,6 +18,7 @@ dev.db-journal
 # misc
 .DS_Store
 coverage
+data/cache/
 data/private-inbox/
 *.log
 dev-server.log

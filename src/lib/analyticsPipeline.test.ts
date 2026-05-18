@@ -221,6 +221,7 @@ describe("MVP 0.8.7 analytics pipeline", () => {
     expect(route).toContain("runAnalyticsPipeline");
     expect(JSON.parse(pkg).scripts["data:pipeline"]).toContain("src/scripts/analyticsPipeline.ts");
     expect(JSON.parse(pkg).scripts["data:auto-fill"]).toContain("scripts/auto-fill.ts");
+    expect(JSON.parse(pkg).scripts["data:auto-all"]).toContain("scripts/auto-all.ts");
   });
 
   it("keeps model dataset export read-only and leakage-filtered", async () => {
@@ -237,7 +238,9 @@ describe("MVP 0.8.7 analytics pipeline", () => {
       "src/lib/parserAdapterRegistry.ts",
       "tools/auto-fill/auto-fill-service.ts",
       "tools/auto-fill/csstats-importer.ts",
+      "tools/auto-fill/csstats-resolver.ts",
       "scripts/auto-fill.ts",
+      "scripts/auto-all.ts",
       "scripts/awpy-batch.ts"
     ];
     const combined = (await Promise.all(files.map((file) => readFile(path.join(process.cwd(), file), "utf8")))).join("\n").toLowerCase();
@@ -250,5 +253,6 @@ describe("MVP 0.8.7 analytics pipeline", () => {
     expect(combined).not.toContain("apify.com");
     expect(combined).not.toContain("from \"node:http\"");
     expect(combined).not.toContain("from \"node:https\"");
+    expect(combined.match(/csgostats\.gg\/search/g) ?? []).toHaveLength(1);
   });
 });

@@ -5,7 +5,7 @@ import { runAutoFill, type AutoFillMode } from "../tools/auto-fill";
 
 type CliArgs = Record<string, string | boolean>;
 
-export async function runAutoFillCli(argv = process.argv.slice(2)) {
+export async function runAutoAllCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const teamA = stringArg(args, "teamA");
   const teamB = stringArg(args, "teamB");
@@ -15,6 +15,9 @@ export async function runAutoFillCli(argv = process.argv.slice(2)) {
     teamNames: [teamA, teamB],
     mode: modeArg(stringArg(args, "mode")),
     dryRun: Boolean(args["dry-run"]),
+    autoLookupCsstats: Boolean(args["csstats-auto-lookup"]) || envFlag(process.env, "ENABLE_CSSTATS_AUTO_LOOKUP", false),
+    tournament: stringArg(args, "tournament"),
+    targetDate: dateArg(stringArg(args, "date")),
     teamACsstatsMapUrl: stringArg(args, "teamA-map-url"),
     teamACsstatsPlayerUrl: stringArg(args, "teamA-player-url"),
     teamBCsstatsMapUrl: stringArg(args, "teamB-map-url"),
@@ -22,10 +25,7 @@ export async function runAutoFillCli(argv = process.argv.slice(2)) {
     teamACsstatsMapFile: stringArg(args, "teamA-map-file"),
     teamACsstatsPlayerFile: stringArg(args, "teamA-player-file"),
     teamBCsstatsMapFile: stringArg(args, "teamB-map-file"),
-    teamBCsstatsPlayerFile: stringArg(args, "teamB-player-file"),
-    autoLookupCsstats: Boolean(args["auto-all"] || args["csstats-auto-lookup"]) || envFlag(process.env, "ENABLE_CSSTATS_AUTO_LOOKUP", false),
-    tournament: stringArg(args, "tournament"),
-    targetDate: dateArg(stringArg(args, "date"))
+    teamBCsstatsPlayerFile: stringArg(args, "teamB-player-file")
   });
   console.log(JSON.stringify(result, null, 2));
 }
@@ -36,7 +36,7 @@ function parseArgs(argv: string[]) {
     const arg = argv[index];
     if (!arg.startsWith("--")) continue;
     const key = arg.slice(2);
-    if (["dry-run", "auto-all", "csstats-auto-lookup"].includes(key)) {
+    if (["dry-run", "csstats-auto-lookup"].includes(key)) {
       parsed[key] = true;
       continue;
     }
@@ -79,7 +79,7 @@ function isDirectRun(metaUrl: string) {
 }
 
 if (isDirectRun(import.meta.url)) {
-  runAutoFillCli().catch((error) => {
+  runAutoAllCli().catch((error) => {
     console.error(error instanceof Error ? error.message : error);
     process.exitCode = 1;
   });

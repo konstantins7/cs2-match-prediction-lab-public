@@ -78,7 +78,7 @@ async function readCsvInput(options: CsstatsImportOptions) {
   return fetchText(options.url ?? "", {
     headers: {
       Accept: "text/csv,text/plain,*/*",
-      "User-Agent": "CS2MatchPredictionLab/0.9.4 safe csv import"
+      "User-Agent": "CS2MatchPredictionLab/0.9.5 safe csv import"
     }
   }, options.fetchImpl);
 }

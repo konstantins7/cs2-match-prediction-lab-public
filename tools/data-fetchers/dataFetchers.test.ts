@@ -6,8 +6,10 @@ import { runAllFetchers } from "../run-all-fetchers";
 import { safeHarvest } from "../data-harvesters/safe-orchestrator";
 import { runEsportIsFetcher } from "./fetch-esportis";
 import { findGridSeriesId, normalizeGridMapRows, normalizeGridVetoRows, runGridFetcher } from "./fetch-grid";
+import { findGridSeriesIdEnhancedFromSeries, runGridEnhancedFetcher } from "./fetch-grid-enhanced";
 import { extractRosterEntries, extractRosterHintEntries, extractRosterNicknames, runLiquipediaRosterFetcher } from "./fetch-liquipedia-rosters";
 import { normalizePandaScorePlayerStat, runPandaScoreFetcher } from "./fetch-pandascore";
+import { fetchSteamPlayerStats, runSteamFetcher } from "./fetch-steam";
 import { parseStandingsMarkdown, runValveRankingsFetcher } from "./fetch-valve-rankings";
 import { mergeSheetRows } from "./utils";
 
@@ -105,6 +107,57 @@ describe("Safe DAL Phase 1 fetchers", () => {
     ], teams, new Date("2026-05-17T12:30:00Z"));
     expect(match.seriesId).toBe("grid-series-1");
     expect(match.score).toBeGreaterThan(0.9);
+  });
+
+  it("finds enhanced GRID series by teams, tournament and date", async () => {
+    const series = [
+      { id: "ambiguous", title: "Other Cup", startTime: "2026-05-17T12:00:00Z", teams: [{ name: "Evo Novo" }, { name: "WAZABI" }] },
+      { id: "grid-target", title: "CCT Season 3", tournament: { name: "CCT Season 3" }, startTime: "2026-05-18T12:00:00Z", teams: [{ name: "Evo Novo" }, { name: "WAZABI" }] }
+    ];
+    expect(findGridSeriesIdEnhancedFromSeries(series, {
+      teamA: "Evo Novo",
+      teamB: "WAZABI",
+      tournament: "CCT Season 3",
+      date: new Date("2026-05-18T11:00:00Z")
+    })?.seriesId).toBe("grid-target");
+    expect(findGridSeriesIdEnhancedFromSeries(series, {
+      teamA: "Evo Novo",
+      teamB: "Unknown",
+      tournament: "CCT Season 3",
+      date: new Date("2026-05-18T11:00:00Z")
+    })).toBeNull();
+  });
+
+  it("GRID enhanced fetcher writes only safe map/veto rows", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "safe-dal-grid-enhanced-"));
+    try {
+      const report = await runGridEnhancedFetcher({
+        env: { ENABLE_GRID_SYNC: "true", GRID_API_KEY: "test-key" },
+        matchId,
+        teamNames: teams,
+        tournament: "CCT",
+        inboxPath: path.join(temp, "private-inbox"),
+        fetchImpl: mockFetch({
+          "central-data/graphql": {
+            data: {
+              allSeries: [{
+                id: "grid-target",
+                title: "CCT",
+                tournament: { name: "CCT" },
+                startTime: "2026-05-17T12:00:00Z",
+                teams: [{ name: "Evo Novo" }, { name: "WAZABI" }],
+                maps: [{ name: "Ancient", winnerTeamName: "WAZABI" }],
+                vetoEvents: [{ mapName: "Nuke", teamName: "Evo Novo", action: "pick" }]
+              }]
+            }
+          }
+        })
+      });
+      expect(report.status).toBe("success");
+      expect(report.writes.map((write) => write.fileName).sort()).toEqual(["map_stats.csv", "veto_history.csv"]);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
   });
 
   it("normalizes GRID rows conservatively without inventing map stats", () => {
@@ -258,6 +311,35 @@ describe("Safe DAL Phase 1 fetchers", () => {
     }
   });
 
+  it("fetches Steam Web API stats only as supplemental explicit-ID context", async () => {
+    const stats = await fetchSteamPlayerStats({
+      steamId: "76561198000000000",
+      apiKey: "test-key",
+      fetchImpl: mockFetch({
+        "GetUserStatsForGame": {
+          playerstats: {
+            stats: [{ name: "total_kills", value: 100 }],
+            achievements: [{ name: "WIN_BOMB_PLANT", achieved: 1 }]
+          }
+        }
+      })
+    });
+    expect(stats?.stats.total_kills).toBe(100);
+    expect((await runSteamFetcher({ env: { ENABLE_STEAM_SYNC: "false", STEAM_API_KEY: "test-key" } })).status).toBe("skipped");
+    const report = await runSteamFetcher({
+      env: { ENABLE_STEAM_SYNC: "true", STEAM_API_KEY: "test-key" },
+      explicitPlayers: [{ steamId: "76561198000000000", nickname: "Blamz" }],
+      fetchImpl: mockFetch({
+        "GetUserStatsForGame": {
+          playerstats: { stats: [{ name: "total_kills", value: 100 }] }
+        }
+      })
+    });
+    expect(report.status).toBe("partial");
+    expect(report.writes).toEqual([]);
+    expect(report.warnings.join(" ")).toContain("supplemental context only");
+  });
+
   it("safe harvester dry-run composes only safe fetchers and writes nothing", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "safe-harvest-"));
     try {
@@ -314,6 +396,8 @@ describe("Safe DAL Phase 1 fetchers", () => {
       "tools/data-fetchers/fetch-pandascore.ts",
       "tools/data-fetchers/fetch-pandascore-enhanced.ts",
       "tools/data-fetchers/fetch-grid.ts",
+      "tools/data-fetchers/fetch-grid-enhanced.ts",
+      "tools/data-fetchers/fetch-steam.ts",
       "tools/data-fetchers/fetch-liquipedia-rosters.ts",
       "tools/data-fetchers/fetch-valve-rankings.ts",
       "tools/run-all-fetchers.ts",

@@ -5,12 +5,51 @@ import { describe, expect, it } from "vitest";
 import { normalizeAwpyFolder } from "../../scripts/awpy-batch";
 import { runPandaScoreEnhancedFetcher } from "../data-fetchers/fetch-pandascore-enhanced";
 import { importCsstatsCsv } from "./csstats-importer";
+import { extractCsstatsTeamId, resolveCsstatsTeamId, resetCsstatsRateLimitForTests } from "./csstats-resolver";
 import { runAutoFill } from "./auto-fill-service";
 
 const matchId = "pandascore_match_1488973";
 const teams = ["Evo Novo", "WAZABI"] as [string, string];
 
-describe("MVP 0.9.4 safe auto-fill helpers", () => {
+describe("MVP 0.9.5 safe auto-fill helpers", () => {
+  it("resolves CSStats team ID from public search HTML and caches the result", async () => {
+    resetCsstatsRateLimitForTests();
+    const temp = await mkdtemp(path.join(os.tmpdir(), "csstats-cache-"));
+    try {
+      let calls = 0;
+      const cachePath = path.join(temp, "csstats_ids.json");
+      const fetchImpl = async () => {
+        calls += 1;
+        return new Response('<a href="/team/12345/evo-novo">Evo Novo</a>', { status: 200 });
+      };
+      const first = await resolveCsstatsTeamId({ teamName: "Evo Novo", cachePath, fetchImpl, rateLimitMs: 0 });
+      const second = await resolveCsstatsTeamId({ teamName: "Evo Novo", cachePath, fetchImpl, rateLimitMs: 0 });
+      expect(first).toBe("12345");
+      expect(second).toBe("12345");
+      expect(calls).toBe(1);
+      expect(await readFile(cachePath, "utf8")).toContain("Evo Novo");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("keeps CSStats lookup disabled and rate limited when requested", async () => {
+    resetCsstatsRateLimitForTests();
+    const waits: number[] = [];
+    const fetchImpl = async (input: string | URL) => {
+      const url = String(input);
+      const body = url.includes("WAZABI")
+        ? '<a href="/team/222/wazabi">WAZABI</a>'
+        : '<a href="/team/111/evo-novo">Evo Novo</a>';
+      return new Response(body, { status: 200 });
+    };
+    await expect(resolveCsstatsTeamId({ teamName: "Evo Novo", enabled: false, fetchImpl })).resolves.toBeNull();
+    await expect(resolveCsstatsTeamId({ teamName: "Evo Novo", fetchImpl, dryRun: true, rateLimitMs: 2000, waitImpl: async (ms) => { waits.push(ms); } })).resolves.toBe("111");
+    await expect(resolveCsstatsTeamId({ teamName: "WAZABI", fetchImpl, dryRun: true, rateLimitMs: 2000, waitImpl: async (ms) => { waits.push(ms); } })).resolves.toBe("222");
+    expect(waits).toEqual([2000]);
+    expect(extractCsstatsTeamId('<a href="/team/1/evo-novo">Evo Novo</a><a href="/team/2/evo-novo">Evo Novo</a>', "Evo Novo")).toBeNull();
+  });
+
   it("imports user-provided CSStats map CSV into exact private inbox headers", async () => {
     const temp = await mkdtemp(path.join(os.tmpdir(), "csstats-map-"));
     try {
@@ -100,6 +139,36 @@ describe("MVP 0.9.4 safe auto-fill helpers", () => {
       expect(result.writes.some((write) => write.file === "map_stats.csv")).toBe(true);
       expect(result.stillMissing).toContain("map_stats.csv");
       expect(result.templateCommands.join(" ")).toContain("template:map-stats");
+      await expect(readFile(path.join(temp, "map_stats.csv"), "utf8")).rejects.toThrow();
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("auto-fill can use CSStats lookup/export in dry-run without writing files", async () => {
+    const temp = await mkdtemp(path.join(os.tmpdir(), "auto-all-"));
+    try {
+      const result = await runAutoFill({
+        matchId,
+        teamNames: teams,
+        mode: "deeper",
+        dryRun: true,
+        inboxPath: temp,
+        autoLookupCsstats: true,
+        resolveCsstats: async ({ teamName }) => teamName === "Evo Novo" ? "12345" : null,
+        fetchImpl: async (input: string | URL) => {
+          const url = String(input);
+          if (url.includes("type=maps")) return new Response("mapName,mapsPlayed,wins\nAncient,8,5\n", { status: 200 });
+          if (url.includes("type=players")) return new Response("nickname,maps,kills,deaths,rating\nBlamz,8,140,100,1.12\n", { status: 200 });
+          return new Response("", { status: 404 });
+        },
+        runPandaScore: async () => report("pandascore-enhanced", "skipped"),
+        runGrid: async () => report("grid-enhanced", "skipped"),
+        runSteam: async () => report("steam-web-api", "skipped"),
+        runLiquipedia: async () => report("liquipedia", "skipped")
+      });
+      expect(result.writes.map((write) => write.file).sort()).toEqual(["map_stats.csv", "player_stats.csv"]);
+      expect(result.sourceReports.some((entry) => entry.source === "csstats-auto-map_stats" && entry.status === "success")).toBe(true);
       await expect(readFile(path.join(temp, "map_stats.csv"), "utf8")).rejects.toThrow();
     } finally {
       await rm(temp, { recursive: true, force: true });

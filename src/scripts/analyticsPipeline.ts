@@ -41,7 +41,7 @@ async function main() {
   const args = parseArgs(process.argv.slice(2));
   const matchId = stringArg(args, "matchId");
   if (!matchId) {
-    console.error("Usage: npm run data:pipeline -- --matchId <id> --mode fast|deep|max [--dry-run] [--force] [--savePrediction]");
+    console.error("Usage: npm run data:pipeline -- --matchId <id> --mode fast|deep|max [--dry-run] [--force] [--savePrediction] [--auto-fill]");
     process.exitCode = 1;
     return;
   }

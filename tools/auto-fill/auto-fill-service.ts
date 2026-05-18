@@ -1,9 +1,11 @@
 import { readdir } from "node:fs/promises";
-import { runGridFetcher } from "../data-fetchers/fetch-grid";
+import { runGridEnhancedFetcher } from "../data-fetchers/fetch-grid-enhanced";
 import { runLiquipediaRosterFetcher } from "../data-fetchers/fetch-liquipedia-rosters";
 import { runPandaScoreEnhancedFetcher } from "../data-fetchers/fetch-pandascore-enhanced";
-import { getISODate, privateInboxPath, type FetcherReport, type FetcherRunOptions } from "../data-fetchers/utils";
+import { runSteamFetcher } from "../data-fetchers/fetch-steam";
+import { envFlag, getISODate, privateInboxPath, type FetcherReport, type FetcherRunOptions } from "../data-fetchers/utils";
 import { importCsstatsCsv, type CsstatsImportResult } from "./csstats-importer";
+import { buildCsstatsExportUrl, resolveCsstatsTeamId } from "./csstats-resolver";
 
 export type AutoFillMode = "fast" | "deeper" | "max";
 
@@ -23,9 +25,16 @@ export type AutoFillOptions = FetcherRunOptions & {
   teamACsstatsPlayerFile?: string;
   teamBCsstatsMapFile?: string;
   teamBCsstatsPlayerFile?: string;
+  autoLookupCsstats?: boolean;
+  csstatsCachePath?: string;
+  csstatsRateLimitMs?: number;
+  tournament?: string;
+  targetDate?: Date;
   runPandaScore?: typeof runPandaScoreEnhancedFetcher;
-  runGrid?: typeof runGridFetcher;
+  runGrid?: typeof runGridEnhancedFetcher;
   runLiquipedia?: typeof runLiquipediaRosterFetcher;
+  runSteam?: typeof runSteamFetcher;
+  resolveCsstats?: typeof resolveCsstatsTeamId;
 };
 
 export type AutoFillWrite = {
@@ -50,12 +59,15 @@ const watchedFiles = ["roster.csv", ...requiredFiles, "parsed_demo_export.json"]
 
 export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillResult> {
   validateOptions(options);
+  const env = options.env ?? process.env;
   const inboxPath = privateInboxPath(options.env, options.inboxPath);
   const filesBefore = await listPrivateInboxFiles(inboxPath);
+  const missingBefore = requiredFiles.filter((file) => !filesBefore.includes(file));
   const writes: AutoFillWrite[] = [];
   const sourceReports: AutoFillResult["sourceReports"] = [];
 
-  for (const request of buildCsstatsRequests(options, inboxPath)) {
+  const directRequests = buildCsstatsRequests(options, inboxPath);
+  for (const request of directRequests) {
     try {
       const result = await importCsstatsCsv({
         ...request,
@@ -75,6 +87,34 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
     }
   }
 
+  if (shouldRunCsstatsAutoLookup(options, env)) {
+    const autoRequests = await buildAutoCsstatsRequests(options, inboxPath, missingBefore, directRequests);
+    for (const request of autoRequests) {
+      try {
+        const result = await importCsstatsCsv({
+          ...request,
+          matchId: options.matchId,
+          sourceName: "CSStats auto CSV",
+          collectedAt: getISODate(options.now),
+          period: "csstats_auto_lookup",
+          confidence: 78,
+          inboxPath,
+          dryRun: options.dryRun,
+          fetchImpl: options.fetchImpl
+        });
+        writes.push(writeFromCsstats(result, "CSStats auto CSV"));
+        sourceReports.push({ source: `csstats-auto-${request.type}`, status: "success", message: `${request.teamName}: ${result.file}: ${result.rows} row(s).` });
+      } catch (error) {
+        sourceReports.push({ source: `csstats-auto-${request.type}`, status: "failed", message: `${request.teamName}: ${errorMessage(error)}` });
+      }
+    }
+    if (!autoRequests.length) {
+      sourceReports.push({ source: "csstats-auto-lookup", status: "missing", message: "No CSStats team IDs resolved or no missing CSStats-backed files." });
+    }
+  } else {
+    sourceReports.push({ source: "csstats-auto-lookup", status: "skipped", message: "ENABLE_CSSTATS_AUTO_LOOKUP=false. Automatic CSStats team ID lookup skipped." });
+  }
+
   const fetcherOptions = {
     matchId: options.matchId,
     teamNames: options.teamNames,
@@ -86,7 +126,8 @@ export async function runAutoFill(options: AutoFillOptions): Promise<AutoFillRes
   };
   const reports = [
     await (options.runPandaScore ?? runPandaScoreEnhancedFetcher)(fetcherOptions),
-    await (options.runGrid ?? runGridFetcher)({ ...fetcherOptions, targetDate: options.now }),
+    await (options.runGrid ?? runGridEnhancedFetcher)({ ...fetcherOptions, targetDate: options.targetDate ?? options.now, tournament: options.tournament }),
+    await (options.runSteam ?? runSteamFetcher)({ ...fetcherOptions, explicitPlayers: [] }),
     ...(options.mode === "fast"
       ? []
       : [await (options.runLiquipedia ?? runLiquipediaRosterFetcher)({ ...fetcherOptions, delayMs: 2000 })])
@@ -133,6 +174,38 @@ function buildCsstatsRequests(options: AutoFillOptions, inboxPath: string) {
   return direct.filter((request) => request.url || request.filePath);
 }
 
+async function buildAutoCsstatsRequests(
+  options: AutoFillOptions,
+  inboxPath: string,
+  missingBefore: string[],
+  directRequests: ReturnType<typeof buildCsstatsRequests>
+) {
+  const requests: Array<{ teamName: string; type: "map_stats" | "player_stats"; url: string; inboxPath: string }> = [];
+  const directKeys = new Set(directRequests.map((request) => `${request.teamName}:${request.type}`));
+  const types: Array<"map_stats" | "player_stats"> = [];
+  if (missingBefore.includes("map_stats.csv")) types.push("map_stats");
+  if (missingBefore.includes("player_stats.csv")) types.push("player_stats");
+  if (!types.length) return requests;
+
+  for (const teamName of options.teamNames) {
+    const teamId = await (options.resolveCsstats ?? resolveCsstatsTeamId)({
+      teamName,
+      enabled: true,
+      dryRun: options.dryRun,
+      cachePath: options.csstatsCachePath,
+      rateLimitMs: options.csstatsRateLimitMs,
+      fetchImpl: options.fetchImpl
+    });
+    if (!teamId) continue;
+    for (const type of types) {
+      if (!directKeys.has(`${teamName}:${type}`)) {
+        requests.push({ teamName, type, url: buildCsstatsExportUrl(teamId, type), inboxPath });
+      }
+    }
+  }
+  return requests;
+}
+
 function buildTemplateCommands(matchId: string, teamNames: [string, string], missing: string[]) {
   const commands: string[] = [];
   for (const team of teamNames) {
@@ -164,6 +237,10 @@ function sourceReport(report: FetcherReport) {
 function validateOptions(options: AutoFillOptions) {
   if (!options.matchId.trim()) throw new Error("matchId is required.");
   if (options.teamNames.length !== 2 || options.teamNames.some((team) => !team.trim())) throw new Error("teamNames must contain exactly two teams.");
+}
+
+function shouldRunCsstatsAutoLookup(options: AutoFillOptions, env: Record<string, string | undefined>) {
+  return options.autoLookupCsstats ?? envFlag(env, "ENABLE_CSSTATS_AUTO_LOOKUP", false);
 }
 
 function slug(value: string) {

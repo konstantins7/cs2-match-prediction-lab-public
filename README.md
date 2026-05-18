@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.9.4
+## Что есть в MVP 0.9.5
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Zero-Touch Data Acquisition: MVP 0.9.5 добавляет `data:auto-all`, узкое исключение для CSStats/csgostats public team-ID lookup, enhanced GRID matching и supplemental Steam explicit-ID fetcher. Всё по-прежнему пишет только normalized private-inbox files; Apply остаётся через `/admin/imports`.
 - Safe Auto-Fill Pipeline: MVP 0.9.4 добавляет `data:auto-fill`, `data:pipeline --auto-fill`, explicit CSStats/csgostats CSV URL/file import, PandaScore auto-fill wrapper и AWPy batch JSON merge. Auto-fill пишет только normalized files в `data/private-inbox/`; Apply остаётся через `/admin/imports`.
 - Real Data Completion Helpers: MVP 0.9.3 добавляет local-only CLI для target CSV templates, dry-run reality check и AWPy JSON normalizer scaffold. Это ускоряет путь `copy/export -> normalized CSV/JSON -> data/private-inbox -> /admin/imports -> data:pipeline` без API keys, scraping, DB writes from tools или gate lowering.
 - Policy-Compliant Data Maximizer: MVP 0.9.2 добавляет safe harvester поверх разрешённых API-style источников. Он усиливает Liquipedia MediaWiki, GRID Open Access matching, optional PandaScore Free enrichment и private inbox orchestration, но не добавляет HLTV automation, browser crawler, Apify, Telegram scraping, Cheerio, DB writes from tools, fake data или gate lowering.
@@ -240,7 +241,7 @@ npm run data:auto-fill -- \
 
 Rules:
 
-- CSStats/csgostats import is explicit user-provided CSV only: no search, no guessed endpoints, no crawling.
+- CSStats/csgostats import is explicit user-provided CSV by default. MVP 0.9.5 adds an opt-in, narrow `ENABLE_CSSTATS_AUTO_LOOKUP=true` team-ID lookup exception documented below.
 - Allowed CSV hosts are `csgostats.gg` and `csstats.gg`; local files are supported.
 - `data:auto-fill` writes only exact app-visible files such as `map_stats.csv` and `player_stats.csv`.
 - If auto-fill cannot close a block, it returns exact template commands and the next action.
@@ -261,6 +262,62 @@ npm run demo:batch -- \
 ```
 
 `demo:batch` reads local AWPy JSON exports only. It does not download demos, parse `.dem`, call Python, scrape websites or mutate the DB.
+
+## Zero-Touch Data Acquisition
+
+MVP 0.9.5 добавляет `data:auto-all`: единый локальный запуск, который пробует все безопасные auto-fill источники и возвращает честный отчёт о том, что получилось закрыть.
+
+```bash
+npm run data:auto-all -- \
+  --matchId pandascore_match_1488973 \
+  --teamA "Evo Novo" \
+  --teamB "WAZABI" \
+  --mode deeper \
+  --dry-run
+```
+
+Priority order:
+
+| Data type | Sources |
+| --- | --- |
+| Roster | PandaScore -> Liquipedia |
+| Map stats | CSStats auto lookup/export -> GRID enhanced -> PandaScore |
+| Player stats | CSStats auto lookup/export -> PandaScore -> Steam explicit ID |
+| Veto history | GRID enhanced -> fallback template commands |
+
+CSStats/csgostats narrow exception:
+
+- disabled by default with `ENABLE_CSSTATS_AUTO_LOOKUP=false`;
+- when enabled, the resolver makes at most one public search request per team to find a numeric team ID;
+- only `csgostats.gg` / `csstats.gg` are allowlisted;
+- no pagination, no team-page parsing, no match-page parsing and no browser automation;
+- results are cached in ignored `data/cache/csstats_ids.json`;
+- rate limit: 1 lookup request per 2 seconds.
+
+Enable locally:
+
+```bash
+ENABLE_CSSTATS_AUTO_LOOKUP=true npm run data:auto-all -- \
+  --matchId pandascore_match_1488973 \
+  --teamA "Evo Novo" \
+  --teamB "WAZABI" \
+  --mode deeper
+```
+
+Steam Web API remains supplemental:
+
+```env
+STEAM_API_KEY=""
+ENABLE_STEAM_SYNC=false
+```
+
+Steam data is used only with explicit Steam IDs and does not unlock Real Forecast Ready by itself.
+
+Still manual/deferred:
+
+- HLTV remains manual/paste-only by policy.
+- ESL/BLAST live fetchers are deferred until official public API docs and schemas are provided.
+- Telegram remains manual/reference-only.
 
 ## User Flow Simplification Phase 1
 
