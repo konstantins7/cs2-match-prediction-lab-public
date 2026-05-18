@@ -2,6 +2,7 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { analystSheetTemplates, quoteCsv, type AnalystSheetType } from "../../../src/lib/analystSheetTemplates";
+import { validateNormalizedFile } from "../../../src/lib/validation/normalizedFileValidator";
 
 export const normalizerSheetTypes = ["roster", "player_stats", "map_stats", "veto_history"] as const;
 export type NormalizerSheetType = (typeof normalizerSheetTypes)[number];
@@ -176,29 +177,14 @@ export function normalizeTablePaste(options: NormalizerOptions) {
 }
 
 export function validateNormalizedCsv(type: NormalizerSheetType, content: string): ValidationReport {
-  const parsed = parseCsv(content);
   const template = analystSheetTemplates[type as AnalystSheetType];
-  const errors: string[] = [];
-  const warnings: string[] = [];
-  if (!parsed.headers.length) errors.push("CSV header is missing.");
-  for (const column of template.columns) {
-    if (!parsed.headers.includes(column)) errors.push(`${template.filename}: missing column ${column}.`);
-  }
-  if (!parsed.headers.includes(sourceUrlColumn)) warnings.push("sourceUrl missing lowers source confidence but is not a hard blocker.");
-  for (const [index, row] of parsed.rows.entries()) {
-    const line = index + 2;
-    validateCommonRow(row, line, errors, warnings);
-    if (type === "roster") validateRoster(row, line, errors);
-    if (type === "player_stats") validatePlayerStats(row, line, errors);
-    if (type === "map_stats") validateMapStats(row, line, errors);
-    if (type === "veto_history") validateVeto(row, line, errors);
-  }
+  const validation = validateNormalizedFile({ fileName: template.filename, content });
   return {
-    ok: errors.length === 0,
-    rows: parsed.rows.length,
+    ok: validation.isValid,
+    rows: validation.rowsParsed,
     coveredBlock: template.coveredBlock,
-    errors,
-    warnings
+    errors: validation.errors,
+    warnings: validation.warnings
   };
 }
 
@@ -302,15 +288,6 @@ function parseDelimitedLine(line: string, delimiter: "," | ";" | "\t") {
   return cells;
 }
 
-function parseCsv(content: string) {
-  const rows = splitRows(content);
-  const headers = rows[0] ?? [];
-  return {
-    headers,
-    rows: rows.slice(1).map((row) => Object.fromEntries(headers.map((header, index) => [header, row[index]?.trim() ?? ""])))
-  };
-}
-
 function normalizeRow(options: NormalizerOptions, row: Record<string, string>) {
   const output: Record<string, string> = {};
   for (const column of outputColumns(options.type)) output[column] = "";
@@ -375,42 +352,6 @@ function validateOptions(options: NormalizerOptions) {
   return errors;
 }
 
-function validateCommonRow(row: Record<string, string>, line: number, errors: string[], warnings: string[]) {
-  if (isPlaceholder(row.sourceName)) errors.push(`Row ${line}: sourceName is required and cannot be placeholder text.`);
-  if (isPlaceholder(row.teamName)) errors.push(`Row ${line}: teamName is required and cannot be placeholder text.`);
-  if (!positive(row.sampleSize)) errors.push(`Row ${line}: sampleSize must be greater than 0.`);
-  if (!positive(row.confidence)) errors.push(`Row ${line}: confidence must be greater than 0.`);
-  if (!row[sourceUrlColumn]) warnings.push(`Row ${line}: sourceUrl missing lowers source confidence but is not a hard blocker.`);
-}
-
-function validateRoster(row: Record<string, string>, line: number, errors: string[]) {
-  if (isPlaceholder(row.nickname)) errors.push(`Row ${line}: nickname is required and cannot be placeholder text.`);
-}
-
-function validatePlayerStats(row: Record<string, string>, line: number, errors: string[]) {
-  if (isPlaceholder(row.nickname)) errors.push(`Row ${line}: nickname is required and cannot be placeholder text.`);
-  for (const field of ["maps", "kd", "rating"]) {
-    if (!positive(row[field])) errors.push(`Row ${line}: ${field} must be greater than 0.`);
-  }
-  if (allZero(row, ["maps", "kills", "deaths", "assists", "kd", "rating", "adr", "kast", "impact"])) {
-    errors.push(`Row ${line}: all-zero player stats look like fake or placeholder data.`);
-  }
-}
-
-function validateMapStats(row: Record<string, string>, line: number, errors: string[]) {
-  if (!normalizeMapDisplay(row.mapName)) errors.push(`Row ${line}: mapName is not in active CS2 pool.`);
-  if (!positive(row.mapsPlayed)) errors.push(`Row ${line}: mapsPlayed must be greater than 0.`);
-  if (allZero(row, ["mapsPlayed", "wins", "losses", "winRate", "roundsWon", "roundsLost"])) {
-    errors.push(`Row ${line}: all-zero map stats look like fake or placeholder data.`);
-  }
-}
-
-function validateVeto(row: Record<string, string>, line: number, errors: string[]) {
-  if (!normalizeMapDisplay(row.mapName)) errors.push(`Row ${line}: mapName is not in active CS2 pool.`);
-  if (!positive(row.sampleSize)) errors.push(`Row ${line}: sampleSize must be greater than 0.`);
-  if (allZero(row, ["pickRate", "banRate", "deciderRate"])) errors.push(`Row ${line}: pickRate/banRate/deciderRate cannot all be zero.`);
-}
-
 function normalizeField(field: string, raw: string) {
   if (!raw.trim()) return "";
   if (field === "confidence") return normalizeConfidence(raw);
@@ -449,18 +390,6 @@ function parseNumber(raw: string) {
 
 function formatNumber(value: number) {
   return Number(value.toFixed(4)).toString();
-}
-
-function positive(raw: string | undefined) {
-  const parsed = parseNumber(raw ?? "");
-  return parsed !== null && parsed > 0;
-}
-
-function allZero(row: Record<string, string>, fields: string[]) {
-  return fields.every((field) => {
-    const parsed = parseNumber(row[field] ?? "");
-    return parsed === null || parsed === 0;
-  });
 }
 
 function ratio(wins: number, losses: number) {

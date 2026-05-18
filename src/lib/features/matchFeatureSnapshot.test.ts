@@ -25,6 +25,10 @@ describe("MatchFeatureSnapshot builder", () => {
     expect(snapshot.featureCutoffTime.toISOString()).toBe(new Date(input.match.startTime).toISOString());
     expect(snapshot.dataLeakageCheckPassed).toBe(true);
     expect(snapshot.valveRankDiff).toBeGreaterThan(0);
+    expect(snapshot.teamAAvgPlayerRating).toBeGreaterThan(0);
+    expect(snapshot.teamBAvgPlayerRating).toBeGreaterThan(0);
+    expect(snapshot.teamATotalMapsPlayed).toBeGreaterThan(0);
+    expect(snapshot.teamBTotalMapsPlayed).toBeGreaterThan(0);
     expect(lineage.ranking).toBeTruthy();
     expect(snapshot.missingCriticalDataJson).toContain("[");
   });

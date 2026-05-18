@@ -920,6 +920,10 @@ model MatchFeatureSnapshot {
   recentWinRateDiff           Float
   opponentAdjustedFormDiff    Float
   currentRosterFormDiff       Float
+  teamAAvgPlayerRating        Float    @default(0)
+  teamBAvgPlayerRating        Float    @default(0)
+  teamATotalMapsPlayed        Int      @default(0)
+  teamBTotalMapsPlayed        Int      @default(0)
   avgPlayerRatingDiff         Float
   kdDiff                      Float
   adrDiff                     Float

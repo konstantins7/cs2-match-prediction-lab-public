@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { getCalculatedMatches } from "@/lib/data/matches";
+import { buildDataQualityDashboardSummary } from "@/lib/dataQualityDashboard";
 import { getHiddenProFocusReasons } from "@/lib/proFocusCoverage";
 import { getResearchQueueRows, summarizeResearchQueue } from "@/lib/researchQueue";
 
 export const dynamic = "force-dynamic";
 
 export default async function DataQualityPage() {
-  const [rows, hidden, researchRows] = await Promise.all([
+  const [rows, hidden, researchRows, qualitySummary] = await Promise.all([
     getCalculatedMatches({ limit: 30, focus: "all" }),
     getHiddenProFocusReasons(),
-    getResearchQueueRows(80)
+    getResearchQueueRows(80),
+    buildDataQualityDashboardSummary()
   ]);
   const sorted = rows.sort((a, b) => a.prediction.dataQualityScore - b.prediction.dataQualityScore);
   const researchSummary = summarizeResearchQueue(researchRows);
@@ -31,6 +33,36 @@ export default async function DataQualityPage() {
         <h1 className="text-2xl font-semibold text-white">Качество данных</h1>
         <p className="mt-1 text-sm text-lab-muted">Показывает матчи с малым sample, unknown veto, news uncertainty и низким confidence.</p>
       </div>
+      <section className="rounded border border-lab-border bg-lab-panel p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-white">Data quality foundation</h2>
+            <p className="mt-1 text-sm text-lab-muted">Source coverage, saved picks, blockers and private inbox validation.</p>
+          </div>
+          <p className="text-xs text-lab-muted">Generated {new Date(qualitySummary.generatedAt).toLocaleString("ru-RU")}</p>
+        </div>
+        <div className="mt-3 grid gap-3 md:grid-cols-4">
+          <SummaryStat label="Final picks" value={qualitySummary.predictionPicks.totalFinal} />
+          <SummaryStat label="Real Forecast Ready" value={qualitySummary.predictionPicks.realForecastReady} />
+          <SummaryStat label="Inbox files" value={qualitySummary.privateInbox.filesFound} />
+          <SummaryStat label="Validation failed" value={qualitySummary.privateInbox.validationFailed} />
+        </div>
+        <div className="mt-4 grid gap-4 lg:grid-cols-3">
+          <QualityTable title="Source coverage" rows={qualitySummary.sourceCounts.slice(0, 12).map((row) => ({
+            label: `${row.dataType} · ${row.sourceMode}`,
+            value: row.count,
+            detail: row.source
+          }))} />
+          <QualityTable title="Prediction pick status" rows={[
+            ...qualitySummary.predictionPicks.byStatus.map((row) => ({ label: row.status, value: row.count })),
+            ...qualitySummary.predictionPicks.bySourceBucket.map((row) => ({ label: row.sourceBucket, value: row.count, detail: "source bucket" }))
+          ]} />
+          <QualityTable title="Top blockers" rows={qualitySummary.topBlockers.slice(0, 10).map((row) => ({
+            label: row.blocker,
+            value: row.count
+          }))} />
+        </div>
+      </section>
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Группы проблем покрытия</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-3">
@@ -106,6 +138,25 @@ function SummaryStat({ label, value }: { label: string; value: number }) {
     <div className="rounded border border-lab-border bg-lab-panel2 p-3">
       <p className="text-xs uppercase text-lab-muted">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-white">{value}</p>
+    </div>
+  );
+}
+
+function QualityTable({ title, rows }: { title: string; rows: Array<{ label: string; value: number; detail?: string }> }) {
+  return (
+    <div className="rounded border border-lab-border bg-lab-panel2 p-3">
+      <h3 className="text-sm font-semibold text-white">{title}</h3>
+      <div className="mt-3 space-y-2">
+        {rows.length === 0 ? <p className="text-sm text-lab-muted">No rows yet.</p> : rows.map((row) => (
+          <div key={`${title}-${row.label}-${row.detail ?? ""}`} className="flex items-start justify-between gap-3 border-b border-lab-border/60 pb-2 last:border-b-0 last:pb-0">
+            <div>
+              <p className="text-sm text-white">{row.label}</p>
+              {row.detail ? <p className="text-xs text-lab-muted">{row.detail}</p> : null}
+            </div>
+            <p className="text-sm font-semibold text-lab-cyan">{row.value}</p>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

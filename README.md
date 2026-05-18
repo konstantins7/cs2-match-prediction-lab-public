@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.7
+## Что есть в MVP 0.9.0
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Data Quality + ML Foundation: MVP 0.9.0 добавляет core normalized CSV validator, расширяет `/admin/data-quality`, интегрирует раннюю validation в `data/private-inbox/` и сохраняет raw ML-friendly поля в `MatchFeatureSnapshot` без изменения forecast math или Real Forecast Ready gates.
 - Analytics Pipeline Platform: MVP 0.8.7 добавляет единый Node/TypeScript orchestrator `data:pipeline` и API action `analytics_pipeline`. Он связывает safe DAL fetchers, private inbox validation, Data Gap Resolver, `full_match_analysis`, persistent `AnalysisJob` timeline, feature snapshot generation и read-only model-ready dataset export без изменения forecast math или Real Forecast Ready gates.
 - Safe DAL Phase 1: MVP 0.8.6 добавляет tools-only Data Acquisition Layer в `tools/data-fetchers/`. Fetchers для esport.is, GRID Open Access, Liquipedia MediaWiki и Valve Rankings пишут только exact accepted normalized files в `data/private-inbox/`, не вызывают app Apply, не мутируют БД и не меняют core ingestion. `data:fetch-all` запускает enabled fetchers последовательно.
 - Private Normalized Extractor Pack: MVP 0.8.5 добавляет local-only tools в `tools/private-normalizers/`, которые превращают user-pasted table text или локальный CSV/text export в нормализованные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для `data/private-inbox/`. Tools не делают HTTP requests, scraping, browser automation, Apify, crawler/bypass code, DB mutations или direct Apply.
@@ -53,7 +54,7 @@ npm run build
 - Automated Legal Data Autopilot: MVP 0.7.6 добавляет coverage-first выбор лучшего upcoming матча для прогноза без HLTV scraping, browser crawler, Apify, fake data, betting/odds или изменения forecast gates.
 - First Real Forecast Pack Workflow: MVP 0.7.5 добавляет строгий путь `manual_real_pack` для первого настоящего прогноза без fake data и без `analyst_sample` как real.
 - Source Hunter + JSON-first import profiles: legal/free source suggestions, demo-tool JSON paths, Leetify placeholder, offline research datasets и future parser roadmap без новых парсеров.
-- Forecast math, readiness gates, Real Forecast Ready logic, source sync, provider behavior и Prisma schema не меняются; изменения касаются workflow, strict pack validation, preview/reporting и real-vs-sample depth display.
+- Forecast math, readiness gates, Real Forecast Ready logic, source sync и provider behavior не меняются; schema changes ограничены additive ML/data-quality fields.
 - SQLite + Prisma schema с командами, игроками, матчами, картами, veto, новостями, roster/meta/chemistry и prediction audit моделями.
 - Fictional seed data: реальные команды не используются.
 - `/`, `/matches`, `/predictions`, `/match/[id]`, `/team/[id]`, `/player/[id]`.
@@ -82,6 +83,23 @@ npm run build
 - News & Insider Intelligence Layer: official/media/manual insider news хранится отдельно через `NewsSource`, `NewsItem`, `NewsImpactSnapshot`; impact жёстко ограничен clamps, rumors в первую очередь повышают risk, а не probability.
 - Sync в MVP 0.8.2 запускается только вручную через кнопки, `/admin/imports` или CLI scripts. Page-load sync запрещён; главная, `/matches` и `/predictions` читают сохранённый local cache.
 - Source modes and badges: demo, valve rankings, Steam updates, PandaScore free, manual real, parsed demo, analyst sample, Liquipedia limited, FACEIT optional, GRID Open Access, mixed, partial, needs review.
+
+## Data Quality + ML Foundation
+
+MVP 0.9.0 усиливает контроль качества данных до Apply и добавляет raw feature columns для будущих локальных ML experiments. Production prediction math и Real Forecast Ready gates не меняются.
+
+- `src/lib/validation/normalizedFileValidator.ts` валидирует normalized CSV синхронно и без Prisma/API/filesystem dependencies.
+- `scanPrivateNormalizedInbox` сначала запускает core validator; invalid CSV не доходит до Apply path даже при `ENABLE_TRUSTED_LOCAL_IMPORTS=true`.
+- `/admin/data-quality` и `GET /api/admin/data-quality` показывают source-mode counts по roster/player/map/veto, saved pick status, Real Forecast Ready buckets, frequent blockers и latest private inbox validation summary.
+- `MatchFeatureSnapshot` теперь хранит `teamAAvgPlayerRating`, `teamBAvgPlayerRating`, `teamATotalMapsPlayed`, `teamBTotalMapsPlayed`.
+- Training dataset export добавляет `teamA_avgPlayerRating`, `teamB_avgPlayerRating`, `teamA_totalMapsPlayed`, `teamB_totalMapsPlayed`.
+
+Validator policy:
+
+- exact accepted CSV schemas берутся из `analystSheetTemplates`;
+- `sourceName`, `sampleSize > 0`, `confidence > 0`, valid active map names and non-placeholder rows are required;
+- `sourceUrl` is warning-only;
+- `team_form.csv` remains inbox contract / preview-only until a standalone apply path is added.
 
 ## User Flow Simplification Phase 1
 

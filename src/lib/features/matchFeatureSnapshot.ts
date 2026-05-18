@@ -5,7 +5,7 @@ import { sourcePriorityByDataType, type SourceDataType } from "../sources/source
 import { calculateNewsImpact } from "../news/newsImpact";
 import { isPreMatchUsableDataRole } from "../realData/dataRole";
 
-export const FEATURE_SCHEMA_VERSION = "mvp_0_4_1_feature_schema_v1";
+export const FEATURE_SCHEMA_VERSION = "mvp_0_9_0_feature_schema_v2";
 export const FEATURE_MODEL_VERSION = "mvp_0_4_1_rule_based_feature_store";
 
 type DatedSource = {
@@ -267,6 +267,10 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
   const confidenceValues = Object.values(lineage).map((item) => item.confidence ?? 0.3);
   const sourceConfidence = Number((confidenceValues.reduce((sum, value) => sum + value, 0) / Math.max(confidenceValues.length, 1)).toFixed(3));
   const mapSampleConfidence = avg([...mapStatsA, ...mapStatsB], (stat) => stat.sampleQuality, 0);
+  const teamAAvgPlayerRating = Number(avg(playerStatsA, (stat) => stat.rating, 0).toFixed(4));
+  const teamBAvgPlayerRating = Number(avg(playerStatsB, (stat) => stat.rating, 0).toFixed(4));
+  const teamATotalMapsPlayed = mapStatsA.reduce((sum, stat) => sum + stat.mapsPlayed, 0);
+  const teamBTotalMapsPlayed = mapStatsB.reduce((sum, stat) => sum + stat.mapsPlayed, 0);
   const mapPoolAdvantage = diff(avg(mapStatsA, (stat) => stat.winRate, 0.5), avg(mapStatsB, (stat) => stat.winRate, 0.5));
   const vetoAdvantage = diff(avg(vetoA, (stat) => stat.comfortScore - stat.weaknessScore, 0), avg(vetoB, (stat) => stat.comfortScore - stat.weaknessScore, 0));
   const newsA = newsImpact.teamA.totalImpact;
@@ -296,6 +300,10 @@ export function buildMatchFeatureSnapshotData(input: PredictionInput) {
     recentWinRateDiff: diff(input.basicResultA?.winRate ?? input.teamFormA?.matchWinRate ?? 0.5, input.basicResultB?.winRate ?? input.teamFormB?.matchWinRate ?? 0.5),
     opponentAdjustedFormDiff: diff(input.teamFormA?.opponentStrengthAdjustedForm ?? 0.5, input.teamFormB?.opponentStrengthAdjustedForm ?? 0.5),
     currentRosterFormDiff: diff(input.teamFormA?.rosterStabilityScore ?? 0.5, input.teamFormB?.rosterStabilityScore ?? 0.5),
+    teamAAvgPlayerRating,
+    teamBAvgPlayerRating,
+    teamATotalMapsPlayed,
+    teamBTotalMapsPlayed,
     avgPlayerRatingDiff: diff(avg(playerStatsA, (stat) => stat.rating, 1), avg(playerStatsB, (stat) => stat.rating, 1)),
     kdDiff: diff(avg(playerStatsA, (stat) => stat.kd, 1), avg(playerStatsB, (stat) => stat.kd, 1)),
     adrDiff: diff(avg(playerStatsA, (stat) => stat.adr, 70), avg(playerStatsB, (stat) => stat.adr, 70)),

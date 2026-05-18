@@ -3,6 +3,8 @@ import path from "node:path";
 import { applyAnalystSheetImport, validateAnalystSheetImport, type AnalystSheetInput, type AnalystSheetValidationResult } from "./analystSheetImport";
 import { applyManualEnrichment, validateManualEnrichment } from "./manualEnrichment";
 import { applyParsedDemoExport, validateParsedDemoExport } from "./parsedDemoExport";
+import { prisma } from "./prisma";
+import { validateNormalizedFile, type NormalizedFileRowIssue } from "./validation/normalizedFileValidator";
 
 export const PRIVATE_INBOX_DIR = path.join(process.cwd(), "data", "private-inbox");
 
@@ -29,6 +31,7 @@ export type PrivateInboxFileReport = {
   blocksCovered: string[];
   errors: string[];
   warnings: string[];
+  rowIssues: NormalizedFileRowIssue[];
   recordsCreated: number;
   recordsUpdated: number;
   summary: string;
@@ -86,6 +89,7 @@ export async function scanPrivateNormalizedInbox(matchId?: string, options: { tr
   }
 
   const reports: PrivateInboxFileReport[] = [];
+  const targetContext = matchId ? await privateInboxTargetContext(matchId) : { allowedTeamNames: undefined };
   for (const fileName of entries.sort()) {
     const detectedType = detectPrivateInboxFileType(fileName);
     const fullPath = path.join(PRIVATE_INBOX_DIR, fileName);
@@ -100,6 +104,7 @@ export async function scanPrivateNormalizedInbox(matchId?: string, options: { tr
       detectedType,
       content,
       matchId,
+      allowedTeamNames: targetContext.allowedTeamNames,
       trustedLocalImportsEnabled
     }));
   }
@@ -124,6 +129,7 @@ async function validateAndMaybeApplyPrivateFile(params: {
   detectedType: PrivateInboxFileType;
   content: string;
   matchId?: string;
+  allowedTeamNames?: string[];
   trustedLocalImportsEnabled: boolean;
 }): Promise<PrivateInboxFileReport> {
   if (!params.content.trim()) {
@@ -132,10 +138,33 @@ async function validateAndMaybeApplyPrivateFile(params: {
   if (params.detectedType.endsWith("_pack") || params.detectedType === "parsed_demo_export") {
     return validateJsonDrop(params);
   }
+  const coreValidation = validateNormalizedFile({
+    fileName: params.fileName,
+    content: params.content,
+    expectedMatchId: params.matchId,
+    allowedTeamNames: params.allowedTeamNames
+  });
+  if (!coreValidation.isValid) {
+    return baseReport({
+      ...params,
+      validationStatus: "failed",
+      applyEligible: false,
+      rowsParsed: coreValidation.rowsParsed,
+      blocksCovered: coreValidation.coveredBlock !== "unsupported" ? [coreValidation.coveredBlock] : [],
+      errors: coreValidation.errors,
+      warnings: coreValidation.warnings,
+      rowIssues: coreValidation.rowIssues,
+      summary: "Core normalized file validation failed; Apply path was not called."
+    });
+  }
   if (!params.matchId) {
     return baseReport({
       ...params,
       validationStatus: "not_checked",
+      rowsParsed: coreValidation.rowsParsed,
+      blocksCovered: [coreValidation.coveredBlock],
+      warnings: coreValidation.warnings,
+      rowIssues: coreValidation.rowIssues,
       summary: "CSV detected. Add matchId to validate row/block coverage against a target match."
     });
   }
@@ -143,6 +172,10 @@ async function validateAndMaybeApplyPrivateFile(params: {
     return baseReport({
       ...params,
       validationStatus: "not_checked",
+      rowsParsed: coreValidation.rowsParsed,
+      blocksCovered: [coreValidation.coveredBlock],
+      warnings: coreValidation.warnings,
+      rowIssues: coreValidation.rowIssues,
       summary: "team_form.csv is accepted by the inbox contract, but existing apply flow does not yet expose a standalone team_form CSV importer."
     });
   }
@@ -195,6 +228,7 @@ async function validateJsonDrop(params: {
       blocksCovered: [],
       errors: Array.isArray(record.errors) ? record.errors.map(String) : [],
       warnings: Array.isArray(record.warnings) ? record.warnings.map(String) : [],
+      rowIssues: [],
       recordsCreated,
       summary: ok ? "manual_real_pack.json validation passed." : "manual_real_pack.json validation failed."
     });
@@ -218,6 +252,7 @@ async function validateJsonDrop(params: {
     blocksCovered: [],
     errors: validation.errors,
     warnings: validation.warnings,
+    rowIssues: [],
     recordsCreated,
     summary: ok ? "parsed_demo_export.json validation passed." : "parsed_demo_export.json validation failed."
   });
@@ -237,6 +272,7 @@ function reportFromAnalystValidation(
     blocksCovered: validation.coveredBlocks,
     errors: validation.errors,
     warnings: validation.warnings,
+    rowIssues: [],
     recordsCreated: extra.recordsCreated,
     recordsUpdated: extra.recordsUpdated,
     summary: extra.summary
@@ -256,6 +292,7 @@ function baseReport(params: Partial<PrivateInboxFileReport> & { fileName: string
     blocksCovered: params.blocksCovered ?? [],
     errors: params.errors ?? [],
     warnings: params.warnings ?? [],
+    rowIssues: params.rowIssues ?? [],
     recordsCreated: params.recordsCreated ?? 0,
     recordsUpdated: params.recordsUpdated ?? 0,
     summary: params.summary ?? "Not checked."
@@ -267,4 +304,14 @@ function countCreates(preview: string[] | undefined) {
     const match = row.match(/(\d+)/);
     return sum + (match ? Number(match[1]) : 0);
   }, 0) ?? 0;
+}
+
+async function privateInboxTargetContext(matchId: string) {
+  const match = await prisma.match.findUnique({
+    where: { id: matchId },
+    include: { teamA: true, teamB: true }
+  });
+  return {
+    allowedTeamNames: match ? [match.teamA.name, match.teamB.name] : undefined
+  };
 }
