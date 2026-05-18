@@ -42,7 +42,9 @@ export const defaultWeights: ModelWeights = {
   tournamentImportance: 0.42,
   teamKnownness: 0.34,
   fixtureConfidence: 0.26,
-  unknownDataPenalty: 0.55
+  unknownDataPenalty: 0.55,
+  mapPoolDepth: 0.6,
+  individualSkill: 1
 };
 
 export function parseWeights(value?: string | null): ModelWeights {

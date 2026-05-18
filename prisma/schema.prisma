@@ -902,7 +902,7 @@ model PredictionErrorAnalysis {
 model MatchFeatureSnapshot {
   id                          String   @id @default(cuid())
   matchId                     String
-  modelVersion                String
+  modelVersion                String   @default("rule-based-v1")
   featureSchemaVersion        String
   readinessLevel              String
   sourceMode                  String

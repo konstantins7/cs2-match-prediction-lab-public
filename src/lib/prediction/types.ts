@@ -52,7 +52,9 @@ export type WeightKey =
   | "tournamentImportance"
   | "teamKnownness"
   | "fixtureConfidence"
-  | "unknownDataPenalty";
+  | "unknownDataPenalty"
+  | "mapPoolDepth"
+  | "individualSkill";
 
 export type ModelWeights = Record<WeightKey, number>;
 

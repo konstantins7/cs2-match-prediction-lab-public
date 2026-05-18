@@ -1,12 +1,13 @@
 import { prisma } from "../prisma";
 import { buildPredictionInput, calculatePrediction, type PredictionInput } from "../predictionEngine";
+import { RULE_BASED_MODEL_VERSION } from "../modelVersions";
 import { calculateGlickoStyleUncertainty } from "../modelLab/ratings";
 import { sourcePriorityByDataType, type SourceDataType } from "../sources/sourcePriority";
 import { calculateNewsImpact } from "../news/newsImpact";
 import { isPreMatchUsableDataRole } from "../realData/dataRole";
 
 export const FEATURE_SCHEMA_VERSION = "mvp_0_9_0_feature_schema_v2";
-export const FEATURE_MODEL_VERSION = "mvp_0_4_1_rule_based_feature_store";
+export const FEATURE_MODEL_VERSION = RULE_BASED_MODEL_VERSION;
 
 type DatedSource = {
   sourceMode: string;

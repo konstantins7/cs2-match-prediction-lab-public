@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TRAINING_DATASET_COLUMNS } from "./trainingDataset";
 
 describe("training dataset export schema", () => {
-  it("includes MVP 0.9.0 raw ML foundation columns", () => {
+  it("includes raw ML foundation columns", () => {
     expect(TRAINING_DATASET_COLUMNS).toContain("teamA_avgPlayerRating");
     expect(TRAINING_DATASET_COLUMNS).toContain("teamB_avgPlayerRating");
     expect(TRAINING_DATASET_COLUMNS).toContain("teamA_totalMapsPlayed");

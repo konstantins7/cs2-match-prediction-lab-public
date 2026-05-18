@@ -4,9 +4,12 @@ import { redactString } from "@/lib/security/redaction";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const result = await buildDataQualityDashboardSummary();
+    const { searchParams } = new URL(request.url);
+    const result = await buildDataQualityDashboardSummary({
+      includeProblemMatches: searchParams.get("includeProblemMatches") === "true"
+    });
     return NextResponse.json({ ok: true, result });
   } catch (error) {
     return NextResponse.json(

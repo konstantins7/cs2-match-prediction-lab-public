@@ -18,10 +18,12 @@ import { fatigueFactor } from "./fatigue";
 import { formatFactor } from "./formatFactor";
 import { headToHeadFactor } from "./headToHead";
 import { honeymoonFactor } from "./honeymoon";
+import { individualSkillFactor } from "./individualSkill";
 import { kdTrendFactor } from "./kdTrend";
 import { lanOnlineFactor } from "./lanOnline";
 import { leadershipFactor } from "./leadership";
 import { mapPoolFactor } from "./mapPool";
+import { mapPoolDepthFactor } from "./mapPoolDepth";
 import { metaShiftFactor } from "./metaShift";
 import { newsImpactFactor } from "./newsImpact";
 import { opponentMatchupFactor } from "./opponentMatchup";
@@ -41,6 +43,7 @@ import { generateExplanation } from "./explanationGenerator";
 import { getEffectiveRank } from "../proFocus";
 import { calculatePredictionReadiness, readinessRank } from "./readiness";
 import { evaluateRealForecastStatus } from "../realForecast";
+import { RULE_BASED_MODEL_VERSION } from "../modelVersions";
 
 function sumContributions(factors: PredictionFactorOutput[]) {
   return factors.reduce((sum, factor) => sum + factorContribution(factor), 0);
@@ -283,8 +286,10 @@ export function calculatePrediction(input: PredictionInput): PredictionOutput {
     teamStrengthFactor(input),
     recentFormFactor(input),
     playerFormFactor(input),
+    individualSkillFactor(input),
     kdTrendFactor(input),
     mapPoolFactor(input),
+    mapPoolDepthFactor(input),
     vetoFactor(input)
   ];
   const preOvertimeRaw = sumContributions(baseFactors);
@@ -368,7 +373,7 @@ export function calculatePrediction(input: PredictionInput): PredictionOutput {
     evidence: factorsWithReadiness.flatMap((factor) => factor.evidence),
     vetoScenarios: buildVetoScenarios(input),
     riskBreakdown,
-    modelVersion: "mvp-0.3-live",
+    modelVersion: RULE_BASED_MODEL_VERSION,
     rawScore,
     probabilityCap,
     readiness,

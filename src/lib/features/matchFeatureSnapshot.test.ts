@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "fs";
 import { buildMatchFeatureSnapshotData, FEATURE_SCHEMA_VERSION } from "./matchFeatureSnapshot";
 import { createPredictionFixture } from "../prediction/testFixtures";
+import { RULE_BASED_MODEL_VERSION } from "../modelVersions";
 
 describe("MatchFeatureSnapshot builder", () => {
   it("builds persistent feature data with lineage, cutoff and schema version", () => {
@@ -22,6 +24,7 @@ describe("MatchFeatureSnapshot builder", () => {
     const lineage = JSON.parse(snapshot.featureSourcesJson) as Record<string, unknown>;
 
     expect(snapshot.featureSchemaVersion).toBe(FEATURE_SCHEMA_VERSION);
+    expect(snapshot.modelVersion).toBe(RULE_BASED_MODEL_VERSION);
     expect(snapshot.featureCutoffTime.toISOString()).toBe(new Date(input.match.startTime).toISOString());
     expect(snapshot.dataLeakageCheckPassed).toBe(true);
     expect(snapshot.valveRankDiff).toBeGreaterThan(0);
@@ -43,5 +46,10 @@ describe("MatchFeatureSnapshot builder", () => {
 
     expect(snapshot.dataLeakageCheckPassed).toBe(false);
     expect(snapshot.featureSourcesJson).toContain("ignoredPostCutoffRecords");
+  });
+
+  it("keeps modelVersion defaulted for future A/B tracking", () => {
+    const schema = readFileSync("prisma/schema.prisma", "utf8");
+    expect(schema).toContain('modelVersion                String   @default("rule-based-v1")');
   });
 });

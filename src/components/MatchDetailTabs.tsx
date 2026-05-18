@@ -27,7 +27,8 @@ import { AnalystSheetImportPanel } from "./AnalystSheetImportPanel";
 import { FirstRealForecastSheetSessionPanel } from "./FirstRealForecastSheetSessionPanel";
 import { GridOpenAccessMatchPanel } from "./GridOpenAccessMatchPanel";
 import { ConfidenceRiskExplainer, ForecastStory } from "@/components/ui";
-import { FeatureSnapshotPanel, type FeatureSnapshotView } from "./FeatureSnapshotPanel";
+import type { FeatureSnapshotView } from "./FeatureSnapshotPanel";
+import { MatchFeaturesPanel } from "./MatchFeaturesPanel";
 import { SourceCoverageMatrix } from "./SourceCoverageMatrix";
 import type { PredictionInput, PredictionOutput } from "@/lib/predictionEngine";
 import type { SourceCoverageRow } from "@/lib/sourceCoverageMatrix";
@@ -218,7 +219,7 @@ export function MatchDetailTabs({
                 }]}
               />
               <ForecastReportBuilder input={input} prediction={prediction} featureSnapshot={featureSnapshot} />
-              <FeatureSnapshotPanel snapshot={featureSnapshot} />
+              <MatchFeaturesPanel matchId={input.match.id} initialSnapshot={featureSnapshot} />
               <SourceCoverageMatrix rows={sourceCoverageRows} compact />
             </div>
           </details>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blockerFrequency, bucketCounts, classifyPickSourceBucket, sourceCounts } from "./dataQualityDashboard";
+import { blockerFrequency, bucketCounts, classifyPickSourceBucket, problemMatchesFromCandidates, sourceCounts } from "./dataQualityDashboard";
 
 describe("data quality dashboard helpers", () => {
   it("summarizes source mode groups", () => {
@@ -36,5 +36,60 @@ describe("data quality dashboard helpers", () => {
 
     expect(rows[0]).toEqual({ blocker: "missing roster", count: 2 });
     expect(rows.some((row) => row.blocker === "grid:blocked")).toBe(true);
+  });
+
+  it("returns only non-ready candidates with coverage above 50 as problem matches", () => {
+    const rows = problemMatchesFromCandidates([
+      {
+        matchId: "ready",
+        teamAName: "A",
+        teamBName: "B",
+        eventName: "Event",
+        startTime: "2026-05-18T10:00:00.000Z",
+        coverageScore: 80,
+        forecastabilityTier: "READY",
+        realForecastReady: true,
+        blockers: [],
+        missingBlocks: [],
+        href: "/match/ready"
+      },
+      {
+        matchId: "low",
+        teamAName: "C",
+        teamBName: "D",
+        eventName: "Event",
+        startTime: "2026-05-18T11:00:00.000Z",
+        coverageScore: 50,
+        forecastabilityTier: "BASIC_ONLY",
+        realForecastReady: false,
+        blockers: ["missing roster"],
+        missingBlocks: [],
+        href: "/match/low"
+      },
+      {
+        matchId: "problem",
+        teamAName: "E",
+        teamBName: "F",
+        eventName: "Event",
+        startTime: "2026-05-18T12:00:00.000Z",
+        coverageScore: 74,
+        forecastabilityTier: "NEARLY_READY",
+        realForecastReady: false,
+        blockers: ["map stats sample below gate"],
+        missingBlocks: ["missing H2H/news"],
+        href: "/match/problem"
+      }
+    ]);
+
+    expect(rows).toEqual([{
+      matchId: "problem",
+      teams: "E vs F",
+      eventName: "Event",
+      startTime: "2026-05-18T12:00:00.000Z",
+      coverageScore: 74,
+      forecastabilityTier: "NEARLY_READY",
+      blockers: ["map stats sample below gate", "missing H2H/news"],
+      href: "/match/problem"
+    }]);
   });
 });

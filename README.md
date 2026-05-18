@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.9.0
+## Что есть в MVP 0.9.1
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Extended Analytics + ML Preparation: MVP 0.9.1 добавляет rule-based факторы `Map Pool Depth` и `Individual Skill`, problem-matches drilldown на `/admin/data-quality`, model router scaffold для будущего A/B и Advanced-блок признаков на странице матча. Эти факторы намеренно меняют rule-based score, но Real Forecast Ready gates, source policy, page-load sync, seed и provider behavior не меняются.
 - Data Quality + ML Foundation: MVP 0.9.0 добавляет core normalized CSV validator, расширяет `/admin/data-quality`, интегрирует раннюю validation в `data/private-inbox/` и сохраняет raw ML-friendly поля в `MatchFeatureSnapshot` без изменения forecast math или Real Forecast Ready gates.
 - Analytics Pipeline Platform: MVP 0.8.7 добавляет единый Node/TypeScript orchestrator `data:pipeline` и API action `analytics_pipeline`. Он связывает safe DAL fetchers, private inbox validation, Data Gap Resolver, `full_match_analysis`, persistent `AnalysisJob` timeline, feature snapshot generation и read-only model-ready dataset export без изменения forecast math или Real Forecast Ready gates.
 - Safe DAL Phase 1: MVP 0.8.6 добавляет tools-only Data Acquisition Layer в `tools/data-fetchers/`. Fetchers для esport.is, GRID Open Access, Liquipedia MediaWiki и Valve Rankings пишут только exact accepted normalized files в `data/private-inbox/`, не вызывают app Apply, не мутируют БД и не меняют core ingestion. `data:fetch-all` запускает enabled fetchers последовательно.
@@ -100,6 +101,18 @@ Validator policy:
 - `sourceName`, `sampleSize > 0`, `confidence > 0`, valid active map names and non-placeholder rows are required;
 - `sourceUrl` is warning-only;
 - `team_form.csv` remains inbox contract / preview-only until a standalone apply path is added.
+
+## Extended Analytics + ML Preparation
+
+MVP 0.9.1 расширяет аналитический слой без ослабления Real Forecast Ready gates.
+
+- `calculatePrediction` учитывает два новых rule-based фактора:
+  - `Map Pool Depth` использует общее число cutoff-safe карт команды и даёт небольшой confidence-style сигнал до ±5 raw probability points.
+  - `Individual Skill` использует средний cutoff-safe player rating и даёт skill signal до ±8 raw probability points.
+- `MatchFeatureSnapshot.modelVersion` для новых записей по умолчанию `rule-based-v1`.
+- `modelRouter` добавляет безопасный путь A/B: default остаётся rule-based, а ML placeholder возвращает нейтральный 50/50 до обучения модели.
+- `/admin/data-quality?includeProblemMatches=true` показывает nearly-ready/problem matches: высокий coverage, но `Real Forecast Ready=false`.
+- `/match/[id]` в Advanced показывает raw ML-friendly признаки и lineage из последнего feature snapshot.
 
 ## User Flow Simplification Phase 1
 

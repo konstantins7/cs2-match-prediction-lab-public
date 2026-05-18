@@ -14,6 +14,10 @@ export type FeatureSnapshotView = {
   hltvManualRankDiff: number;
   internalEloDiff: number;
   recentWinRateDiff: number;
+  teamAAvgPlayerRating: number;
+  teamBAvgPlayerRating: number;
+  teamATotalMapsPlayed: number;
+  teamBTotalMapsPlayed: number;
   avgPlayerRatingDiff: number;
   mapPoolAdvantage: number;
   vetoAdvantage: number;

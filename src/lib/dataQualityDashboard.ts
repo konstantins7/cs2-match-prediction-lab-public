@@ -1,5 +1,6 @@
 import { prisma } from "./prisma";
 import { scanPrivateNormalizedInbox, type PrivateInboxScanResult } from "./privateNormalizedInbox";
+import { getForecastAutopilotCandidates } from "./autoResearch/candidateSelector";
 
 export type DataQualitySourceCount = {
   dataType: "roster" | "player_stats" | "map_stats" | "veto";
@@ -20,6 +21,18 @@ export type DataQualityDashboardSummary = {
   };
   topBlockers: Array<{ blocker: string; count: number }>;
   privateInbox: Pick<PrivateInboxScanResult, "inboxPath" | "filesFound" | "acceptedFiles" | "validationPassed" | "validationFailed" | "recordsCreated" | "recordsUpdated" | "warnings">;
+  problemMatches?: DataQualityProblemMatch[];
+};
+
+export type DataQualityProblemMatch = {
+  matchId: string;
+  teams: string;
+  eventName: string;
+  startTime: string;
+  coverageScore: number;
+  forecastabilityTier: string;
+  blockers: string[];
+  href: string;
 };
 
 type SourceGroup = {
@@ -42,7 +55,7 @@ type BlockerStep = {
   status: string;
 };
 
-export async function buildDataQualityDashboardSummary(): Promise<DataQualityDashboardSummary> {
+export async function buildDataQualityDashboardSummary(options: { includeProblemMatches?: boolean } = {}): Promise<DataQualityDashboardSummary> {
   const [
     rosterGroups,
     playerGroups,
@@ -81,6 +94,8 @@ export async function buildDataQualityDashboardSummary(): Promise<DataQualityDas
     scanPrivateNormalizedInbox(undefined, { trustedLocalImports: false })
   ]);
 
+  const problemMatches = options.includeProblemMatches ? await buildProblemMatches() : undefined;
+
   return {
     generatedAt: new Date().toISOString(),
     sourceCounts: [
@@ -106,8 +121,43 @@ export async function buildDataQualityDashboardSummary(): Promise<DataQualityDas
       recordsCreated: privateInbox.recordsCreated,
       recordsUpdated: privateInbox.recordsUpdated,
       warnings: privateInbox.warnings
-    }
+    },
+    ...(problemMatches ? { problemMatches } : {})
   };
+}
+
+async function buildProblemMatches(): Promise<DataQualityProblemMatch[]> {
+  const candidates = await getForecastAutopilotCandidates(new Date(), 80);
+  return problemMatchesFromCandidates(candidates);
+}
+
+export function problemMatchesFromCandidates(candidates: Array<{
+  matchId: string;
+  teamAName: string;
+  teamBName: string;
+  eventName: string;
+  startTime: string;
+  coverageScore: number;
+  forecastabilityTier: string;
+  realForecastReady: boolean;
+  blockers: string[];
+  missingBlocks: string[];
+  href: string;
+}>): DataQualityProblemMatch[] {
+  return candidates
+    .filter((candidate) => !candidate.realForecastReady && candidate.coverageScore > 50)
+    .sort((a, b) => b.coverageScore - a.coverageScore)
+    .slice(0, 25)
+    .map((candidate) => ({
+      matchId: candidate.matchId,
+      teams: `${candidate.teamAName} vs ${candidate.teamBName}`,
+      eventName: candidate.eventName,
+      startTime: candidate.startTime,
+      coverageScore: candidate.coverageScore,
+      forecastabilityTier: candidate.forecastabilityTier,
+      blockers: [...new Set([...candidate.blockers, ...candidate.missingBlocks])].slice(0, 5),
+      href: candidate.href
+    }));
 }
 
 export function sourceCounts(dataType: DataQualitySourceCount["dataType"], groups: SourceGroup[]): DataQualitySourceCount[] {

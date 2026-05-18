@@ -8,6 +8,8 @@ import { makeFactor } from "./utils";
 import { createPredictionFixture } from "./testFixtures";
 import { factorEvidenceKey, factorWarningKey } from "../factorKeys";
 import { predictionHeadline } from "../predictionCopy";
+import { mapPoolDepthFactor } from "./mapPoolDepth";
+import { individualSkillFactor } from "./individualSkill";
 
 describe("calculatePrediction acceptance rules", () => {
   it("keeps probabilities summing to 100 and within 1..99", () => {
@@ -439,7 +441,7 @@ describe("calculatePrediction acceptance rules", () => {
 
   it("returns complete non-empty factor outputs with clamped impacts", () => {
     const result = calculatePrediction(createPredictionFixture());
-    expect(result.factors.length).toBe(35);
+    expect(result.factors.length).toBe(37);
     for (const factor of result.factors) {
       expect(factor.factorName.length).toBeGreaterThan(0);
       expect(factor.factorGroup.length).toBeGreaterThan(0);
@@ -475,6 +477,44 @@ describe("calculatePrediction acceptance rules", () => {
     expect(highMapPool).toBeDefined();
     expect(factorContribution(zeroMapPool!)).toBe(0);
     expect(Math.abs(factorContribution(highMapPool!))).toBeGreaterThan(Math.abs(zeroMapPool!.impact * input.modelWeights.mapPool * zeroMapPool!.confidence));
+  });
+
+  it("clamps map pool depth at five raw probability points", () => {
+    const base = createPredictionFixture();
+    const factor = mapPoolDepthFactor(createPredictionFixture({
+      mapStatsA: base.mapStatsA.map((stat) => ({ ...stat, mapsPlayed: 500 })),
+      mapStatsB: base.mapStatsB.map((stat) => ({ ...stat, mapsPlayed: 0 }))
+    }));
+    expect(factor.factorName).toBe("Map Pool Depth");
+    expect(factor.impact).toBe(5);
+  });
+
+  it("clamps individual skill at eight raw probability points", () => {
+    const base = createPredictionFixture();
+    const factor = individualSkillFactor(createPredictionFixture({
+      playerStatsA: base.playerStatsA.map((stat) => ({ ...stat, rating: 2 })),
+      playerStatsB: base.playerStatsB.map((stat) => ({ ...stat, rating: 0 }))
+    }));
+    expect(factor.factorName).toBe("Individual Skill");
+    expect(factor.impact).toBe(8);
+  });
+
+  it("applies new extended analytics weights to contribution", () => {
+    const input = createPredictionFixture();
+    const zeroWeight = calculatePrediction({
+      ...input,
+      modelWeights: { ...input.modelWeights, individualSkill: 0 }
+    });
+    const highWeight = calculatePrediction({
+      ...input,
+      modelWeights: { ...input.modelWeights, individualSkill: 2 }
+    });
+    const zeroSkill = zeroWeight.factors.find((factor) => factor.factorName === "Individual Skill");
+    const highSkill = highWeight.factors.find((factor) => factor.factorName === "Individual Skill");
+    expect(zeroSkill).toBeDefined();
+    expect(highSkill).toBeDefined();
+    expect(factorContribution(zeroSkill!)).toBe(0);
+    expect(Math.abs(factorContribution(highSkill!))).toBeGreaterThan(Math.abs(zeroSkill!.impact * input.modelWeights.individualSkill * zeroSkill!.confidence));
   });
 
   it("caps BO1 confidence at 75", () => {

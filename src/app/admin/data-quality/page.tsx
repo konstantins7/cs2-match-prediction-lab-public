@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DataQualityProblemMatchesPanel } from "@/components/DataQualityProblemMatchesPanel";
 import { SourceModeBadge } from "@/components/SourceModeBadge";
 import { getCalculatedMatches } from "@/lib/data/matches";
 import { buildDataQualityDashboardSummary } from "@/lib/dataQualityDashboard";
@@ -63,6 +64,7 @@ export default async function DataQualityPage() {
           }))} />
         </div>
       </section>
+      <DataQualityProblemMatchesPanel />
       <section className="rounded border border-lab-border bg-lab-panel p-4">
         <h2 className="font-semibold text-white">Группы проблем покрытия</h2>
         <div className="mt-3 grid gap-3 md:grid-cols-3">

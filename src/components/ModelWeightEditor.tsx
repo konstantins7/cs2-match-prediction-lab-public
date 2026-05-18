@@ -12,6 +12,8 @@ const labels: Record<WeightKey, string> = {
   playerForm: "Player form",
   kdTrend: "K/D trend",
   mapPool: "Map pool",
+  mapPoolDepth: "Map pool depth",
+  individualSkill: "Individual skill",
   veto: "Veto",
   overtime: "Overtime",
   closing: "Closing",
