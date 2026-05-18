@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.9.2
+## Что есть в MVP 0.9.3
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Real Data Completion Helpers: MVP 0.9.3 добавляет local-only CLI для target CSV templates, dry-run reality check и AWPy JSON normalizer scaffold. Это ускоряет путь `copy/export -> normalized CSV/JSON -> data/private-inbox -> /admin/imports -> data:pipeline` без API keys, scraping, DB writes from tools или gate lowering.
 - Policy-Compliant Data Maximizer: MVP 0.9.2 добавляет safe harvester поверх разрешённых API-style источников. Он усиливает Liquipedia MediaWiki, GRID Open Access matching, optional PandaScore Free enrichment и private inbox orchestration, но не добавляет HLTV automation, browser crawler, Apify, Telegram scraping, Cheerio, DB writes from tools, fake data или gate lowering.
 - Extended Analytics + ML Preparation: MVP 0.9.1 добавляет rule-based факторы `Map Pool Depth` и `Individual Skill`, problem-matches drilldown на `/admin/data-quality`, model router scaffold для будущего A/B и Advanced-блок признаков на странице матча. Эти факторы намеренно меняют rule-based score, но Real Forecast Ready gates, source policy, page-load sync, seed и provider behavior не меняются.
 - Data Quality + ML Foundation: MVP 0.9.0 добавляет core normalized CSV validator, расширяет `/admin/data-quality`, интегрирует раннюю validation в `data/private-inbox/` и сохраняет raw ML-friendly поля в `MatchFeatureSnapshot` без изменения forecast math или Real Forecast Ready gates.
@@ -134,6 +135,73 @@ Behavior:
 - ESIC остаётся disabled future metadata: network calls к `api.esic.gg` не выполняются, пока нет официальной документации и схемы.
 
 Still forbidden: HLTV automatic scraping, Telegram scraping, Apify, browser automation/crawler packages, captcha/login/protection bypass, unsupported GRID endpoints, fake/imputed data, betting/odds, seed and page-load sync.
+
+## Real Data Completion Helpers
+
+MVP 0.9.3 добавляет практический local-only слой для закрытия data gaps без API keys. Скрипты создают только файлы или dry-run отчёты; Apply остаётся только через `/admin/imports`.
+
+Reality check:
+
+```bash
+npm run data:reality-check -- \
+  --matchId pandascore_match_1488973 \
+  --teams "Evo Novo,WAZABI" \
+  --mode deeper --dry-run
+```
+
+CSV templates:
+
+```bash
+npm run template:map-stats -- \
+  --matchId pandascore_match_1488973 \
+  --team "Evo Novo" \
+  --out ./tmp/evo_map_stats.csv
+
+npm run template:player-stats -- \
+  --matchId pandascore_match_1488973 \
+  --team "WAZABI" \
+  --out ./tmp/wazabi_player_stats.csv
+```
+
+Generated templates use exact app headers, but stay intentionally invalid until real evidence replaces placeholders: `sourceName`, `sampleSize`, `confidence`, real player/map rows and a valid evidence date before match start.
+
+5-minute path to Real Forecast Ready:
+
+1. Copy a real public table or use a local export for map/player/veto stats.
+2. Normalize pasted data:
+   ```bash
+   npm run normalize:paste -- \
+     --type map_stats \
+     --matchId pandascore_match_1488973 \
+     --teamName "Evo Novo" \
+     --sourceName "Copied map stats table" \
+     --collectedAt "2026-05-04T00:00:00Z" \
+     --period "last_3_months" \
+     --confidence 85 \
+     --input ./tmp/evo_maps.txt \
+     --out data/private-inbox/map_stats.csv
+   ```
+3. Open `/admin/imports`, validate/preview, then apply only if the file is real and trusted.
+4. Run:
+   ```bash
+   npm run data:pipeline -- --matchId pandascore_match_1488973 --mode fast --savePrediction
+   ```
+
+AWPy JSON normalizer scaffold:
+
+```bash
+npm run demo:normalize-awpy -- \
+  --input ./tmp/evo_awpy.json \
+  --matchId pandascore_match_1488973 \
+  --teams "Evo Novo,WAZABI" \
+  --sourceName "Local AWPy export" \
+  --collectedAt "2026-05-04T00:00:00Z" \
+  --period "last_match" \
+  --confidence 85 \
+  --out data/private-inbox/parsed_demo_export.json
+```
+
+The app does not run AWPy or parse `.dem` files in this release. It only normalizes an already-produced local JSON export into the existing parsed demo intake shape.
 
 ## User Flow Simplification Phase 1
 
