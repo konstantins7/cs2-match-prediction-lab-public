@@ -21,6 +21,8 @@ coverage
 data/cache/
 data/reports/
 data/private-inbox/
+data/research-cache/
+data/demos/
 *.log
 dev-server.log
 tsconfig.tsbuildinfo

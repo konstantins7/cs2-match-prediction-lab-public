@@ -11,7 +11,8 @@ export type DataSourceAccessType =
   | "free_api"
   | "public_static_data"
   | "offline_dataset"
-  | "trial_or_paid_future";
+  | "trial_or_paid_future"
+  | "research_only";
 
 export type DataSourceLegalMode =
   | "api"
@@ -23,7 +24,8 @@ export type DataSourceLegalMode =
   | "github_raw_json"
   | "license_check_required"
   | "provider_api"
-  | "disabled";
+  | "disabled"
+  | "policy_exception";
 
 export type DataSourceStatus = "active" | "optional" | "future" | "disabled";
 
@@ -159,6 +161,20 @@ export const dataSourceRegistry: DataSourceRegistryEntry[] = [
     setupInstructions: "Использовать только как manual reference import. Third-party scraper actors, including Apify HLTV actors, are not connected to the app.",
     limitations: "Не автоматический источник; пользователь сам вносит rank/teamName/hltvReferenceUrl/rankingDate.",
     forbiddenActions: ["HLTV scraping", "automatic crawling", "Apify HLTV actor sync", "Apify token storage"]
+  },
+  {
+    id: "hltv_research",
+    name: "HLTV Research Parser",
+    dataTypes: ["roster", "player stats", "map stats", "veto", "h2h"],
+    accessType: "research_only",
+    legalMode: "policy_exception",
+    priority: 5,
+    status: "disabled",
+    userActionRequired: "Use only on research/policy-exception-hltv with ENABLE_RESEARCH_SOURCES=true and ENABLE_HLTV_AUTOMATION=true.",
+    setupInstructions: "Experimental branch only: one request per page, 24h cache, 1 request per 5 seconds, no browser automation.",
+    limitations: "Research branch only. Not part of production Plan A or default Auto-All.",
+    forbiddenActions: ["Mass crawling", "Pagination", "Cloudflare bypass", "browser automation", "Apify", "Telegram scraping"],
+    advancedOnly: true
   },
   {
     id: "telegram_manual",

@@ -28,6 +28,7 @@
     "data:pipeline": "tsx src/scripts/analyticsPipeline.ts",
     "data:auto-fill": "tsx scripts/auto-fill.ts",
     "data:auto-all": "tsx scripts/auto-all.ts",
+    "data:auto-all:research": "tsx scripts/auto-all-research.ts",
     "data:benchmark-auto-all": "tsx scripts/benchmark-auto-all.ts",
     "data:benchmark-summary": "tsx scripts/benchmark-summary.ts",
     "data:reality-check": "tsx scripts/reality-check.ts",
