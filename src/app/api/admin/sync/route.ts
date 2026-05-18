@@ -15,6 +15,7 @@ import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
 import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
 import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
 import { refreshMatchFeed } from "@/lib/matchFeedCache";
+import { runAnalyticsPipeline } from "@/lib/analyticsPipeline";
 import { runFullMatchAnalysis } from "@/lib/fullMatchAnalysis";
 import { resolvePredictionResultManually, resolvePredictionResults } from "@/lib/predictionLifecycle";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
@@ -37,6 +38,8 @@ type SyncRequest = {
   actualScore?: string;
   resultSource?: string;
   notes?: string;
+  dryRun?: boolean;
+  force?: boolean;
 };
 
 function normalizeMode(mode: SyncRequest["mode"]): ForecastAutopilotMode {
@@ -58,6 +61,16 @@ export async function POST(request: Request) {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
       const result = await runFullMatchAnalysis(body.matchId, normalizeMode(body.mode), { savePrediction: body.savePrediction === true });
       return NextResponse.json({ ok: true, result });
+    }
+    if (body.action === "analytics_pipeline") {
+      if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
+      const result = await runAnalyticsPipeline(body.matchId, {
+        mode: normalizeMode(body.mode),
+        dryRun: body.dryRun === true,
+        force: body.force === true,
+        savePrediction: body.savePrediction === true
+      });
+      return NextResponse.json({ ok: result.ok, result }, { status: result.ok ? 200 : 400 });
     }
     if (body.action === "resolve_prediction_results") {
       const result = await resolvePredictionResults();

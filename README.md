@@ -37,10 +37,11 @@ npm run test
 npm run build
 ```
 
-## Что есть в MVP 0.8.6
+## Что есть в MVP 0.8.7
 
 - Next.js App Router, TypeScript, Tailwind CSS.
 - Dark Esport Dashboard UX: тёмный graphite/slate интерфейс, cyan/violet/electric-blue accents, user/analyst/advanced modes, Data Depth Meter, Forecast Story и Confidence/Risk explanations.
+- Analytics Pipeline Platform: MVP 0.8.7 добавляет единый Node/TypeScript orchestrator `data:pipeline` и API action `analytics_pipeline`. Он связывает safe DAL fetchers, private inbox validation, Data Gap Resolver, `full_match_analysis`, persistent `AnalysisJob` timeline, feature snapshot generation и read-only model-ready dataset export без изменения forecast math или Real Forecast Ready gates.
 - Safe DAL Phase 1: MVP 0.8.6 добавляет tools-only Data Acquisition Layer в `tools/data-fetchers/`. Fetchers для esport.is, GRID Open Access, Liquipedia MediaWiki и Valve Rankings пишут только exact accepted normalized files в `data/private-inbox/`, не вызывают app Apply, не мутируют БД и не меняют core ingestion. `data:fetch-all` запускает enabled fetchers последовательно.
 - Private Normalized Extractor Pack: MVP 0.8.5 добавляет local-only tools в `tools/private-normalizers/`, которые превращают user-pasted table text или локальный CSV/text export в нормализованные `roster.csv`, `player_stats.csv`, `map_stats.csv` и `veto_history.csv` для `data/private-inbox/`. Tools не делают HTTP requests, scraping, browser automation, Apify, crawler/bypass code, DB mutations или direct Apply.
 - Auto Data Gap Resolver + Connector Framework + Normalized Extractor Pipeline: MVP 0.8.4 заставляет `Полный анализ` не только показать missing blocks, но и пройти цепочку разрешённых коннекторов, проверить `data/private-inbox/`, записать resolver attempts в timeline и пересчитать анализ после validated records. `ENABLE_TRUSTED_LOCAL_IMPORTS=false` по умолчанию, поэтому private inbox работает как validation preview, пока trusted local mode явно не включён.
@@ -203,6 +204,49 @@ DAL output policy:
 - never imports Prisma, never writes DB records, never calls validation Apply, never runs seed.
 
 Source policy remains strict: no HLTV automation, no Telegram scraping, no Apify, no browser automation/crawler packages, no unsupported GRID endpoints and no fake/imputed data. HLTV remains manual reference / paste-normalizer only.
+
+## Analytics Pipeline Platform
+
+MVP 0.8.7 добавляет orchestration слой поверх уже существующих safe fetchers, private inbox, full analysis и feature store. Это не новый provider, не ML rewrite и не обход source policy.
+
+CLI:
+
+```bash
+npm run data:pipeline -- --matchId pandascore_match_1488973 --mode fast --dry-run
+npm run data:pipeline -- --matchId pandascore_match_1488973 --mode fast --savePrediction
+```
+
+API action:
+
+```json
+{
+  "action": "analytics_pipeline",
+  "matchId": "pandascore_match_1488973",
+  "mode": "fast",
+  "dryRun": true
+}
+```
+
+Pipeline result:
+
+- `pipelineRunId`;
+- `matchId`;
+- ordered `steps`;
+- `fetcherReports`;
+- `privateInboxSummary`;
+- `coverageBefore` / `coverageAfter`;
+- `analysisJobId` and optional `predictionPickId`;
+- `modelDatasetStatus`;
+- one `nextAction`.
+
+Behavior:
+
+- `--dry-run` runs safe fetcher reports, scans private inbox in preview mode and exports model dataset status, but does not create `AnalysisJob`, `PredictionPick` or feature snapshots.
+- normal run calls `full_match_analysis`, so the persistent timeline remains inside existing `AnalysisJob` / `AnalysisJobStep` lifecycle.
+- feature dataset export is read-only and uses existing `MatchFeatureSnapshot` leakage/cutoff filters. `tools/ml/` is local-only scaffolding for future experiments: no automatic retraining, no automatic weight changes and no scikit-learn runtime dependency.
+- parser adapter registry is metadata-only and disabled by default. Forbidden adapters cannot auto-run; future table adapters must write draft normalized CSV to `data/private-inbox/` and pass validation before Apply.
+
+Still forbidden in implementation: HLTV automatic scraping, Telegram scraping, Apify, browser automation/crawler packages, captcha/login/protection bypass, unsupported GRID APIs, fake/imputed data, betting/odds, seed and page-load sync.
 
 ## Auto Data Gap Resolver + Normalized Extractor Pipeline
 

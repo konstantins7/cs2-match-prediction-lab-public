@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "0.8.6",
+  "version": "0.8.7",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -22,7 +22,8 @@
     "data:fetch-grid": "tsx tools/data-fetchers/fetch-grid.ts --force",
     "data:fetch-liquipedia-rosters": "tsx tools/data-fetchers/fetch-liquipedia-rosters.ts --force",
     "data:fetch-valve-rankings": "tsx tools/data-fetchers/fetch-valve-rankings.ts --force",
-    "data:fetch-all": "tsx tools/run-all-fetchers.ts"
+    "data:fetch-all": "tsx tools/run-all-fetchers.ts",
+    "data:pipeline": "tsx src/scripts/analyticsPipeline.ts"
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
