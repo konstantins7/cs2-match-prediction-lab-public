@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import type { AutoAllJobView } from "@/lib/autoAllJobs";
 import type { AutoFillMode } from "../../tools/auto-fill";
 import { ProgressPanel } from "./ProgressPanel";
@@ -32,30 +33,26 @@ export function AutoAllButton({
 }) {
   const router = useRouter();
   const [mode, setMode] = useState<AutoFillMode>("deeper");
-  const [busy, setBusy] = useState(false);
   const [job, setJob] = useState<AutoAllJobView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lineageRefresh, setLineageRefresh] = useState(0);
+  const { execute: run, isLoading: busy } = useAsyncAction(runAutoAll, {
+    actionName: "auto_all",
+    onError: (caught) => setError(caught.message)
+  });
 
-  async function run() {
-    setBusy(true);
+  async function runAutoAll() {
     setError(null);
     setJob(null);
-    try {
-      const response = await fetch("/api/auto-all", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ matchId, teamA, teamB, mode })
-      });
-      const json = await response.json() as ApiResponse;
-      if (!json.ok || !json.job) throw new Error(json.error ?? "Auto-All could not start.");
-      setJob(json.job);
-      await poll(json.job.jobId);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Auto-All failed.");
-    } finally {
-      setBusy(false);
-    }
+    const response = await fetch("/api/auto-all", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ matchId, teamA, teamB, mode })
+    });
+    const json = await response.json() as ApiResponse;
+    if (!json.ok || !json.job) throw new Error(json.error ?? "Auto-All could not start.");
+    setJob(json.job);
+    await poll(json.job.jobId);
   }
 
   async function poll(jobId: string) {
@@ -91,7 +88,7 @@ export function AutoAllButton({
         <button
           type="button"
           disabled={busy}
-          onClick={run}
+          onClick={() => void run()}
           className="rounded bg-lab-cyan px-4 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Сбор данных..." : "Автоматически собрать всё"}

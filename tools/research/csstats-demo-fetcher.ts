@@ -11,6 +11,7 @@ export type CsstatsDemoFetchOptions = {
   cachePath?: string;
   demosDir?: string;
   dryRun?: boolean;
+  maxBytes?: number;
 };
 
 export type CsstatsDemoFetchResult = {
@@ -45,6 +46,9 @@ export async function fetchCsstatsDemo(options: CsstatsDemoFetchOptions): Promis
         headers: { "User-Agent": "CS2MatchPredictionLab/1.0-research csstats demo fetch" }
       });
       if (!response.ok) throw new Error(`HTTP ${response.status} for CSStats demo download.`);
+      const size = Number(response.headers.get("content-length") ?? 0);
+      const maxBytes = options.maxBytes ?? 100 * 1024 * 1024;
+      if (size > maxBytes) throw new Error(`CSStats demo is too large (${size} bytes); cap is ${maxBytes} bytes.`);
       await mkdir(path.dirname(outputPath), { recursive: true });
       await writeFile(outputPath, Buffer.from(await response.arrayBuffer()));
     }

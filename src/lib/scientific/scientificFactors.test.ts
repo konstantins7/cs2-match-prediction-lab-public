@@ -15,7 +15,8 @@ const emptyData: PrivateAnalysisData = {
 describe("scientific advisory factors", () => {
   it("returns warnings instead of crashing on empty local data", () => {
     const factors = calculateScientificFactors(emptyData, ["A", "B"]);
-    expect(factors).toHaveLength(4);
+    expect(factors).toHaveLength(9);
+    expect(factors.map((factor) => factor.id)).toEqual(expect.arrayContaining(["map_specific_elo", "player_form_trend", "roster_change", "h2h_psychology", "first_pick_ban"]));
     expect(factors.every((factor) => factor.status === "missing" || factor.status === "partial")).toBe(true);
   });
 

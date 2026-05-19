@@ -1,7 +1,7 @@
 import type { H2hRow, MapStatsRow, ParsedDemoSummary, PlayerStatsRow, PrivateAnalysisData } from "@/lib/math/types";
 
 export type ScientificFactor = {
-  id: "map_vs_opponent" | "recent_trend" | "tournament_pressure" | "round_analytics";
+  id: "map_vs_opponent" | "recent_trend" | "tournament_pressure" | "round_analytics" | "map_specific_elo" | "player_form_trend" | "roster_change" | "h2h_psychology" | "first_pick_ban";
   label: string;
   status: "available" | "partial" | "missing";
   impact: number;
@@ -14,6 +14,11 @@ export function calculateScientificFactors(data: PrivateAnalysisData, teams: str
   return [
     mapVsOpponent(data.mapStats, teams),
     recentTrend(data.playerStats, teams),
+    mapSpecificElo(data.mapStats, teams),
+    playerFormTrend(data.playerStats, teams),
+    rosterChange(data.roster, teams),
+    h2hPsychology(data.h2h, teams),
+    firstPickBan(data.mapStats, teams),
     tournamentPressure(data.h2h),
     roundAnalytics(data.parsedDemo)
   ];
@@ -89,6 +94,100 @@ function tournamentPressure(h2h: H2hRow[]): ScientificFactor {
     explanation: closeMaps >= 3 ? "Several close historical maps; form signal may be noisier under pressure." : "No strong pressure proxy from local H2H.",
     warnings: ["Tournament pressure is an advisory proxy until event stage metadata is wired into analysis."],
     details: { h2hRows: h2h.length, closeMaps }
+  };
+}
+
+function mapSpecificElo(rows: MapStatsRow[], teams: string[]): ScientificFactor {
+  const [teamA, teamB] = teams;
+  const common = rows.filter((row) => same(row.teamName, teamA) || same(row.teamName, teamB));
+  if (common.length < 2) return missing("map_specific_elo", "Map-specific Elo", "Not enough map_stats rows for map-specific Elo proxy.");
+  const byTeam = teams.map((team) => {
+    const teamRows = common.filter((row) => same(row.teamName, team));
+    const score = average(teamRows.map((row) => 1500 + (row.winRate - 50) * 8 + Math.log1p(row.mapsPlayed) * 12));
+    return { team, score, sample: teamRows.reduce((sum, row) => sum + row.mapsPlayed, 0) };
+  });
+  const delta = (byTeam[0]?.score ?? 1500) - (byTeam[1]?.score ?? 1500);
+  return {
+    id: "map_specific_elo",
+    label: "Map-specific Elo",
+    status: byTeam.every((row) => row.sample >= 10) ? "available" : "partial",
+    impact: clamp(delta / 35, -5, 5),
+    explanation: `Map-specific Elo proxy delta is ${delta.toFixed(1)}.`,
+    warnings: byTeam.some((row) => row.sample < 10) ? ["Small map sample; Elo proxy is advisory."] : [],
+    details: { teams: byTeam }
+  };
+}
+
+function playerFormTrend(rows: PlayerStatsRow[], teams: string[]): ScientificFactor {
+  if (rows.length < 6) return missing("player_form_trend", "Форма игроков", "Not enough player_stats rows for individual form trend.");
+  const teamTrends = teams.map((team) => {
+    const values = rows.filter((row) => same(row.teamName, team)).slice(-10).map((row) => row.rating).filter(Number.isFinite);
+    return { team, trend: average(values.slice(-5)) - average(values.slice(0, 5)), sample: values.length };
+  });
+  const delta = (teamTrends[0]?.trend ?? 0) - (teamTrends[1]?.trend ?? 0);
+  return {
+    id: "player_form_trend",
+    label: "Форма игроков",
+    status: teamTrends.every((row) => row.sample >= 5) ? "available" : "partial",
+    impact: clamp(delta * 18, -4, 4),
+    explanation: `Recent individual rating trend delta is ${delta.toFixed(3)}.`,
+    warnings: teamTrends.some((row) => row.sample < 5) ? ["At least one team has fewer than five player stat rows."] : [],
+    details: { teamTrends }
+  };
+}
+
+function rosterChange(rows: PrivateAnalysisData["roster"], teams: string[]): ScientificFactor {
+  if (!rows.length) return missing("roster_change", "Roster change risk", "No roster rows for roster-change confidence check.");
+  const now = Date.now();
+  const recent = rows.filter((row) => {
+    const raw = row.collectedAt ?? row.period ?? "";
+    const timestamp = new Date(raw).getTime();
+    return Number.isFinite(timestamp) && now - timestamp <= 14 * 24 * 60 * 60 * 1000;
+  });
+  const byTeam = teams.map((team) => ({ team, recentRows: recent.filter((row) => same(row.teamName, team)).length, totalRows: rows.filter((row) => same(row.teamName, team)).length }));
+  return {
+    id: "roster_change",
+    label: "Roster change risk",
+    status: byTeam.some((row) => row.totalRows >= 5) ? "partial" : "missing",
+    impact: byTeam.some((row) => row.recentRows > 0 && row.totalRows < 5) ? -2 : 0,
+    explanation: "Roster-change signal uses local roster row dates only.",
+    warnings: ["If roster rows do not include join/event dates, this factor stays conservative."],
+    details: { byTeam }
+  };
+}
+
+function h2hPsychology(rows: H2hRow[], teams: string[]): ScientificFactor {
+  if (!rows.length) return missing("h2h_psychology", "Последняя очная встреча", "No H2H rows for last-meeting factor.");
+  const latest = [...rows].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+  const impact = same(latest.winner, teams[0] ?? "") ? 1.5 : same(latest.winner, teams[1] ?? "") ? -1.5 : 0;
+  return {
+    id: "h2h_psychology",
+    label: "Последняя очная встреча",
+    status: "partial",
+    impact,
+    explanation: `${latest.winner || "Unknown"} won the latest local H2H sample.`,
+    warnings: ["Psychological factor is a small advisory nudge only."],
+    details: { latest }
+  };
+}
+
+function firstPickBan(rows: MapStatsRow[], teams: string[]): ScientificFactor {
+  const vetoLike = rows.filter((row) => row.pickRate > 0 || row.banRate > 0);
+  if (!vetoLike.length) return missing("first_pick_ban", "First pick/ban tendency", "No pick/ban rates in local map_stats/veto-derived rows.");
+  const byTeam = teams.map((team) => {
+    const teamRows = vetoLike.filter((row) => same(row.teamName, team));
+    const topBan = [...teamRows].sort((a, b) => b.banRate - a.banRate)[0];
+    const topPick = [...teamRows].sort((a, b) => b.pickRate - a.pickRate)[0];
+    return { team, topBan: topBan?.mapName ?? "", banRate: topBan?.banRate ?? 0, topPick: topPick?.mapName ?? "", pickRate: topPick?.pickRate ?? 0 };
+  });
+  return {
+    id: "first_pick_ban",
+    label: "First pick/ban tendency",
+    status: byTeam.some((row) => row.topBan || row.topPick) ? "available" : "partial",
+    impact: 0,
+    explanation: "Shows the strongest local pick/ban tendencies for analyst review.",
+    warnings: [],
+    details: { byTeam }
   };
 }
 

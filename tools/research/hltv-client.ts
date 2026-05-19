@@ -10,6 +10,7 @@ export type ResearchFetchOptions = {
   fetchImpl?: FetchLike;
   waitImpl?: (ms: number) => Promise<void>;
   cacheDir?: string;
+  noCache?: boolean;
   rateLimitMs?: number;
   now?: Date;
   sourceFlag?: string;
@@ -28,7 +29,9 @@ export type ResearchFetchResult = {
 
 export const hltvResearchUserAgent = "CS2MatchPredictionLab/1.0-research (contact: saldinkostya97@gmail.com)";
 export const hltvCacheTtlMs = 24 * 60 * 60 * 1000;
+const hltvBlockedTtlMs = 6 * 60 * 60 * 1000;
 const defaultCacheDir = path.join("data", "research-cache", "hltv");
+const blockedCacheDir = path.join("data", "cache", "hltv", "blocked");
 let lastResearchRequestAt = 0;
 
 export async function researchFetchText(url: string, options: ResearchFetchOptions = {}): Promise<ResearchFetchResult> {
@@ -56,8 +59,16 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
     }
   }
 
+  const now = options.now ?? new Date();
+  const blockPath = blockedCachePath(url, options.cacheDir);
+  const cachedBlock = options.noCache ? null : await readFreshBlock(blockPath, now);
+  if (cachedBlock) {
+    warnings.push("Recent HTTP 403 cached for 6 hours; use Apify, Jina fallback, or manual CSV instead of retrying direct HLTV.");
+    return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
+  }
+
   const cachePath = cacheFilePath(url, options.cacheDir, options.cacheNamespace);
-  const cached = await readFreshCache(cachePath, options.now ?? new Date());
+  const cached = options.noCache ? null : await readFreshCache(cachePath, now);
   if (cached !== null) return { status: "cached", url: redactResearchUrl(url), body: cached, warnings };
 
   try {
@@ -74,27 +85,29 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
 
 async function fetchWithRetries(url: string, options: ResearchFetchOptions) {
   const waitImpl = options.waitImpl ?? wait;
-  let lastError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try {
-      await guardRateLimit(options.rateLimitMs ?? 5000, waitImpl, options.now ?? new Date());
-      const body = await fetchText(url, {
-        headers: {
-          Accept: "text/html,text/plain,*/*",
-          "User-Agent": hltvResearchUserAgent
-        }
-      }, options.fetchImpl);
-      lastResearchRequestAt = Date.now();
-      return body;
-    } catch (error) {
-      lastError = error;
-      const message = error instanceof Error ? error.message : String(error);
-      if (!/HTTP 403/i.test(message) || attempt === 2) break;
-      await logResearchEvent({ level: "WARN", source: "research-fetch", message: `403 retry ${attempt + 1}/3 with exponential backoff.`, url }).catch(() => undefined);
-      await waitImpl(500 * 2 ** attempt);
+  try {
+    await guardRateLimit(options.rateLimitMs ?? 5000, waitImpl, options.now ?? new Date());
+    const body = await fetchText(url, {
+      headers: {
+        Accept: "text/html,text/plain,*/*",
+        "User-Agent": hltvResearchUserAgent
+      }
+    }, options.fetchImpl);
+    lastResearchRequestAt = Date.now();
+    return body;
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/HTTP 403/i.test(message)) {
+      await writeBlockCache(blockedCachePath(url, options.cacheDir), options.now ?? new Date(), message).catch(() => undefined);
+      await logResearchEvent({
+        level: "WARN",
+        source: "hltv",
+        message: "HTTP 403 from HLTV cached for 6 hours; try Apify, Jina fallback, or manual CSV. No alternate User-Agent retry attempted.",
+        url
+      }).catch(() => undefined);
     }
+    throw error instanceof Error ? error : new Error("Research request failed.");
   }
-  throw lastError instanceof Error ? lastError : new Error("Research request failed.");
 }
 
 export function isResearchEnabled(env: FetcherEnv, sourceFlag: string) {
@@ -178,8 +191,28 @@ async function guardRateLimit(rateLimitMs: number, waitImpl: (ms: number) => Pro
   }
 }
 
+async function readFreshBlock(filePath: string, now: Date) {
+  try {
+    const cached = JSON.parse(await readFile(filePath, "utf8")) as { timestamp?: string };
+    const timestamp = cached.timestamp ? new Date(cached.timestamp).getTime() : 0;
+    return Number.isFinite(timestamp) && now.getTime() - timestamp < hltvBlockedTtlMs;
+  } catch {
+    return false;
+  }
+}
+
+async function writeBlockCache(filePath: string, now: Date, reason: string) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify({ timestamp: now.toISOString(), reason }, null, 2)}\n`, "utf8");
+}
+
 function redactResearchUrl(url: string) {
   return url.replace(/([?&](?:token|key|api_key|authorization)=)[^&]+/gi, "$1[redacted]");
+}
+
+function blockedCachePath(url: string, cacheDir?: string) {
+  const digest = createHash("sha256").update(url).digest("hex");
+  return path.resolve(process.cwd(), cacheDir ? path.join(cacheDir, "blocked") : blockedCacheDir, `${digest}.json`);
 }
 
 function isAllowedResearchUrl(rawUrl: string, options: ResearchFetchOptions) {

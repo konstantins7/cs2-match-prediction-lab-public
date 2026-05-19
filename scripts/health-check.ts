@@ -21,7 +21,8 @@ async function main() {
   results.push(await run("build", [nodeScript("next"), "build"]));
   results.push(await run("cli:data:pipeline", [nodeScript("tsx"), "src/scripts/analyticsPipeline.ts", "--matchId", "pandascore_match_1488973", "--mode", "fast", "--dry-run"]));
   results.push(await run("cli:data:auto-all", [nodeScript("tsx"), "scripts/auto-all.ts", "--matchId", "pandascore_match_1488973", "--teamA", "Evo Novo", "--teamB", "WAZABI", "--mode", "deeper", "--dry-run"]));
-  results.push(await run("cli:data:auto-all:extended", [nodeScript("tsx"), "scripts/auto-all-extended.ts", "--matchId", "pandascore_match_1488973", "--teamA", "Evo Novo", "--teamB", "WAZABI", "--mode", "max", "--dry-run"]));
+  const extendedSmoke = await run("cli:data:auto-all:extended", [nodeScript("tsx"), "scripts/auto-all-extended.ts", "--matchId", "pandascore_match_1488973", "--teamA", "Evo Novo", "--teamB", "WAZABI", "--mode", "max", "--dry-run"], { ENABLE_RESEARCH_SOURCES: "true" });
+  results.push(validateExtendedSmoke(extendedSmoke));
   if (apiSmoke) results.push(...await runApiSmoke(process.env.HEALTH_BASE_URL ?? "http://127.0.0.1:3000"));
   else results.push({ name: "api smoke", ok: true, detail: "Skipped; set HEALTH_BASE_URL or pass --api to probe a running local server." });
 
@@ -42,9 +43,9 @@ function nodeScript(name: "eslint" | "next" | "tsc" | "vitest" | "tsx") {
   return path.join(root, files[name]);
 }
 
-async function run(name: string, args: string[]): Promise<CheckResult> {
+async function run(name: string, args: string[], envPatch: Partial<NodeJS.ProcessEnv> = {}): Promise<CheckResult> {
   return new Promise((resolve) => {
-    const child = spawn(node, args, { cwd: root, env: { ...process.env }, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(node, args, { cwd: root, env: { ...process.env, ...envPatch }, stdio: ["ignore", "pipe", "pipe"] });
     const chunks: Buffer[] = [];
     const errors: Buffer[] = [];
     child.stdout.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
@@ -62,7 +63,7 @@ async function run(name: string, args: string[]): Promise<CheckResult> {
 
 async function staticSafety(): Promise<CheckResult> {
   const packageJson = await readFile(path.join(root, "package.json"), "utf8");
-  const forbiddenPackages = ["puppeteer", "playwright", "selenium", "cheerio", "jsdom"];
+  const forbiddenPackages = ["puppeteer", "playwright", "selenium", "cheerio", "jsdom", "axios", "got", "request", "superagent"];
   const packageHits = forbiddenPackages.filter((item) => new RegExp(`"${item}"`).test(packageJson));
   const files = await trackedSourceFiles(root);
   const autoApplyHits: string[] = [];
@@ -72,12 +73,25 @@ async function staticSafety(): Promise<CheckResult> {
     if (relativePath === "scripts/health-check.ts" || relativePath.endsWith(".test.ts") || relativePath.endsWith(".test.tsx")) continue;
     const text = await readFile(file, "utf8");
     if (text.includes("--auto-apply")) autoApplyHits.push(relativePath);
-    if (/(puppeteer|playwright|selenium|cheerio|jsdom|apify-client)/i.test(text) && !/docs[\\/]|README|CHANGELOG|node_modules/.test(relativePath)) {
+    if (hasForbiddenUsage(text) && !/docs[\\/]|README|CHANGELOG|node_modules/.test(relativePath)) {
       forbiddenUsageHits.push(relativePath);
     }
   }
   const hits = [...packageHits.map((hit) => `package:${hit}`), ...autoApplyHits.map((hit) => `auto-apply:${hit}`), ...forbiddenUsageHits.map((hit) => `usage:${hit}`)];
   return { name: "static safety", ok: hits.length === 0, detail: hits.length ? hits.join("\n") : "No forbidden packages/usages or --auto-apply found." };
+}
+
+function hasForbiddenUsage(text: string) {
+  return /(?:from\s+["']|require\(["']|import\(["'])(puppeteer|playwright|selenium|cheerio|jsdom|apify-client|axios|got|request|superagent)(?:["']|\))/i.test(text);
+}
+
+function validateExtendedSmoke(result: CheckResult): CheckResult {
+  if (!result.ok) return result;
+  const errors: string[] = [];
+  if (/ENABLE_RESEARCH_SOURCES=false/i.test(result.detail)) errors.push("Extended smoke reported ENABLE_RESEARCH_SOURCES=false even though health enabled it.");
+  if (/(APIFY_TOKEN|api[_-]?key|token)["']?\s*[:=]\s*["']?[A-Za-z0-9_-]{8,}/i.test(result.detail)) errors.push("Extended smoke output appears to contain an unredacted secret.");
+  if (/prisma\.(create|update|upsert|delete|createMany|updateMany|deleteMany)/i.test(result.detail)) errors.push("Extended smoke output suggests a DB write path.");
+  return errors.length ? { ...result, ok: false, detail: errors.join("\n") } : result;
 }
 
 function productionEnvPosture(): CheckResult {

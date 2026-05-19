@@ -19,6 +19,7 @@ import { refreshForecastabilityCache, refreshForecastabilityCacheForUpcoming } f
 import { runAnalyticsPipeline } from "@/lib/analyticsPipeline";
 import { runFullMatchAnalysis } from "@/lib/fullMatchAnalysis";
 import { resolvePredictionResultManually, resolvePredictionResults } from "@/lib/predictionLifecycle";
+import { logUserAction } from "@/lib/userActionLogger";
 import type { ForecastAutopilotMode } from "@/lib/autoResearchShared";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     }
     if (body.action === "full_match_analysis") {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
-      const result = await runFullMatchAnalysis(body.matchId, normalizeMode(body.mode), { savePrediction: body.savePrediction === true });
+      const result = await logged(body, "full_match_analysis", () => runFullMatchAnalysis(body.matchId!, normalizeMode(body.mode), { savePrediction: body.savePrediction === true }));
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "analytics_pipeline") {
@@ -89,8 +90,11 @@ export async function POST(request: Request) {
       return NextResponse.json(result, { status: result.ok ? 200 : 400 });
     }
     if (body.action === "refresh_match_feed") {
-      const result = await refreshMatchFeed();
-      const forecastabilityCache = await refreshForecastabilityCacheForUpcoming().catch(() => ({ refreshed: 0, requested: 0 }));
+      const { result, forecastabilityCache } = await logged(body, "match_feed_refresh", async () => {
+        const result = await refreshMatchFeed();
+        const forecastabilityCache = await refreshForecastabilityCacheForUpcoming().catch(() => ({ refreshed: 0, requested: 0 }));
+        return { result, forecastabilityCache };
+      });
       return NextResponse.json({ ok: true, result, forecastabilityCache });
     }
     if (body.action === "provider_capability_probe") {
@@ -116,12 +120,15 @@ export async function POST(request: Request) {
     }
     if (body.action === "grid_oa_enrich_match") {
       if (!body.matchId) return NextResponse.json({ ok: false, error: "matchId is required." }, { status: 400 });
-      const result = await enrichGridOpenAccessMatch(body.matchId);
-      if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
-        await rebuildSnapshots();
-        await runPredictionsForUpcomingMatches();
-        await refreshForecastabilityCache(body.matchId).catch(() => undefined);
-      }
+      const result = await logged(body, "grid_enrichment", async () => {
+        const result = await enrichGridOpenAccessMatch(body.matchId!);
+        if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
+          await rebuildSnapshots();
+          await runPredictionsForUpcomingMatches();
+          await refreshForecastabilityCache(body.matchId!).catch(() => undefined);
+        }
+        return result;
+      });
       return NextResponse.json({ ok: result.errors.length === 0 || result.recordsFetched > 0, result });
     }
     if (body.action === "prepare_match") {
@@ -130,15 +137,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "run_all") {
-      const results = await runAllSync();
+      const results = await logged(body, "sync_all_sources", () => runAllSync());
       return NextResponse.json({ ok: true, results });
     }
     if (body.action === "pandascore_free") {
-      const results = await syncPandaScoreFreeFixtures();
+      const results = await logged(body, "sync_pandascore_fixtures", () => syncPandaScoreFreeFixtures());
       return NextResponse.json({ ok: true, results });
     }
     if (body.action === "rebuild_snapshots") {
-      const result = await rebuildSnapshots();
+      const result = await logged(body, "rebuild_snapshots", () => rebuildSnapshots());
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "build_basic_form_snapshots") {
@@ -146,7 +153,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, result: { basicResults: result } });
     }
     if (body.action === "recalculate_upcoming") {
-      const count = await runPredictionsForUpcomingMatches();
+      const count = await logged(body, "recalculate_predictions", () => runPredictionsForUpcomingMatches());
       return NextResponse.json({ ok: true, result: { predictions: count } });
     }
     if (body.action === "manual_import") {
@@ -167,10 +174,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "parsed_demo_import") {
-      const result = await runSourceSync("parsed-demo", "parsed_demo_import", body.payload);
-      await rebuildSnapshots();
-      await runPredictionsForUpcomingMatches();
-      if (body.matchId) await refreshForecastabilityCache(body.matchId).catch(() => undefined);
+      const result = await logged(body, "apply_parsed_demo", async () => {
+        const result = await runSourceSync("parsed-demo", "parsed_demo_import", body.payload);
+        await rebuildSnapshots();
+        await runPredictionsForUpcomingMatches();
+        if (body.matchId) await refreshForecastabilityCache(body.matchId).catch(() => undefined);
+        return result;
+      });
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "rank_match_confirm") {
@@ -195,5 +205,36 @@ export async function POST(request: Request) {
       { ok: false, error: redactString(error instanceof Error ? error.message : "Sync request failed.") },
       { status: 500 }
     );
+  }
+}
+
+async function logged<T>(body: SyncRequest, actionName: string, run: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  await logUserAction({
+    actionName,
+    matchId: body.matchId,
+    params: { mode: body.mode, dryRun: body.dryRun, source: body.source, jobType: body.jobType },
+    status: "started"
+  }).catch(() => undefined);
+  try {
+    const result = await run();
+    await logUserAction({
+      actionName,
+      matchId: body.matchId,
+      params: { mode: body.mode, dryRun: body.dryRun, source: body.source, jobType: body.jobType },
+      durationMs: Date.now() - startedAt,
+      status: "completed"
+    }).catch(() => undefined);
+    return result;
+  } catch (error) {
+    await logUserAction({
+      actionName,
+      matchId: body.matchId,
+      params: { mode: body.mode, dryRun: body.dryRun, source: body.source, jobType: body.jobType },
+      durationMs: Date.now() - startedAt,
+      status: "error",
+      errorMessage: error instanceof Error ? error.message : "Action failed."
+    }).catch(() => undefined);
+    throw error;
   }
 }

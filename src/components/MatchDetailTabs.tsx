@@ -19,6 +19,7 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { AutoAllButton } from "./AutoAllButton";
+import { ExtendedAutoAllButton } from "./ExtendedAutoAllButton";
 import { ScientificAnalysisPanel } from "./ScientificAnalysisPanel";
 import { FullMatchAnalysisPanel } from "./FullMatchAnalysisPanel";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
@@ -85,6 +86,7 @@ export function MatchDetailTabs({
           <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
           <ForecastAutopilotButton matchId={input.match.id} compact />
           <AutoAllButton matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
+          <ExtendedAutoAllButton matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
           {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
           <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
         </div>

@@ -3,6 +3,8 @@ import { pathToFileURL } from "node:url";
 import { runAutoFill, type AutoFillMode, type AutoFillResult, type AutoFillWrite } from "../tools/auto-fill";
 import { runCommunityDatasetAutoFetch } from "../tools/community-datasets/auto-fetch";
 import { envFlag, privateInboxPath } from "../tools/data-fetchers/utils";
+import { prisma } from "../src/lib/prisma";
+import { logUserAction } from "../src/lib/userActionLogger";
 import {
   fetchCsstatsDemo,
   runBo3Cs2ApiFetcher,
@@ -32,7 +34,7 @@ export type ExtendedAutoAllResult = {
 
 export async function runAutoAllExtendedCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
-  const result = await runAutoAllExtended({
+  const input = {
     matchId: requiredArg(args, "matchId"),
     teamA: requiredArg(args, "teamA"),
     teamB: requiredArg(args, "teamB"),
@@ -43,7 +45,17 @@ export async function runAutoAllExtendedCli(argv = process.argv.slice(2)) {
     teamBHltvId: stringArg(args, "teamB-hltv-id"),
     teamACsstatsId: stringArg(args, "teamA-csstats-id"),
     teamBCsstatsId: stringArg(args, "teamB-csstats-id"),
-    includeH2h: Boolean(args["include-h2h"])
+    includeH2h: Boolean(args["include-h2h"]),
+    noCache: Boolean(args["no-cache"])
+  };
+  const startedAt = Date.now();
+  await logUserAction({ actionName: "auto_all_extended", matchId: input.matchId, params: { mode: input.mode, dryRun: input.dryRun }, status: "started" }).catch(() => undefined);
+  const result = await runAutoAllExtended(input).then(async (result) => {
+    await logUserAction({ actionName: "auto_all_extended", matchId: input.matchId, params: { mode: input.mode, dryRun: input.dryRun, writes: result.writes.length }, durationMs: Date.now() - startedAt, status: "completed" }).catch(() => undefined);
+    return result;
+  }, async (error) => {
+    await logUserAction({ actionName: "auto_all_extended", matchId: input.matchId, params: { mode: input.mode, dryRun: input.dryRun }, durationMs: Date.now() - startedAt, status: "error", errorMessage: error instanceof Error ? error.message : "Extended Auto-All failed." }).catch(() => undefined);
+    throw error;
   });
   console.log(JSON.stringify(result, null, 2));
 }
@@ -60,7 +72,11 @@ export async function runAutoAllExtended(options: {
   teamACsstatsId?: string;
   teamBCsstatsId?: string;
   includeH2h?: boolean;
+  noCache?: boolean;
 }): Promise<ExtendedAutoAllResult> {
+  if (options.noCache && process.env.NODE_ENV === "production" && process.env.ALLOW_RESEARCH_NO_CACHE !== "true") {
+    throw new Error("--no-cache is disabled in production unless ALLOW_RESEARCH_NO_CACHE=true is set.");
+  }
   const safe = await runAutoFill({
     matchId: options.matchId,
     teamNames: [options.teamA, options.teamB],
@@ -141,7 +157,7 @@ export async function runAutoAllExtended(options: {
   const resolved = options.hltvMatchId
     ? { matchId: options.hltvMatchId, matchUrl: "", score: 1 }
     : hltvResearchEnabled
-      ? await resolveHltvMatchId({ teamA: options.teamA, teamB: options.teamB })
+      ? await resolveHltvMatchId({ teamA: options.teamA, teamB: options.teamB, noCache: options.noCache })
       : null;
   if (!resolved?.matchId) {
     sourceReports.push({ source: "hltv-match-id", status: hltvResearchEnabled ? "missing" : "skipped", message: hltvResearchEnabled ? "No confident HLTV match ID resolved." : "Direct HLTV automation is disabled." });
@@ -155,7 +171,8 @@ export async function runAutoAllExtended(options: {
       teamA: options.teamA,
       teamB: options.teamB,
       hltvMatchId: resolved.matchId,
-      dryRun: options.dryRun
+      dryRun: options.dryRun,
+      noCache: options.noCache
     })
     : null;
   if (parseResult) {
@@ -173,7 +190,7 @@ export async function runAutoAllExtended(options: {
   };
   for (const teamName of [options.teamA, options.teamB]) {
     if (teamIds[teamName]) continue;
-    const resolvedTeam = await resolveHltvTeamId({ teamName });
+    const resolvedTeam = await resolveHltvTeamId({ teamName, noCache: options.noCache });
     teamIds[teamName] = resolvedTeam.teamId;
     sourceReports.push({
       source: `hltv-team-id-${teamName}`,
@@ -191,10 +208,10 @@ export async function runAutoAllExtended(options: {
       sourceReports.push({ source: `hltv-team-${teamName}`, status: "skipped", message: "Direct HLTV automation is disabled; fallback descriptors may still use provided IDs." });
       continue;
     }
-    const maps = await fetchHltvTeamMapStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun });
+    const maps = await fetchHltvTeamMapStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun, noCache: options.noCache });
     writes.push(...maps.writes.map((write) => ({ file: write.fileName, source: "hltv-team-maps", rows: write.rowsInserted })));
     sourceReports.push({ source: `hltv-team-maps-${teamName}`, status: maps.rows.length ? "success" : "partial", message: `map rows=${maps.rows.length}. ${maps.warnings.join(" ")}` });
-    const players = await fetchHltvPlayerStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun });
+    const players = await fetchHltvPlayerStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun, noCache: options.noCache });
     writes.push(...players.writes.map((write) => ({ file: write.fileName, source: "hltv-player-stats", rows: write.rowsInserted })));
     sourceReports.push({ source: `hltv-player-stats-${teamName}`, status: players.rows.length ? "success" : "partial", message: `player rows=${players.rows.length}. ${players.warnings.join(" ")}` });
   }
@@ -262,7 +279,11 @@ export async function runAutoAllExtended(options: {
   }
 
   if (envFlag(process.env, "ENABLE_COMMUNITY_DATASETS")) {
-    const community = await runCommunityDatasetAutoFetch({ dryRun: options.dryRun });
+    const matchStartTime = await getMatchStartTime(options.matchId);
+    const community = await runCommunityDatasetAutoFetch({
+      dryRun: options.dryRun,
+      target: matchStartTime ? { matchId: options.matchId, teamNames: [options.teamA, options.teamB], matchStartTime } : undefined
+    });
     writes.push(...community.writes.map((write) => ({ file: write.fileName, source: "community-datasets", rows: write.rowsInserted })));
     sourceReports.push({
       source: "community-datasets",
@@ -283,6 +304,15 @@ export async function runAutoAllExtended(options: {
       ? "Research sources produced normalized private-inbox files. Validate in /admin/imports before Apply."
       : "Research sources did not produce usable rows; use manual CSV/paste fallback."
   };
+}
+
+async function getMatchStartTime(matchId: string) {
+  try {
+    const match = await prisma.match.findUnique({ where: { id: matchId }, select: { startTime: true } });
+    return match?.startTime ?? null;
+  } catch {
+    return null;
+  }
 }
 
 function diagnosticRows(safe: AutoFillResult, sourceReports: ExtendedAutoAllResult["sourceReports"], multiSourceResults: MultiSourceResult[]) {
@@ -361,7 +391,7 @@ function parseArgs(argv: string[]) {
     const arg = argv[index];
     if (!arg.startsWith("--")) continue;
     const key = arg.slice(2);
-    if (key === "dry-run") {
+    if (key === "dry-run" || key === "no-cache" || key === "include-h2h") {
       parsed[key] = true;
       continue;
     }

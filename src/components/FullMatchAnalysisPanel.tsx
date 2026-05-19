@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useAsyncAction } from "@/hooks/useAsyncAction";
 import type { FullMatchAnalysisResult, FullMatchAnalysisStepStatus } from "@/lib/fullMatchAnalysis";
 
 type ApiResponse = {
@@ -18,27 +19,23 @@ const modes = [
 export function FullMatchAnalysisPanel({ matchId }: { matchId: string }) {
   const [mode, setMode] = useState<(typeof modes)[number]["value"]>("fast");
   const [savePrediction, setSavePrediction] = useState(false);
-  const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<FullMatchAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { execute: run, isLoading: busy } = useAsyncAction(runFullAnalysis, {
+    actionName: "full_match_analysis",
+    onError: (caught) => setError(caught.message)
+  });
 
-  async function run() {
-    setBusy(true);
+  async function runFullAnalysis() {
     setError(null);
-    try {
-      const response = await fetch("/api/admin/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "full_match_analysis", matchId, mode, savePrediction })
-      });
-      const json = (await response.json()) as ApiResponse;
-      if (!json.ok || !json.result) throw new Error(json.error ?? "Полный анализ не удалось выполнить.");
-      setResult(json.result);
-    } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Полный анализ не удалось выполнить.");
-    } finally {
-      setBusy(false);
-    }
+    const response = await fetch("/api/admin/sync", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "full_match_analysis", matchId, mode, savePrediction })
+    });
+    const json = (await response.json()) as ApiResponse;
+    if (!json.ok || !json.result) throw new Error(json.error ?? "Полный анализ не удалось выполнить.");
+    setResult(json.result);
   }
 
   return (
@@ -54,7 +51,7 @@ export function FullMatchAnalysisPanel({ matchId }: { matchId: string }) {
         <button
           type="button"
           disabled={busy}
-          onClick={run}
+          onClick={() => void run()}
           className="rounded bg-lab-cyan px-5 py-2 text-sm font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
         >
           {busy ? "Анализирую..." : "Полный анализ"}

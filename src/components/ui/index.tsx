@@ -31,7 +31,8 @@ export function AppShell({ children }: { children: ReactNode }) {
     ["/admin/sources#source-coverage", "Source coverage"],
     ["/admin/model-lab#feature-snapshot", "Feature snapshot"],
     ["/match/pandascore_match_1474573", "News/Risk"],
-    ["/admin/model-lab#calibration", "Calibration"]
+    ["/admin/model-lab#calibration", "Calibration"],
+    ["/lab/explorer", "Lab explorer"]
   ];
   const advancedNav = [
     ["/admin/backtesting", "Backtesting"],

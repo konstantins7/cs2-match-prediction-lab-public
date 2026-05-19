@@ -15,19 +15,27 @@ export async function fetchHltvTeamMapStats(options: HltvTeamStatsOptions) {
   const warnings: string[] = [];
   const writes: CsvMergeResult[] = [];
   if (!/^\d+$/.test(options.teamId)) return { rows: [], writes, warnings: ["HLTV team id is required for map stats."] };
-  const url = `https://www.hltv.org/stats/teams/maps/${options.teamId}/${hltvSlug(options.teamName)}`;
-  const response = await researchFetchText(url, options);
-  if (!response.body) return { rows: [], writes, warnings: response.warnings };
-  const rows = extractHltvMapStats(response.body, {
-    matchId: options.matchId,
-    teamName: options.teamName,
-    collectedAt: getISODate(options.now),
-    period: options.period ?? "hltv_team_maps",
-    confidence: options.confidence ?? 72
-  });
+  const urls = [
+    `https://www.hltv.org/stats/teams/maps/${options.teamId}/${hltvSlug(options.teamName)}`,
+    `https://www.hltv.org/stats/teams/mapstats/${options.teamId}/${hltvSlug(options.teamName)}`
+  ];
+  let rows: Array<Record<string, unknown>> = [];
+  for (const url of urls) {
+    const response = await researchFetchText(url, options);
+    warnings.push(...response.warnings);
+    if (!response.body) continue;
+    rows = extractHltvMapStats(response.body, {
+      matchId: options.matchId,
+      teamName: options.teamName,
+      collectedAt: getISODate(options.now),
+      period: options.period ?? (url.includes("/mapstats/") ? "hltv_team_mapstats" : "hltv_team_maps"),
+      confidence: options.confidence ?? 72
+    });
+    if (rows.length) break;
+  }
   if (rows.length) writes.push(await mergeSheetRows("map_stats", rows, ["matchId", "teamName", "mapName", "sourceName", "period"], options));
   else warnings.push("HLTV team map stats page had no parseable rows.");
-  return { rows, writes, warnings: [...response.warnings, ...warnings] };
+  return { rows, writes, warnings };
 }
 
 export function extractHltvMapStats(html: string, context: { matchId: string; teamName: string; collectedAt: string; period: string; confidence: number }) {

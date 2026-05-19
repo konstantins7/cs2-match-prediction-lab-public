@@ -12,7 +12,9 @@ import {
   extractVetoRows,
   researchFetchText,
   resetHltvResearchRateLimitForTests,
-  resolveHltvMatchId
+  resolveHltvMatchId,
+  resolveHltvTeamId,
+  extractBestHltvTeamId
 } from "../../tools/research";
 
 const enabledEnv = {
@@ -143,6 +145,62 @@ describe("HLTV research fetchers", () => {
     expect(extractH2hRows("<html>blocked</html>", context)).toEqual([]);
     expect(extractHltvMapStats("<html>blocked</html>", { matchId: "m1", teamName: "Evo Novo", collectedAt: context.collectedAt, period: "p", confidence: 1 })).toEqual([]);
     expect(extractHltvPlayerStats("<html>blocked</html>", { matchId: "m1", teamName: "Evo Novo", collectedAt: context.collectedAt, period: "p", confidence: 1 })).toEqual([]);
+  });
+
+  it("caches direct HLTV 403 blocks without retrying alternate headers", async () => {
+    resetHltvResearchRateLimitForTests();
+    const temp = await mkdtemp(path.join(os.tmpdir(), "hltv-403-cache-"));
+    try {
+      let calls = 0;
+      const first = await researchFetchText("https://www.hltv.org/search?query=Evo+Novo", {
+        env: enabledEnv,
+        cacheDir: temp,
+        rateLimitMs: 0,
+        fetchImpl: async () => {
+          calls += 1;
+          return new Response("Forbidden", { status: 403 });
+        }
+      });
+      const second = await researchFetchText("https://www.hltv.org/search?query=Evo+Novo", {
+        env: enabledEnv,
+        cacheDir: temp,
+        rateLimitMs: 0,
+        fetchImpl: async () => {
+          calls += 1;
+          return new Response("should not be called");
+        }
+      });
+      expect(first.status).toBe("failed");
+      expect(second.status).toBe("blocked");
+      expect(calls).toBe(1);
+      expect(second.warnings.join(" ")).toContain("6 hours");
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
+  });
+
+  it("resolves team IDs through direct search as a final opt-in fallback", async () => {
+    resetHltvResearchRateLimitForTests();
+    expect(extractBestHltvTeamId('<a href="/team/123/evo-novo">Evo Novo</a>', "Evo Novo")).toBe("123");
+    const temp = await mkdtemp(path.join(os.tmpdir(), "hltv-team-id-"));
+    try {
+      const result = await resolveHltvTeamId({
+        teamName: "Evo Novo",
+        env: { ...enabledEnv, ENABLE_RSS_METADATA_DISCOVERY: "false", ENABLE_GOOGLE_CSE_FALLBACK: "false" },
+        cacheDir: temp,
+        rateLimitMs: 0,
+        waitImpl: async () => undefined,
+        fetchImpl: async (input: string | URL) => {
+          if (String(input).includes("/robots.txt")) return new Response("User-agent: *\nAllow: /\n");
+          if (String(input).includes("/rss/")) return new Response("");
+          return new Response('<a href="/team/123/evo-novo">Evo Novo</a>');
+        }
+      });
+      expect(result?.teamId).toBe("123");
+      expect(["cache", "hltv-search"]).toContain(result?.source);
+    } finally {
+      await rm(temp, { recursive: true, force: true });
+    }
   });
 });
 
