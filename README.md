@@ -247,6 +247,21 @@ Rules:
 - If auto-fill cannot close a block, it returns exact template commands and the next action.
 - HLTV remains manual/paste-only; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included.
 
+Research fallback archives live only on `research/fallback-archives` and are disabled by default:
+
+```bash
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_WAYBACK_FALLBACK=true
+ENABLE_SITEMAP_EXPORT_DISCOVERY=true
+ENABLE_RSS_METADATA_DISCOVERY=true
+ENABLE_COMMUNITY_DATASETS=true
+
+npm run data:auto-all:research -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
+npm run data:sync-community-datasets -- --dry-run
+```
+
+This research slice allows Wayback snapshots for allowlisted source URLs, RSS/Atom metadata, JSON-LD extraction, sitemap/export discovery, and explicit GitHub raw/gist community datasets. It still excludes Bing Cache, public proxy fallbacks, bot/browser User-Agent impersonation, Apify, browser automation, Cloudflare/captcha bypass, Prisma writes, and Apply calls.
+
 AWPy batch JSON merge:
 
 ```bash

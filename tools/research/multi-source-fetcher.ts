@@ -1,3 +1,4 @@
+import path from "node:path";
 import { analystSheetTemplates, type AnalystSheetType } from "../../src/lib/analystSheetTemplates";
 import { validateNormalizedFile } from "../../src/lib/validation/normalizedFileValidator";
 import {
@@ -15,6 +16,7 @@ import { extractHltvMapStats } from "./hltv-team-stats";
 import { extractHltvPlayerStats } from "./hltv-player-stats";
 import { hltvSlug, isResearchEnabled, normalizeMapName, parseNumber, researchFetchText, stripTags } from "./hltv-client";
 import { checkRobotsAllowed } from "./robots-cache";
+import { fetchViaWayback } from "./wayback-fetcher";
 
 export type DataType = "roster" | "player_stats" | "map_stats" | "veto" | "h2h";
 
@@ -96,6 +98,8 @@ type SourceDescriptor = {
   expectedRows: number;
   buildUrl: (options: MultiSourceFetchOptions) => string;
   parse: (body: string, context: ParserContext) => Array<Record<string, unknown>>;
+  fetchStrategy?: "direct" | "wayback" | "sitemap-export";
+  directSourceFlag?: string;
 };
 
 type ParserContext = {
@@ -153,24 +157,14 @@ export async function fetchMultiSourceData(options: MultiSourceFetchOptions): Pr
       sourceResults.push({ source: descriptor.id, status: "skipped", rows: [], warnings: [`Research source is disabled: ${sourceFlag}.`], url, parserId: descriptor.parserId });
       continue;
     }
-    const robots = await checkRobotsAllowed(url, { env, fetchImpl: options.fetchImpl, cacheDir: options.cacheDir, now: options.now });
+    const robots = descriptor.fetchStrategy === "wayback"
+      ? { allowed: true, warnings: [] as string[] }
+      : await checkRobotsAllowed(url, { env, fetchImpl: options.fetchImpl, cacheDir: options.cacheDir, now: options.now });
     if (!robots.allowed) {
       sourceResults.push({ source: descriptor.id, status: "skipped", rows: [], warnings: robots.warnings, url, parserId: descriptor.parserId, robotsAllowed: false });
       continue;
     }
-    const response = await researchFetchText(url, {
-      env,
-      fetchImpl: options.fetchImpl,
-      waitImpl: options.waitImpl,
-      cacheDir: options.cacheDir,
-      rateLimitMs: 5000,
-      now: options.now,
-      sourceFlag,
-      allowedHosts: descriptor.allowedHosts,
-      allowedPathPatterns: descriptor.allowedPathPatterns,
-      cacheNamespace: `multi-source-${descriptor.id}`,
-      robotsCheck: false
-    });
+    const response = await fetchDescriptorBody(descriptor, url, options, sourceFlag);
     if (!response.body) {
       sourceResults.push({ source: descriptor.id, status: response.status === "disabled" || response.status === "blocked" ? "skipped" : "failed", rows: [], warnings: response.warnings, url, parserId: descriptor.parserId, robotsAllowed: true });
       continue;
@@ -206,10 +200,83 @@ export async function fetchMultiSourceData(options: MultiSourceFetchOptions): Pr
   return { dataType: options.dataType, sheetType, status: "failed", rows: [], writes, sourceResults, warnings };
 }
 
+async function fetchDescriptorBody(descriptor: SourceDescriptor, url: string, options: MultiSourceFetchOptions, sourceFlag: string) {
+  if (descriptor.fetchStrategy === "wayback") {
+    return fetchViaWayback(url, {
+      env: options.env ?? process.env,
+      fetchImpl: options.fetchImpl,
+      waitImpl: options.waitImpl,
+      cacheDir: options.cacheDir ? path.join(options.cacheDir, "wayback") : undefined,
+      rateLimitMs: 2000,
+      now: options.now,
+      sourceFlag,
+      directSourceFlag: descriptor.directSourceFlag,
+      allowedHosts: descriptor.allowedHosts,
+      allowedPathPatterns: descriptor.allowedPathPatterns,
+      originalAllowedHosts: descriptor.allowedHosts,
+      originalAllowedPathPatterns: descriptor.allowedPathPatterns,
+      cacheNamespace: `multi-source-${descriptor.id}`,
+      directFirst: false
+    });
+  }
+  if (descriptor.fetchStrategy === "sitemap-export") {
+    return fetchFromSitemapExport(descriptor, url, options, sourceFlag);
+  }
+  return researchFetchText(url, {
+    env: options.env ?? process.env,
+    fetchImpl: options.fetchImpl,
+    waitImpl: options.waitImpl,
+    cacheDir: options.cacheDir,
+    rateLimitMs: 5000,
+    now: options.now,
+    sourceFlag,
+    allowedHosts: descriptor.allowedHosts,
+    allowedPathPatterns: descriptor.allowedPathPatterns,
+    cacheNamespace: `multi-source-${descriptor.id}`,
+    robotsCheck: false
+  });
+}
+
+async function fetchFromSitemapExport(descriptor: SourceDescriptor, sitemapUrl: string, options: MultiSourceFetchOptions, sourceFlag: string) {
+  const sitemap = await researchFetchText(sitemapUrl, {
+    env: options.env ?? process.env,
+    fetchImpl: options.fetchImpl,
+    waitImpl: options.waitImpl,
+    cacheDir: options.cacheDir,
+    rateLimitMs: 2000,
+    now: options.now,
+    sourceFlag,
+    allowedHosts: descriptor.allowedHosts,
+    allowedPathPatterns: descriptor.allowedPathPatterns,
+    cacheNamespace: `sitemap-${descriptor.id}`,
+    robotsCheck: false
+  });
+  if (!sitemap.body) return sitemap;
+  const candidate = selectSitemapExportUrl(extractSitemapUrls(sitemap.body), descriptor, options);
+  if (!candidate) {
+    return { status: "failed" as const, url: sitemap.url, body: "", warnings: [...sitemap.warnings, "No allowlisted export URL found in sitemap."] };
+  }
+  const response = await researchFetchText(candidate, {
+    env: options.env ?? process.env,
+    fetchImpl: options.fetchImpl,
+    waitImpl: options.waitImpl,
+    cacheDir: options.cacheDir,
+    rateLimitMs: 2000,
+    now: options.now,
+    sourceFlag,
+    allowedHosts: descriptor.allowedHosts,
+    allowedPathPatterns: descriptor.allowedPathPatterns,
+    cacheNamespace: `sitemap-export-${descriptor.id}`,
+    robotsCheck: false
+  });
+  return { ...response, warnings: [...sitemap.warnings, ...response.warnings, `sitemap_export=${candidate}`] };
+}
+
 export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   roster: [
     descriptor("liquipedia_roster_api", "Liquipedia MediaWiki API", "roster", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 5, (o) => liquipediaApiUrl("parse", o.ids?.liquipediaPage ?? o.teamName ?? ""), parseGenericRoster),
     descriptor("hltv_team_page", "HLTV research team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_HLTV_AUTOMATION"),
+    descriptor("wayback_hltv_team_page", "Wayback HLTV team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_team_page", "CSStats team page", "roster", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+$/], 5, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}`, parseGenericRoster),
     descriptor("esportis_team_page", "Esport.is team page", "roster", [], ["esport.is"], [/^\/team\/[^/]+$/], 5, (o) => `https://esport.is/team/${encodeURIComponent(o.teamName ?? "")}`, parseGenericRoster),
     descriptor("dust2_team_page", "Dust2.dk team page", "roster", ["dust2Team"], ["dust2.dk", "www.dust2.dk"], [/^\/team\/[^/]+$/], 5, (o) => `https://dust2.dk/team/${id(o, "dust2Team")}`, parseGenericRoster),
@@ -223,7 +290,9 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   ],
   player_stats: [
     descriptor("hltv_player_stats", "HLTV research player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseHltvPlayers, "ENABLE_HLTV_AUTOMATION"),
+    descriptor("wayback_hltv_player_stats", "Wayback HLTV player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseHltvPlayers, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_players_csv", "CSStats player CSV", "player_stats", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+\/export$/], 5, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}/export?type=players`, parseGenericPlayerStats),
+    descriptor("csstats_sitemap_players_csv", "CSStats sitemap player CSV", "player_stats", [], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/sitemap\.xml$/, /^\/team\/[^/]+\/export$/], 5, () => "https://csgostats.gg/sitemap.xml", parseGenericPlayerStats, "ENABLE_SITEMAP_EXPORT_DISCOVERY", "sitemap-export"),
     descriptor("faceit_player_stats", "FACEIT player stats", "player_stats", ["playerNickname"], ["www.faceit.com", "faceit.com"], [/^\/players\/[^/]+\/stats$/], 1, (o) => `https://www.faceit.com/players/${id(o, "playerNickname")}/stats`, parseGenericPlayerStats),
     descriptor("esportis_player_stats", "Esport.is player stats", "player_stats", ["playerId"], ["esport.is"], [/^\/player\/[^/]+$/], 1, (o) => `https://esport.is/player/${id(o, "playerId")}`, parseGenericPlayerStats),
     descriptor("steam_web_api_player", "Steam Web API player stats", "player_stats", ["steamId"], ["api.steampowered.com"], [/^\/ISteamUserStats\/GetUserStatsForGame\/v2\/$/], 1, (o) => `https://api.steampowered.com/ISteamUserStats/GetUserStatsForGame/v2/?appid=730&steamid=${id(o, "steamId")}&key=${encodeURIComponent(o.env?.STEAM_API_KEY ?? process.env.STEAM_API_KEY ?? "")}`, parseGenericPlayerStats),
@@ -235,7 +304,9 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   ],
   map_stats: [
     descriptor("hltv_team_map_stats", "HLTV research team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseHltvMaps, "ENABLE_HLTV_AUTOMATION"),
+    descriptor("wayback_hltv_team_map_stats", "Wayback HLTV team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseHltvMaps, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_maps_csv", "CSStats map CSV", "map_stats", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+\/export$/], 7, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}/export?type=maps`, parseGenericMapStats),
+    descriptor("csstats_sitemap_maps_csv", "CSStats sitemap map CSV", "map_stats", [], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/sitemap\.xml$/, /^\/team\/[^/]+\/export$/], 7, () => "https://csgostats.gg/sitemap.xml", parseGenericMapStats, "ENABLE_SITEMAP_EXPORT_DISCOVERY", "sitemap-export"),
     descriptor("liquipedia_map_records", "Liquipedia map records", "map_stats", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 7, (o) => liquipediaApiUrl("parse", o.ids?.liquipediaPage ?? o.teamName ?? ""), parseGenericMapStats),
     descriptor("esportis_team_maps", "Esport.is team maps", "map_stats", [], ["esport.is"], [/^\/team\/[^/]+$/], 7, (o) => `https://esport.is/team/${encodeURIComponent(o.teamName ?? "")}`, parseGenericMapStats),
     descriptor("faceit_team_maps", "FACEIT team map stats", "map_stats", ["faceitTeam"], ["www.faceit.com", "faceit.com"], [/^\/teams\/[^/]+\/stats\/maps$/], 7, (o) => `https://www.faceit.com/teams/${id(o, "faceitTeam")}/stats/maps`, parseGenericMapStats),
@@ -247,6 +318,7 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   ],
   veto: [
     descriptor("hltv_match_veto", "HLTV research match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseHltvVeto, "ENABLE_HLTV_AUTOMATION"),
+    descriptor("wayback_hltv_match_veto", "Wayback HLTV match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseHltvVeto, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
     descriptor("faceit_match_veto", "FACEIT match veto", "veto", ["faceitMatch"], ["www.faceit.com", "faceit.com"], [/^\/csgo\/match\/[^/]+$/], 2, (o) => `https://www.faceit.com/csgo/match/${id(o, "faceitMatch")}`, parseGenericVeto),
     descriptor("liquipedia_match_veto", "Liquipedia match veto", "veto", ["liquipediaPage"], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 2, (o) => liquipediaApiUrl("parse", id(o, "liquipediaPage")), parseGenericVeto),
     descriptor("esl_match_veto", "ESL match veto", "veto", ["eslMatch"], ["www.esl.com", "esl.com"], [/^\/match\/[^/]+$/], 2, (o) => `https://www.esl.com/match/${id(o, "eslMatch")}`, parseGenericVeto),
@@ -259,6 +331,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   ],
   h2h: [
     descriptor("hltv_match_h2h", "HLTV research match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseHltvH2h, "ENABLE_HLTV_AUTOMATION"),
+    descriptor("wayback_hltv_match_h2h", "Wayback HLTV match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseHltvH2h, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("hltv_rss_match_metadata", "HLTV RSS match metadata", "h2h", [], ["www.hltv.org", "hltv.org"], [/^\/rss\/matches$/], 1, () => "https://www.hltv.org/rss/matches", parseRssMetadataOnly, "ENABLE_RSS_METADATA_DISCOVERY"),
     descriptor("liquipedia_team_vs_team", "Liquipedia team vs team", "h2h", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 1, (o) => liquipediaApiUrl("parse", `${o.teamName ?? ""}_vs_${o.opponentTeamName ?? ""}`), parseGenericH2h),
     descriptor("esportis_h2h", "Esport.is H2H", "h2h", [], ["esport.is"], [/^\/head-to-head$/], 1, (o) => `https://esport.is/head-to-head?teamA=${encodeURIComponent(o.teamName ?? "")}&teamB=${encodeURIComponent(o.opponentTeamName ?? "")}`, parseGenericH2h),
     descriptor("csstats_team_comparison", "CSStats team comparison", "h2h", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+\/vs\/[^/]+$/], 1, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}/vs/${encodeURIComponent(o.opponentTeamName ?? "")}`, parseGenericH2h),
@@ -281,9 +355,11 @@ function descriptor(
   expectedRows: number,
   buildUrl: SourceDescriptor["buildUrl"],
   parse: SourceDescriptor["parse"],
-  sourceFlag = "ENABLE_RESEARCH_SOURCES"
+  sourceFlag = "ENABLE_RESEARCH_SOURCES",
+  fetchStrategy: SourceDescriptor["fetchStrategy"] = "direct",
+  directSourceFlag?: string
 ): SourceDescriptor {
-  return { id: idValue, name, dataType, required, allowedHosts, allowedPathPatterns, expectedRows, buildUrl, parse, sourceFlag, parserId: parse.name || "anonymous_parser" };
+  return { id: idValue, name, dataType, required, allowedHosts, allowedPathPatterns, expectedRows, buildUrl, parse, sourceFlag, fetchStrategy, directSourceFlag, parserId: parse.name || "anonymous_parser" };
 }
 
 function missingIdentifiers(descriptor: SourceDescriptor, options: MultiSourceFetchOptions) {
@@ -321,6 +397,8 @@ function parseGenericRoster(body: string, context: ParserContext): Array<Record<
   const parsed = parseJsonPayload(body);
   const rows = extractNamesFromJson(parsed).map((nickname) => rosterRow(context, nickname));
   if (rows.length) return rows;
+  const structured = extractJsonLd(body).flatMap(extractRosterNamesFromStructuredData);
+  if (structured.length) return unique(structured).map((nickname) => rosterRow(context, nickname));
   const blocks = extractJsonLd(body).flatMap(extractNamesFromJson);
   if (blocks.length) return unique(blocks).map((nickname) => rosterRow(context, nickname));
   const htmlNames = extractNamesFromHtml(body).slice(0, 8);
@@ -331,6 +409,8 @@ function parseGenericPlayerStats(body: string, context: ParserContext): Array<Re
   const jsonRows = extractObjects(parseJsonPayload(body));
   const jsonPlayerRows = compactRows(jsonRows.map((row) => playerRowFromRecord(row, context)));
   if (jsonPlayerRows.length) return jsonPlayerRows;
+  const jsonLdRows = compactRows(extractJsonLd(body).flatMap(extractObjects).map((row) => playerRowFromRecord(row, context)));
+  if (jsonLdRows.length) return jsonLdRows;
   const csvRows = compactRows(parseCsvRows(body).map((row) => playerRowFromRecord(row, context)));
   if (csvRows.length) return csvRows;
   return extractHltvPlayerStats(body, baseTeamContext(context)).map((row) => ({ ...row, sourceName: context.sourceName, confidence: context.confidence, period: context.period }));
@@ -340,6 +420,8 @@ function parseGenericMapStats(body: string, context: ParserContext): Array<Recor
   const jsonRows = extractObjects(parseJsonPayload(body));
   const jsonMapRows = compactRows(jsonRows.map((row) => mapRowFromRecord(row, context)));
   if (jsonMapRows.length) return jsonMapRows;
+  const jsonLdRows = compactRows(extractJsonLd(body).flatMap(extractObjects).map((row) => mapRowFromRecord(row, context)));
+  if (jsonLdRows.length) return jsonLdRows;
   const csvRows = compactRows(parseCsvRows(body).map((row) => mapRowFromRecord(row, context)));
   if (csvRows.length) return csvRows;
   return extractHltvMapStats(body, baseTeamContext(context)).map((row) => ({ ...row, sourceName: context.sourceName, confidence: context.confidence, period: context.period }));
@@ -383,6 +465,10 @@ function parseHltvH2h(body: string, context: ParserContext): Array<Record<string
   return parseGenericH2h(body, context);
 }
 
+function parseRssMetadataOnly(body: string): Array<Record<string, unknown>> {
+  return extractRssItems(body).length ? [] : [];
+}
+
 function baseTeamContext(context: ParserContext) {
   return {
     matchId: context.options.matchId,
@@ -411,21 +497,21 @@ function rosterRow(context: ParserContext, nickname: string) {
 function playerRowFromRecord(record: Record<string, unknown>, context: ParserContext) {
   const nickname = textAt(record, ["nickname", "player", "playerName", "name"]);
   const maps = numberValue(record, ["maps", "mapsPlayed", "sampleSize", "played"]);
-  const rating = numberValue(record, ["rating", "rating2", "rating_2_0", "rating2_0"]);
+  const rating = numberValue(record, ["rating", "rating2", "rating_2_0", "rating2_0", "statistics.rating", "stats.rating"]);
   if (!nickname || !maps || !rating) return null;
   return {
     matchId: context.options.matchId,
     teamName: context.options.teamName ?? "",
     nickname,
     maps,
-    kills: numberValue(record, ["kills", "k"]) ?? 0,
-    deaths: numberValue(record, ["deaths", "d"]) ?? 0,
-    assists: numberValue(record, ["assists", "a"]) ?? 0,
-    kd: numberValue(record, ["kd", "kdr"]) ?? 1,
+    kills: numberValue(record, ["kills", "k", "statistics.kills", "stats.kills"]) ?? 0,
+    deaths: numberValue(record, ["deaths", "d", "statistics.deaths", "stats.deaths"]) ?? 0,
+    assists: numberValue(record, ["assists", "a", "statistics.assists", "stats.assists"]) ?? 0,
+    kd: numberValue(record, ["kd", "kdr", "statistics.kd", "stats.kd"]) ?? 1,
     rating,
-    adr: numberValue(record, ["adr", "averageDamage"]) ?? 0,
-    kast: numberValue(record, ["kast"]) ?? 0,
-    impact: numberValue(record, ["impact"]) ?? 0,
+    adr: numberValue(record, ["adr", "averageDamage", "statistics.adr", "stats.adr"]) ?? 0,
+    kast: numberValue(record, ["kast", "statistics.kast", "stats.kast"]) ?? 0,
+    impact: numberValue(record, ["impact", "statistics.impact", "stats.impact"]) ?? 0,
     openingKills: numberValue(record, ["openingKills", "opening_kills"]) ?? 0,
     openingDeaths: numberValue(record, ["openingDeaths", "opening_deaths"]) ?? 0,
     clutchesWon: numberValue(record, ["clutchesWon", "clutches_won"]) ?? 0,
@@ -439,8 +525,8 @@ function playerRowFromRecord(record: Record<string, unknown>, context: ParserCon
 }
 
 function mapRowFromRecord(record: Record<string, unknown>, context: ParserContext) {
-  const mapName = normalizeMapName(textAt(record, ["mapName", "map", "name"]));
-  const mapsPlayed = numberValue(record, ["mapsPlayed", "maps", "played", "sampleSize"]);
+  const mapName = normalizeMapName(textAt(record, ["mapName", "map", "name", "location.name", "location"]));
+  const mapsPlayed = numberValue(record, ["mapsPlayed", "maps", "played", "sampleSize"]) ?? (isSportsEventRecord(record) && mapName ? 1 : null);
   if (!mapName || !mapsPlayed) return null;
   const wins = numberValue(record, ["wins", "w"]) ?? 0;
   const losses = numberValue(record, ["losses", "l"]) ?? Math.max(0, mapsPlayed - wins);
@@ -451,7 +537,7 @@ function mapRowFromRecord(record: Record<string, unknown>, context: ParserContex
     mapsPlayed,
     wins,
     losses,
-    winRate: numberValue(record, ["winRate", "winrate", "winPct", "win%"]) ?? (wins / mapsPlayed) * 100,
+    winRate: numberValue(record, ["winRate", "winrate", "winPct", "win%", "statistics.winRate", "stats.winRate"]) ?? (wins / mapsPlayed) * 100,
     roundsWon: numberValue(record, ["roundsWon", "rounds_won"]) ?? 0,
     roundsLost: numberValue(record, ["roundsLost", "rounds_lost"]) ?? 0,
     ctRoundWinRate: numberValue(record, ["ctRoundWinRate", "ctWinRate"]) ?? 0,
@@ -478,6 +564,24 @@ export function extractJsonLd(html: string) {
   return payloads;
 }
 
+export function extractRosterNamesFromStructuredData(payload: unknown) {
+  const names: string[] = [];
+  for (const record of extractObjects(payload)) {
+    const type = jsonLdTypes(record);
+    if (!type.some((value) => ["sportsteam", "organization", "sportsorganization"].includes(value))) continue;
+    for (const key of ["member", "members", "athlete", "athletes", "employee", "players"]) {
+      const value = record[key];
+      for (const nested of extractObjects(value)) {
+        const nestedType = jsonLdTypes(nested);
+        const name = textAt(nested, ["alternateName", "nickname", "name", "identifier", "url", "sameAs"]);
+        if (name && (!nestedType.length || nestedType.includes("person"))) names.push(cleanStructuredName(name));
+      }
+      if (typeof value === "string") names.push(cleanStructuredName(value));
+    }
+  }
+  return names.filter(isLikelyNickname);
+}
+
 export function extractRssItems(xml: string) {
   return [...xml.matchAll(/<item\b[^>]*>([\s\S]*?)<\/item>/gi)].map((match) => ({
     title: stripTags(match[1]?.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1] ?? ""),
@@ -490,10 +594,45 @@ export function extractSitemapUrls(xml: string) {
   return [...xml.matchAll(/<loc[^>]*>([\s\S]*?)<\/loc>/gi)].map((match) => stripTags(match[1] ?? "")).filter(Boolean);
 }
 
+export function selectSitemapExportUrl(urls: string[], descriptor: Pick<SourceDescriptor, "allowedHosts" | "allowedPathPatterns" | "dataType">, options: MultiSourceFetchOptions) {
+  const expectedTokens = descriptor.dataType === "player_stats" ? ["players", "player_stats", "stats"] : descriptor.dataType === "map_stats" ? ["maps", "map_stats"] : [descriptor.dataType];
+  const teamTokens = [options.teamName, options.csstatsTeamId, options.teamId].filter(Boolean).map((value) => hltvSlug(String(value)));
+  const candidates = urls
+    .map((raw) => safeUrl(raw))
+    .filter((url): url is URL => Boolean(url))
+    .filter((url) => descriptor.allowedHosts.map((host) => host.toLowerCase()).includes(url.hostname.toLowerCase()))
+    .filter((url) => descriptor.allowedPathPatterns.some((pattern) => pattern.test(url.pathname)))
+    .filter((url) => isExportLikeUrl(url));
+  const scored = candidates.map((url) => {
+    const haystack = `${url.pathname} ${url.search}`.toLowerCase();
+    const expectedScore = expectedTokens.some((token) => haystack.includes(token)) ? 5 : 0;
+    const teamScore = teamTokens.some((token) => token && haystack.includes(token)) ? 2 : 0;
+    return { url, score: expectedScore + teamScore };
+  }).filter((entry) => entry.score > 0);
+  scored.sort((a, b) => b.score - a.score || a.url.toString().localeCompare(b.url.toString()));
+  return scored[0]?.url.toString() ?? "";
+}
+
 function extractNamesFromJson(payload: unknown): string[] {
   return extractObjects(payload)
     .flatMap((record) => [textAt(record, ["nickname", "nick", "player", "playerName", "name"])])
     .filter(isLikelyNickname);
+}
+
+function jsonLdTypes(record: Record<string, unknown>) {
+  const raw = record["@type"];
+  const values = Array.isArray(raw) ? raw : [raw];
+  return values.map((value) => String(value ?? "").toLowerCase()).filter(Boolean);
+}
+
+function cleanStructuredName(value: string) {
+  const lastUrlSegment = value.includes("/") ? value.split(/[/?#]/).filter(Boolean).pop() ?? value : value;
+  return stripTags(lastUrlSegment).replace(/[_-]+/g, " ").trim();
+}
+
+function isSportsEventRecord(record: Record<string, unknown>) {
+  const types = jsonLdTypes(record);
+  return types.includes("event") || types.includes("sportsevent");
 }
 
 function extractNamesFromHtml(html: string) {
@@ -560,12 +699,26 @@ function splitCsvLine(line: string) {
 
 function numberValue(record: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
-    const raw = record[key];
+    const raw = textAt(record, [key]) || record[key];
     if (raw === undefined || raw === null || raw === "") continue;
     const parsed = typeof raw === "number" ? raw : parseNumber(String(raw));
     if (parsed !== null && Number.isFinite(parsed) && parsed > 0) return parsed;
   }
   return null;
+}
+
+function safeUrl(raw: string) {
+  try {
+    return new URL(raw);
+  } catch {
+    return null;
+  }
+}
+
+function isExportLikeUrl(url: URL) {
+  const combined = `${url.pathname} ${url.search}`.toLowerCase();
+  if (/[?&]page=|\/page\//.test(combined)) return false;
+  return combined.includes("/export") || combined.endsWith(".csv") || combined.endsWith(".json") || combined.includes("type=maps") || combined.includes("type=players");
 }
 
 function hltvMatchUrl(options: MultiSourceFetchOptions) {
