@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.3.0 - Local AI Import Assistant
+
+- Added opt-in local AI extraction through Ollama on `127.0.0.1`, disabled by default behind `ENABLE_LOCAL_AI`.
+- Added `Быстрый AI импорт` on match pages for pasted text/HTML/Markdown, editable sheet previews, and explicit analyst-sheet Apply.
+- Added local AI cache, technical metrics logs, setup helper, and confirmed-example export script.
+- Documented text-first scope and deferred screenshot/OCR support to v1.4.0.
+
 ## v1.2.0 - Coverage Push, Research Diagnostics, and Model Calibration
 
 - Added `feat/1.2.0` research coverage plan implementation: HLTV fail-fast 403 cache, capped player-stat pagination, mapstats fallback, shared ID cache, CSE quota guard, and extended diagnostics.

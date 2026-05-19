@@ -63,7 +63,7 @@ async function run(name: string, args: string[], envPatch: Partial<NodeJS.Proces
 
 async function staticSafety(): Promise<CheckResult> {
   const packageJson = await readFile(path.join(root, "package.json"), "utf8");
-  const forbiddenPackages = ["puppeteer", "playwright", "selenium", "cheerio", "jsdom", "axios", "got", "request", "superagent"];
+  const forbiddenPackages = ["puppeteer", "playwright", "selenium", "cheerio", "jsdom", "axios", "got", "request", "superagent", "openai", "@anthropic-ai/sdk", "@google/generative-ai"];
   const packageHits = forbiddenPackages.filter((item) => new RegExp(`"${item}"`).test(packageJson));
   const files = await trackedSourceFiles(root);
   const autoApplyHits: string[] = [];
@@ -73,7 +73,7 @@ async function staticSafety(): Promise<CheckResult> {
     if (relativePath === "scripts/health-check.ts" || relativePath.endsWith(".test.ts") || relativePath.endsWith(".test.tsx")) continue;
     const text = await readFile(file, "utf8");
     if (text.includes("--auto-apply")) autoApplyHits.push(relativePath);
-    if (hasForbiddenUsage(text) && !/docs[\\/]|README|CHANGELOG|node_modules/.test(relativePath)) {
+    if ((hasForbiddenUsage(text) || hasCloudAiEndpoint(text)) && !/docs[\\/]|README|CHANGELOG|node_modules/.test(relativePath)) {
       forbiddenUsageHits.push(relativePath);
     }
   }
@@ -82,7 +82,11 @@ async function staticSafety(): Promise<CheckResult> {
 }
 
 function hasForbiddenUsage(text: string) {
-  return /(?:from\s+["']|require\(["']|import\(["'])(puppeteer|playwright|selenium|cheerio|jsdom|apify-client|axios|got|request|superagent)(?:["']|\))/i.test(text);
+  return /(?:from\s+["']|require\(["']|import\(["'])(puppeteer|playwright|selenium|cheerio|jsdom|apify-client|axios|got|request|superagent|openai|@anthropic-ai\/sdk|@google\/generative-ai)(?:["']|\))/i.test(text);
+}
+
+function hasCloudAiEndpoint(text: string) {
+  return /api\.openai\.com|anthropic\.com\/v1|generativelanguage\.googleapis\.com|api\.mistral\.ai|api\.groq\.com/i.test(text);
 }
 
 function validateExtendedSmoke(result: CheckResult): CheckResult {
