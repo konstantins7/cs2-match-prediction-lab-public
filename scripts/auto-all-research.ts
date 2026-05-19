@@ -1,5 +1,5 @@
-import { pathToFileURL } from "node:url";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 import {
   runAutoAllExtended,
   runAutoAllExtendedCli,

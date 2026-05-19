@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.1.0 - Extended Sources and Scientific Analysis
+
+- Added optional `data:auto-all:extended` research flow with Archive.today, Wayback, RSS/Atom metadata, sitemap/export discovery, GraphQL discovery, Google CSE identifier fallback, Jina Reader fallback, and community dataset sync behind explicit env flags.
+- Added read-only scientific analysis through `/api/match-analysis/[matchId]?mode=deep&v=1`, including player-map efficiency, team synergy, Elo-style signals, Bayesian map probability, outlier warnings, and weighted model controls.
+- Added the `Научный анализ` match-page tab with quality indicators, model-weight controls, heatmap/trend views, parsed-demo round analytics when available, and CSV export.
+- Added cache invalidation for analysis results based on analysis version, parameters, and private-inbox fingerprints.
+- Documented Google CSE quota handling, Jina response limits, Archive.today/Wayback limits, and realistic non-Apify coverage expectations.
+- Kept safe `data:auto-all`, `data:pipeline`, Apply flow, Prisma writes, forecast math, Real Forecast Ready gates, seed behavior, and page-load sync unchanged.
+
 ## v1.0.0 - Production Release
 
 - Added Auto-All UI with polling progress and source lineage.

@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -45,7 +45,6 @@
   },
   "dependencies": {
     "@prisma/client": "5.22.0",
-    "apify-client": "^2.23.3",
     "clsx": "^2.1.1",
     "lucide-react": "^0.468.0",
     "next": "^15.3.5",

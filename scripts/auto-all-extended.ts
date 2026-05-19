@@ -5,7 +5,6 @@ import { runCommunityDatasetAutoFetch } from "../tools/community-datasets/auto-f
 import { envFlag, privateInboxPath } from "../tools/data-fetchers/utils";
 import {
   fetchCsstatsDemo,
-  fetchHltvViaApify,
   runBo3Cs2ApiFetcher,
   runEsportisResearchFetcher,
   fetchMultiSourceData,
@@ -14,7 +13,8 @@ import {
   fetchHltvTeamMapStats,
   parseHltvMatchPage,
   processResearchDemoBatch,
-  resolveHltvMatchId
+  resolveHltvMatchId,
+  resolveHltvTeamId
 } from "../tools/research";
 
 type CliArgs = Record<string, string | boolean>;
@@ -71,6 +71,10 @@ export async function runAutoAllExtended(options: {
   const hltvResearchEnabled = baseResearchEnabled && envFlag(process.env, "ENABLE_HLTV_AUTOMATION");
   const fallbackResearchEnabled = baseResearchEnabled && [
     "ENABLE_WAYBACK_FALLBACK",
+    "ENABLE_ARCHIVE_TODAY_FALLBACK",
+    "ENABLE_JINA_PROXY_FALLBACK",
+    "ENABLE_GRAPHQL_DISCOVERY",
+    "ENABLE_GOOGLE_CSE_FALLBACK",
     "ENABLE_SITEMAP_EXPORT_DISCOVERY",
     "ENABLE_RSS_METADATA_DISCOVERY",
     "ENABLE_COMMUNITY_DATASETS",
@@ -165,6 +169,16 @@ export async function runAutoAllExtended(options: {
     [options.teamB]: options.teamBHltvId || parseResult?.teamIds[options.teamB] || ""
   };
   for (const teamName of [options.teamA, options.teamB]) {
+    if (teamIds[teamName]) continue;
+    const resolvedTeam = await resolveHltvTeamId({ teamName });
+    teamIds[teamName] = resolvedTeam.teamId;
+    sourceReports.push({
+      source: `hltv-team-id-${teamName}`,
+      status: resolvedTeam.teamId ? "success" : "skipped",
+      message: resolvedTeam.teamId ? `Resolved ${resolvedTeam.teamId} via ${resolvedTeam.source}.` : resolvedTeam.warnings.join(" ") || "No HLTV team ID resolved via RSS/CSE/cache."
+    });
+  }
+  for (const teamName of [options.teamA, options.teamB]) {
     const teamId = teamIds[teamName];
     if (!teamId) {
       sourceReports.push({ source: `hltv-team-${teamName}`, status: "missing", message: "No HLTV team ID available for map/player stats." });
@@ -230,41 +244,6 @@ export async function runAutoAllExtended(options: {
     }
   }
 
-  const shouldTryApify = missingTypes.length > 0 || options.mode === "max";
-  if (shouldTryApify) {
-    const apify = await fetchHltvViaApify({
-      matchId: options.matchId,
-      teamA: options.teamA,
-      teamB: options.teamB,
-      hltvMatchId: resolved?.matchId,
-      dryRun: options.dryRun
-    });
-    writes.push(...apify.writes.map((write) => ({ file: write.fileName, source: "apify-hltv-actor", rows: write.rowsInserted })));
-    sourceReports.push({
-      source: "apify-hltv-actor",
-      status: apify.status,
-      message: apifyMessage(apify)
-    });
-    for (const teamName of [options.teamA, options.teamB]) {
-      const teamId = teamIds[teamName];
-      const teamStatsStillMissing = ["map_stats.csv", "player_stats.csv", "roster.csv"].some((fileName) => safe.stillMissing.includes(fileName));
-      if (!teamId || (!teamStatsStillMissing && options.mode !== "max")) continue;
-      const teamApify = await fetchHltvViaApify({
-        matchId: options.matchId,
-        teamA: teamName,
-        teamB: teamName === options.teamA ? options.teamB : options.teamA,
-        hltvTeamId: teamId,
-        dryRun: options.dryRun
-      });
-      writes.push(...teamApify.writes.map((write) => ({ file: write.fileName, source: `apify-hltv-actor:${teamName}`, rows: write.rowsInserted })));
-      sourceReports.push({
-        source: `apify-hltv-actor-${teamName}`,
-        status: teamApify.status,
-        message: apifyMessage(teamApify)
-      });
-    }
-  }
-
   if (envFlag(process.env, "ENABLE_CSSTATS_DEMO_FETCH")) {
     for (const teamName of [options.teamA, options.teamB]) {
       const demo = await fetchCsstatsDemo({ matchId: options.matchId, teamName, dryRun: options.dryRun });
@@ -317,13 +296,6 @@ function multiSourceMessage(result: MultiSourceResult) {
   if (winner) return `${winner.source}: ${winner.rows.length} row(s). ${winner.warnings.join(" ")}`;
   const lastReasons = result.sourceResults.slice(-3).flatMap((source) => source.warnings.map((warning) => `${source.source}: ${warning}`));
   return lastReasons.join(" ") || result.warnings.join(" ") || "No source produced usable rows.";
-}
-
-function apifyMessage(result: Awaited<ReturnType<typeof fetchHltvViaApify>>) {
-  const fetched = Object.entries(result.fetched).map(([fileName, count]) => `${fileName}=${count}`).join(", ");
-  const cache = result.cacheHit ? "cache hit" : "cache miss";
-  const messages = [...result.warnings, ...result.errors].join(" ");
-  return [fetched || "no rows", cache, messages].filter(Boolean).join(". ");
 }
 
 function parseArgs(argv: string[]) {

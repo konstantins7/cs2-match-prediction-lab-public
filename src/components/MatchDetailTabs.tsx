@@ -19,6 +19,7 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { AutoAllButton } from "./AutoAllButton";
+import { ScientificAnalysisPanel } from "./ScientificAnalysisPanel";
 import { FullMatchAnalysisPanel } from "./FullMatchAnalysisPanel";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
 import { DemoStatExportCta } from "./ImportProfilesPanel";
@@ -42,7 +43,7 @@ import type { FirstRealForecastSessionView } from "@/lib/firstRealForecastSheetS
 import type { GridMatchStatus } from "@/lib/gridOpenAccess";
 import type { ForecastAutopilotCandidate } from "@/lib/autoResearchShared";
 
-const tabs = ["Обзор", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
+const tabs = ["Обзор", "Научный анализ", "Факторы", "Карты и Veto", "Matchup", "Игроки", "Новости и события", "H2H", "Risk и confidence", "Объяснение"] as const;
 
 export function MatchDetailTabs({
   input,
@@ -257,6 +258,10 @@ export function MatchDetailTabs({
           <FactorContributionChart factors={prediction.factors} />
           <FactorBreakdownTable factors={prediction.factors} teamAName={input.teamA.name} teamBName={input.teamB.name} />
         </section>
+      )}
+
+      {active === "Научный анализ" && (
+        <ScientificAnalysisPanel matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
       )}
 
       {active === "Карты и Veto" && (

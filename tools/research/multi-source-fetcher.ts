@@ -16,6 +16,8 @@ import { extractHltvMapStats } from "./hltv-team-stats";
 import { extractHltvPlayerStats } from "./hltv-player-stats";
 import { hltvSlug, isResearchEnabled, normalizeMapName, parseNumber, researchFetchText, stripTags } from "./hltv-client";
 import { checkRobotsAllowed } from "./robots-cache";
+import { fetchViaArchiveToday } from "./archive-today-fetcher";
+import { fetchViaJinaProxy } from "./jina-proxy-fetcher";
 import { fetchViaWayback } from "./wayback-fetcher";
 
 export type DataType = "roster" | "player_stats" | "map_stats" | "veto" | "h2h";
@@ -98,7 +100,7 @@ type SourceDescriptor = {
   expectedRows: number;
   buildUrl: (options: MultiSourceFetchOptions) => string;
   parse: (body: string, context: ParserContext) => Array<Record<string, unknown>>;
-  fetchStrategy?: "direct" | "wayback" | "sitemap-export";
+  fetchStrategy?: "direct" | "wayback" | "archive-today" | "jina-proxy" | "sitemap-export";
   directSourceFlag?: string;
 };
 
@@ -157,7 +159,7 @@ export async function fetchMultiSourceData(options: MultiSourceFetchOptions): Pr
       sourceResults.push({ source: descriptor.id, status: "skipped", rows: [], warnings: [`Research source is disabled: ${sourceFlag}.`], url, parserId: descriptor.parserId });
       continue;
     }
-    const robots = descriptor.fetchStrategy === "wayback"
+    const robots = descriptor.fetchStrategy === "wayback" || descriptor.fetchStrategy === "archive-today" || descriptor.fetchStrategy === "jina-proxy"
       ? { allowed: true, warnings: [] as string[] }
       : await checkRobotsAllowed(url, { env, fetchImpl: options.fetchImpl, cacheDir: options.cacheDir, now: options.now });
     if (!robots.allowed) {
@@ -219,6 +221,24 @@ async function fetchDescriptorBody(descriptor: SourceDescriptor, url: string, op
       directFirst: false
     });
   }
+  if (descriptor.fetchStrategy === "archive-today") {
+    return fetchViaArchiveToday(url, {
+      env: options.env ?? process.env,
+      fetchImpl: options.fetchImpl,
+      cacheDir: options.cacheDir ? path.join(options.cacheDir, "archive-today") : undefined,
+      now: options.now,
+      sourceFlag
+    });
+  }
+  if (descriptor.fetchStrategy === "jina-proxy") {
+    return fetchViaJinaProxy(url, {
+      env: options.env ?? process.env,
+      fetchImpl: options.fetchImpl,
+      cacheDir: options.cacheDir ? path.join(options.cacheDir, "jina") : undefined,
+      now: options.now,
+      maxBytes: 2_000_000
+    });
+  }
   if (descriptor.fetchStrategy === "sitemap-export") {
     return fetchFromSitemapExport(descriptor, url, options, sourceFlag);
   }
@@ -277,6 +297,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
     descriptor("liquipedia_roster_api", "Liquipedia MediaWiki API", "roster", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 5, (o) => liquipediaApiUrl("parse", o.ids?.liquipediaPage ?? o.teamName ?? ""), parseGenericRoster),
     descriptor("hltv_team_page", "HLTV research team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_HLTV_AUTOMATION"),
     descriptor("wayback_hltv_team_page", "Wayback HLTV team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("archive_today_hltv_team_page", "Archive.today HLTV team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_ARCHIVE_TODAY_FALLBACK", "archive-today", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("jina_hltv_team_page", "Jina Reader HLTV team page", "roster", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/team\/\d+\/[a-z0-9-]+$/], 5, (o) => `https://www.hltv.org/team/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericRoster, "ENABLE_JINA_PROXY_FALLBACK", "jina-proxy", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_team_page", "CSStats team page", "roster", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+$/], 5, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}`, parseGenericRoster),
     descriptor("esportis_team_page", "Esport.is team page", "roster", [], ["esport.is"], [/^\/team\/[^/]+$/], 5, (o) => `https://esport.is/team/${encodeURIComponent(o.teamName ?? "")}`, parseGenericRoster),
     descriptor("dust2_team_page", "Dust2.dk team page", "roster", ["dust2Team"], ["dust2.dk", "www.dust2.dk"], [/^\/team\/[^/]+$/], 5, (o) => `https://dust2.dk/team/${id(o, "dust2Team")}`, parseGenericRoster),
@@ -291,6 +313,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   player_stats: [
     descriptor("hltv_player_stats", "HLTV research player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseHltvPlayers, "ENABLE_HLTV_AUTOMATION"),
     descriptor("wayback_hltv_player_stats", "Wayback HLTV player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseHltvPlayers, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("archive_today_hltv_player_stats", "Archive.today HLTV player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseHltvPlayers, "ENABLE_ARCHIVE_TODAY_FALLBACK", "archive-today", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("jina_hltv_player_stats", "Jina Reader HLTV player stats", "player_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/players$/], 5, (o) => `https://www.hltv.org/stats/players?team=${encodeURIComponent(id(o, "hltvTeam", o.teamId))}`, parseGenericPlayerStats, "ENABLE_JINA_PROXY_FALLBACK", "jina-proxy", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_players_csv", "CSStats player CSV", "player_stats", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+\/export$/], 5, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}/export?type=players`, parseGenericPlayerStats),
     descriptor("csstats_sitemap_players_csv", "CSStats sitemap player CSV", "player_stats", [], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/sitemap\.xml$/, /^\/team\/[^/]+\/export$/], 5, () => "https://csgostats.gg/sitemap.xml", parseGenericPlayerStats, "ENABLE_SITEMAP_EXPORT_DISCOVERY", "sitemap-export"),
     descriptor("faceit_player_stats", "FACEIT player stats", "player_stats", ["playerNickname"], ["www.faceit.com", "faceit.com"], [/^\/players\/[^/]+\/stats$/], 1, (o) => `https://www.faceit.com/players/${id(o, "playerNickname")}/stats`, parseGenericPlayerStats),
@@ -305,6 +329,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   map_stats: [
     descriptor("hltv_team_map_stats", "HLTV research team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseHltvMaps, "ENABLE_HLTV_AUTOMATION"),
     descriptor("wayback_hltv_team_map_stats", "Wayback HLTV team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseHltvMaps, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("archive_today_hltv_team_map_stats", "Archive.today HLTV team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseHltvMaps, "ENABLE_ARCHIVE_TODAY_FALLBACK", "archive-today", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("jina_hltv_team_map_stats", "Jina Reader HLTV team map stats", "map_stats", ["hltvTeam"], ["www.hltv.org", "hltv.org"], [/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/], 7, (o) => `https://www.hltv.org/stats/teams/maps/${id(o, "hltvTeam", o.teamId)}/${hltvSlug(o.teamName ?? "")}`, parseGenericMapStats, "ENABLE_JINA_PROXY_FALLBACK", "jina-proxy", "ENABLE_HLTV_AUTOMATION"),
     descriptor("csstats_maps_csv", "CSStats map CSV", "map_stats", ["csstatsTeam"], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/team\/[^/]+\/export$/], 7, (o) => `https://csgostats.gg/team/${id(o, "csstatsTeam", o.csstatsTeamId)}/export?type=maps`, parseGenericMapStats),
     descriptor("csstats_sitemap_maps_csv", "CSStats sitemap map CSV", "map_stats", [], ["csgostats.gg", "www.csgostats.gg", "csstats.gg", "www.csstats.gg"], [/^\/sitemap\.xml$/, /^\/team\/[^/]+\/export$/], 7, () => "https://csgostats.gg/sitemap.xml", parseGenericMapStats, "ENABLE_SITEMAP_EXPORT_DISCOVERY", "sitemap-export"),
     descriptor("liquipedia_map_records", "Liquipedia map records", "map_stats", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 7, (o) => liquipediaApiUrl("parse", o.ids?.liquipediaPage ?? o.teamName ?? ""), parseGenericMapStats),
@@ -319,6 +345,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   veto: [
     descriptor("hltv_match_veto", "HLTV research match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseHltvVeto, "ENABLE_HLTV_AUTOMATION"),
     descriptor("wayback_hltv_match_veto", "Wayback HLTV match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseHltvVeto, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("archive_today_hltv_match_veto", "Archive.today HLTV match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseHltvVeto, "ENABLE_ARCHIVE_TODAY_FALLBACK", "archive-today", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("jina_hltv_match_veto", "Jina Reader HLTV match page", "veto", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 2, (o) => hltvMatchUrl(o), parseGenericVeto, "ENABLE_JINA_PROXY_FALLBACK", "jina-proxy", "ENABLE_HLTV_AUTOMATION"),
     descriptor("faceit_match_veto", "FACEIT match veto", "veto", ["faceitMatch"], ["www.faceit.com", "faceit.com"], [/^\/csgo\/match\/[^/]+$/], 2, (o) => `https://www.faceit.com/csgo/match/${id(o, "faceitMatch")}`, parseGenericVeto),
     descriptor("liquipedia_match_veto", "Liquipedia match veto", "veto", ["liquipediaPage"], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 2, (o) => liquipediaApiUrl("parse", id(o, "liquipediaPage")), parseGenericVeto),
     descriptor("esl_match_veto", "ESL match veto", "veto", ["eslMatch"], ["www.esl.com", "esl.com"], [/^\/match\/[^/]+$/], 2, (o) => `https://www.esl.com/match/${id(o, "eslMatch")}`, parseGenericVeto),
@@ -332,6 +360,8 @@ export const sourceDescriptors: Record<DataType, SourceDescriptor[]> = {
   h2h: [
     descriptor("hltv_match_h2h", "HLTV research match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseHltvH2h, "ENABLE_HLTV_AUTOMATION"),
     descriptor("wayback_hltv_match_h2h", "Wayback HLTV match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseHltvH2h, "ENABLE_WAYBACK_FALLBACK", "wayback", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("archive_today_hltv_match_h2h", "Archive.today HLTV match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseHltvH2h, "ENABLE_ARCHIVE_TODAY_FALLBACK", "archive-today", "ENABLE_HLTV_AUTOMATION"),
+    descriptor("jina_hltv_match_h2h", "Jina Reader HLTV match page", "h2h", ["hltvMatch"], ["www.hltv.org", "hltv.org"], [/^\/matches\/\d+\/[a-z0-9-]+$/], 1, (o) => hltvMatchUrl(o), parseGenericH2h, "ENABLE_JINA_PROXY_FALLBACK", "jina-proxy", "ENABLE_HLTV_AUTOMATION"),
     descriptor("hltv_rss_match_metadata", "HLTV RSS match metadata", "h2h", [], ["www.hltv.org", "hltv.org"], [/^\/rss\/matches$/], 1, () => "https://www.hltv.org/rss/matches", parseRssMetadataOnly, "ENABLE_RSS_METADATA_DISCOVERY"),
     descriptor("liquipedia_team_vs_team", "Liquipedia team vs team", "h2h", [], ["liquipedia.net"], [/\/counterstrike\/api\.php$/], 1, (o) => liquipediaApiUrl("parse", `${o.teamName ?? ""}_vs_${o.opponentTeamName ?? ""}`), parseGenericH2h),
     descriptor("esportis_h2h", "Esport.is H2H", "h2h", [], ["esport.is"], [/^\/head-to-head$/], 1, (o) => `https://esport.is/head-to-head?teamA=${encodeURIComponent(o.teamName ?? "")}&teamB=${encodeURIComponent(o.opponentTeamName ?? "")}`, parseGenericH2h),

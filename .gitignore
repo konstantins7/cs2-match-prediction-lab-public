@@ -22,6 +22,7 @@ data/cache/
 data/reports/
 data/private-inbox/
 data/research-cache/
+data/analysis-cache/
 data/demos/
 data/community-datasets/
 *.log

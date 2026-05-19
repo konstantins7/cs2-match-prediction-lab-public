@@ -276,6 +276,21 @@ APIFY_DATASET_TTL_HOURS=24
 
 Apify can incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL. Any Apify token pasted into chat or logs should be revoked and replaced; keep fresh tokens only in `.env.local`.
 
+Research fallback archives live only on `research/fallback-archives` and are disabled by default:
+
+```bash
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_WAYBACK_FALLBACK=true
+ENABLE_SITEMAP_EXPORT_DISCOVERY=true
+ENABLE_RSS_METADATA_DISCOVERY=true
+ENABLE_COMMUNITY_DATASETS=true
+
+npm run data:auto-all:research -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
+npm run data:sync-community-datasets -- --dry-run
+```
+
+This research slice allows Wayback snapshots for allowlisted source URLs, RSS/Atom metadata, JSON-LD extraction, sitemap/export discovery, and explicit GitHub raw/gist community datasets. It still excludes Bing Cache, public proxy fallbacks, bot/browser User-Agent impersonation, Apify, browser automation, Cloudflare/captcha bypass, Prisma writes, and Apply calls.
+
 AWPy batch JSON merge:
 
 ```bash
@@ -1460,3 +1475,53 @@ pnpm sync:predictions
 4. Подключить модуль в `calculatePrediction`.
 5. Добавить unit tests для clamps/relevance/risk, если фактор влияет на probability или confidence.
 
+## MVP 1.1.0 Research: Extended Sources and Scientific Analysis
+
+The production-safe `data:auto-all` path stays free and conservative. Research mode is separate:
+
+```bash
+ENABLE_RESEARCH_SOURCES=true \
+ENABLE_ARCHIVE_TODAY_FALLBACK=true \
+ENABLE_RSS_METADATA_DISCOVERY=true \
+ENABLE_SITEMAP_EXPORT_DISCOVERY=true \
+npm run data:auto-all:extended -- \
+  --matchId pandascore_match_1488973 \
+  --teamA "Evo Novo" \
+  --teamB "WAZABI" \
+  --mode max \
+  --dry-run
+```
+
+Optional source flags are off by default:
+
+```env
+ENABLE_ARCHIVE_TODAY_FALLBACK=false
+ENABLE_JINA_PROXY_FALLBACK=false
+ENABLE_GRAPHQL_DISCOVERY=false
+ENABLE_GOOGLE_CSE_FALLBACK=false
+GOOGLE_CSE_API_KEY=""
+GOOGLE_CSE_CX=""
+```
+
+Google CSE is only for identifier discovery. The free quota is commonly limited to 100 requests/day; if the API returns `quotaExceeded`, the system logs a redacted warning and continues to the next source.
+
+Jina Reader is strict opt-in. It can return incomplete text for large pages and is not recommended for complex table parsing. Responses are capped at 2 MB and truncation is reported.
+
+### Scientific Analysis
+
+The match page includes a `Научный анализ` tab. It reads only local normalized files from `data/private-inbox/` and optional `parsed_demo_export.json`; it makes no external requests and does not change Real Forecast Ready.
+
+The deep model includes:
+
+- player-map efficiency with exponential decay, trend slope, and moving averages;
+- team synergy, roster stability, leader effect, and role diversity when roster roles exist;
+- Bayesian map win probability using global map winrate as prior;
+- Elo-style team/player ratings when enough result evidence exists;
+- a tunable weighted model using Elo, maps, and synergy.
+
+Limitations:
+
+- Reliable map analysis needs at least 5 maps per team/map.
+- Without `parsed_demo_export.json`, round-level CT/T and pistol analysis is limited.
+- Frequent roster changes reduce confidence.
+- Outliers are detected with z-score `abs(z) > 3` and shown as warnings rather than removed silently.
