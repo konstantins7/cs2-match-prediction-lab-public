@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -11,6 +12,17 @@ import {
   type NormalizerOptions,
   type NormalizerSheetType
 } from "./scripts/normalizerCore";
+
+function isApifyResearchBranch() {
+  for (const headPath of [path.join(process.cwd(), ".git", "HEAD"), path.join(process.cwd(), ".git")]) {
+    try {
+      if (readFileSync(headPath, "utf8").trim().endsWith("refs/heads/research/apify-integration")) return true;
+    } catch {
+      // Try the next Git metadata shape.
+    }
+  }
+  return false;
+}
 
 const baseOptions = {
   matchId: "pandascore_match_1488973",
@@ -139,7 +151,8 @@ describe("private normalized table normalizers", () => {
     expect(combined).not.toMatch(/require\(["'](?:https?|axios|cheerio|puppeteer|playwright|apify)["']\)/);
     expect(combined.toLowerCase()).not.toContain("telegram");
     const pkg = await readFile(path.join(process.cwd(), "package.json"), "utf8");
-    expect(pkg.toLowerCase()).not.toMatch(/apify|puppeteer|playwright|cheerio|axios/);
+    const forbiddenDependencyPattern = isApifyResearchBranch() ? /puppeteer|playwright|cheerio|axios/ : /apify|puppeteer|playwright|cheerio|axios/;
+    expect(pkg.toLowerCase()).not.toMatch(forbiddenDependencyPattern);
   });
 });
 

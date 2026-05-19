@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "0.9.5",
+  "version": "1.0.0",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -28,6 +28,7 @@
     "data:pipeline": "tsx src/scripts/analyticsPipeline.ts",
     "data:auto-fill": "tsx scripts/auto-fill.ts",
     "data:auto-all": "tsx scripts/auto-all.ts",
+    "data:auto-all:extended": "tsx scripts/auto-all-extended.ts",
     "data:auto-all:research": "tsx scripts/auto-all-research.ts",
     "data:hltv-diagnostics": "tsx scripts/hltv-diagnostics.ts",
     "data:community-datasets": "tsx tools/community-datasets/registry.ts",

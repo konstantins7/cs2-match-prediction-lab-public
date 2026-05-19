@@ -8,5 +8,16 @@ export * from "./esportis-api-client";
 export * from "./multi-source-fetcher";
 export * from "./robots-cache";
 export * from "./wayback-fetcher";
+export * from "./archive-today-fetcher";
+export * from "./jina-proxy-fetcher";
+export {
+  fetchRssItems,
+  extractHltvMatchIdFromRss,
+  extractHltvTeamIdsFromRss,
+  type RssItem
+} from "./rss-fetcher";
+export * from "./graphql-client";
+export * from "./google-cse-fetcher";
+export * from "./hltv-team-id-resolver";
 export * from "./csstats-demo-fetcher";
 export * from "./demo-batch-processor";

@@ -245,7 +245,36 @@ Rules:
 - Allowed CSV hosts are `csgostats.gg` and `csstats.gg`; local files are supported.
 - `data:auto-fill` writes only exact app-visible files such as `map_stats.csv` and `player_stats.csv`.
 - If auto-fill cannot close a block, it returns exact template commands and the next action.
-- HLTV remains manual/paste-only; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included.
+- HLTV remains manual/paste-only in the safe default commands; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included in `data:auto-all` or `data:pipeline`.
+
+### Extended Data Sources (optional)
+
+MVP 1.0.0 Plan B includes an opt-in extended command for researchers who want additional coverage beyond the safe free-source path. It is off by default and never runs from `data:auto-all` or `data:pipeline`.
+
+```bash
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_WAYBACK_FALLBACK=true
+ENABLE_SITEMAP_EXPORT_DISCOVERY=true
+ENABLE_RSS_METADATA_DISCOVERY=true
+ENABLE_COMMUNITY_DATASETS=true
+
+npm run data:auto-all:extended -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
+npm run data:sync-community-datasets -- --dry-run
+```
+
+The extended slice allows Wayback snapshots for allowlisted source URLs, RSS/Atom metadata, JSON-LD extraction, sitemap/export discovery, and explicit GitHub raw/gist community datasets. It still excludes Bing Cache, public proxy fallbacks, bot/browser User-Agent impersonation, browser automation, Cloudflare/captcha bypass, Prisma writes, and Apply calls.
+
+Paid Apify HLTV Actor fallback is also available but must be enabled separately:
+
+```env
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_APIFY_HLTV_ACTOR=true
+APIFY_TOKEN="your_rotated_local_token"
+APIFY_HLTV_ACTOR_ID="lukas-kremser/hltv-scraper"
+APIFY_DATASET_TTL_HOURS=24
+```
+
+Apify can incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL. Any Apify token pasted into chat or logs should be revoked and replaced; keep fresh tokens only in `.env.local`.
 
 Research fallback archives live only on `research/fallback-archives` and are disabled by default:
 
@@ -280,7 +309,7 @@ npm run demo:batch -- \
 
 ## Zero-Touch Data Acquisition
 
-MVP 0.9.5 добавляет `data:auto-all`: единый локальный запуск, который пробует все безопасные auto-fill источники и возвращает честный отчёт о том, что получилось закрыть.
+MVP 0.9.5 добавляет `data:auto-all`: единый локальный запуск, который пробует все безопасные auto-fill источники и возвращает честный отчёт о том, что получилось закрыть. MVP 1.0.0 сохраняет это поведение без изменений; extended sources доступны только через отдельный `data:auto-all:extended`.
 
 ```bash
 npm run data:auto-all -- \
@@ -1381,6 +1410,26 @@ API keys must live only in local `.env`. Do not paste real keys into README, `.e
 
 HLTV не скрейпится напрямую. Поля `hltvReferenceUrl` могут использоваться только как reference/manual verification URL, потому что агрессивный scraping может нарушать Terms of Service.
 
+### Optional extended Apify HLTV Actor
+
+The `data:auto-all:extended` command can optionally use a paid Apify HLTV actor when direct research HTTP access is blocked. This is not enabled in the safe default commands and is off by default.
+
+```env
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_APIFY_HLTV_ACTOR=true
+APIFY_TOKEN="your_local_token"
+APIFY_HLTV_ACTOR_ID="lukas-kremser/hltv-scraper"
+APIFY_DATASET_TTL_HOURS=24
+```
+
+Run a dry-run first:
+
+```bash
+pnpm data:auto-all:extended -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --hltv-match-id 12345 --dry-run
+```
+
+Apify may incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL, and normalized rows still go only to `data/private-inbox/`; `/admin/imports` remains the only Apply path. Never paste real Apify tokens into chat, docs, tests, logs, screenshots, or commits. If a token was pasted anywhere, revoke it and create a fresh one before running a live benchmark.
+
 ### Automated sync
 
 MVP 0.8.0 не запускает синхронизацию при открытии страниц. Это сделано специально: page-load sync может тормозить dashboard и быстро упереться в rate limits. Обновление запускается только кнопками или CLI. Для live/upcoming feed есть отдельная кнопка `Обновить список матчей`: она обновляет cache, считает diff с предыдущим состоянием и показывает `new / updated / unchanged / stale`.
@@ -1426,3 +1475,53 @@ pnpm sync:predictions
 4. Подключить модуль в `calculatePrediction`.
 5. Добавить unit tests для clamps/relevance/risk, если фактор влияет на probability или confidence.
 
+## MVP 1.1.0 Research: Extended Sources and Scientific Analysis
+
+The production-safe `data:auto-all` path stays free and conservative. Research mode is separate:
+
+```bash
+ENABLE_RESEARCH_SOURCES=true \
+ENABLE_ARCHIVE_TODAY_FALLBACK=true \
+ENABLE_RSS_METADATA_DISCOVERY=true \
+ENABLE_SITEMAP_EXPORT_DISCOVERY=true \
+npm run data:auto-all:extended -- \
+  --matchId pandascore_match_1488973 \
+  --teamA "Evo Novo" \
+  --teamB "WAZABI" \
+  --mode max \
+  --dry-run
+```
+
+Optional source flags are off by default:
+
+```env
+ENABLE_ARCHIVE_TODAY_FALLBACK=false
+ENABLE_JINA_PROXY_FALLBACK=false
+ENABLE_GRAPHQL_DISCOVERY=false
+ENABLE_GOOGLE_CSE_FALLBACK=false
+GOOGLE_CSE_API_KEY=""
+GOOGLE_CSE_CX=""
+```
+
+Google CSE is only for identifier discovery. The free quota is commonly limited to 100 requests/day; if the API returns `quotaExceeded`, the system logs a redacted warning and continues to the next source.
+
+Jina Reader is strict opt-in. It can return incomplete text for large pages and is not recommended for complex table parsing. Responses are capped at 2 MB and truncation is reported.
+
+### Scientific Analysis
+
+The match page includes a `Научный анализ` tab. It reads only local normalized files from `data/private-inbox/` and optional `parsed_demo_export.json`; it makes no external requests and does not change Real Forecast Ready.
+
+The deep model includes:
+
+- player-map efficiency with exponential decay, trend slope, and moving averages;
+- team synergy, roster stability, leader effect, and role diversity when roster roles exist;
+- Bayesian map win probability using global map winrate as prior;
+- Elo-style team/player ratings when enough result evidence exists;
+- a tunable weighted model using Elo, maps, and synergy.
+
+Limitations:
+
+- Reliable map analysis needs at least 5 maps per team/map.
+- Without `parsed_demo_export.json`, round-level CT/T and pistol analysis is limited.
+- Frequent roster changes reduce confidence.
+- Outliers are detected with z-score `abs(z) > 3` and shown as warnings rather than removed silently.
