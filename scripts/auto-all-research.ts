@@ -4,6 +4,10 @@ import { runAutoFill, type AutoFillMode, type AutoFillResult, type AutoFillWrite
 import { envFlag, privateInboxPath } from "../tools/data-fetchers/utils";
 import {
   fetchCsstatsDemo,
+  runBo3Cs2ApiFetcher,
+  runEsportisResearchFetcher,
+  fetchMultiSourceData,
+  type MultiSourceResult,
   fetchHltvPlayerStats,
   fetchHltvTeamMapStats,
   parseHltvMatchPage,
@@ -19,6 +23,7 @@ export type ResearchAutoAllResult = {
   dryRun: boolean;
   writes: AutoFillWrite[];
   sourceReports: Array<{ source: string; status: string; message: string }>;
+  multiSourceResults: MultiSourceResult[];
   nextAction: string;
 };
 
@@ -32,7 +37,10 @@ export async function runAutoAllResearchCli(argv = process.argv.slice(2)) {
     dryRun: Boolean(args["dry-run"]),
     hltvMatchId: stringArg(args, "hltv-match-id"),
     teamAHltvId: stringArg(args, "teamA-hltv-id"),
-    teamBHltvId: stringArg(args, "teamB-hltv-id")
+    teamBHltvId: stringArg(args, "teamB-hltv-id"),
+    teamACsstatsId: stringArg(args, "teamA-csstats-id"),
+    teamBCsstatsId: stringArg(args, "teamB-csstats-id"),
+    includeH2h: Boolean(args["include-h2h"])
   });
   console.log(JSON.stringify(result, null, 2));
 }
@@ -46,6 +54,9 @@ export async function runAutoAllResearch(options: {
   hltvMatchId?: string;
   teamAHltvId?: string;
   teamBHltvId?: string;
+  teamACsstatsId?: string;
+  teamBCsstatsId?: string;
+  includeH2h?: boolean;
 }): Promise<ResearchAutoAllResult> {
   const safe = await runAutoFill({
     matchId: options.matchId,
@@ -57,6 +68,7 @@ export async function runAutoAllResearch(options: {
   const researchEnabled = envFlag(process.env, "ENABLE_RESEARCH_SOURCES") && envFlag(process.env, "ENABLE_HLTV_AUTOMATION");
   const writes: AutoFillWrite[] = [];
   const sourceReports: ResearchAutoAllResult["sourceReports"] = [];
+  const multiSourceResults: MultiSourceResult[] = [];
   if (!researchEnabled) {
     return {
       safe,
@@ -64,6 +76,7 @@ export async function runAutoAllResearch(options: {
       dryRun: Boolean(options.dryRun),
       writes,
       sourceReports: [{ source: "hltv-research", status: "skipped", message: "ENABLE_RESEARCH_SOURCES/ENABLE_HLTV_AUTOMATION are not both true." }],
+      multiSourceResults,
       nextAction: safe.nextAction
     };
   }
@@ -76,9 +89,34 @@ export async function runAutoAllResearch(options: {
       dryRun: Boolean(options.dryRun),
       writes,
       sourceReports: [{ source: "hltv-research", status: "skipped", message: "Safe sources already covered the required private-inbox files." }],
+      multiSourceResults,
       nextAction: safe.nextAction
     };
   }
+
+  const esportis = await runEsportisResearchFetcher({
+    matchId: options.matchId,
+    teamNames: [options.teamA, options.teamB],
+    dryRun: options.dryRun
+  });
+  writes.push(...esportis.writes.map((write) => ({ file: write.fileName, source: "esport.is research", rows: write.rowsInserted })));
+  sourceReports.push({
+    source: "esport.is-research",
+    status: esportis.status,
+    message: [...esportis.warnings, ...esportis.errors].join(" ") || `${Object.values(esportis.fetched).reduce((sum, value) => sum + value, 0)} normalized row(s).`
+  });
+
+  const bo3 = await runBo3Cs2ApiFetcher({
+    matchId: options.matchId,
+    teamNames: [options.teamA, options.teamB],
+    dryRun: options.dryRun
+  });
+  writes.push(...bo3.writes.map((write) => ({ file: write.fileName, source: "BO3.gg cs2api research", rows: write.rowsInserted })));
+  sourceReports.push({
+    source: "bo3-cs2api-research",
+    status: bo3.status,
+    message: [...bo3.warnings, ...bo3.errors].join(" ") || `${Object.values(bo3.fetched).reduce((sum, value) => sum + value, 0)} normalized row(s).`
+  });
 
   const resolved = options.hltvMatchId
     ? { matchId: options.hltvMatchId, matchUrl: "", score: 1 }
@@ -125,6 +163,54 @@ export async function runAutoAllResearch(options: {
     sourceReports.push({ source: `hltv-player-stats-${teamName}`, status: players.rows.length ? "success" : "partial", message: `player rows=${players.rows.length}. ${players.warnings.join(" ")}` });
   }
 
+  const missingTypes = missingDataTypes(safe.stillMissing, options.includeH2h || options.mode === "max");
+  for (const dataType of missingTypes) {
+    if (dataType === "veto" || dataType === "h2h") {
+      const result = await fetchMultiSourceData({
+        dataType,
+        matchId: options.matchId,
+        teamName: options.teamA,
+        opponentTeamName: options.teamB,
+        hltvMatchId: resolved?.matchId,
+        dryRun: options.dryRun,
+        ids: {
+          hltvMatch: resolved?.matchId,
+          faceitMatch: "",
+          eslMatch: "",
+          blastMatch: "",
+          gosuMatch: "",
+          dust2Match: "",
+          pleyMatch: ""
+        }
+      });
+      multiSourceResults.push(result);
+      writes.push(...result.writes.map((write) => ({ file: write.fileName, source: `multi-source:${dataType}`, rows: write.rowsInserted })));
+      sourceReports.push({ source: `multi-source-${dataType}`, status: result.status, message: multiSourceMessage(result) });
+      continue;
+    }
+    for (const teamName of [options.teamA, options.teamB]) {
+      const result = await fetchMultiSourceData({
+        dataType,
+        matchId: options.matchId,
+        teamName,
+        opponentTeamName: teamName === options.teamA ? options.teamB : options.teamA,
+        teamId: teamIds[teamName],
+        hltvMatchId: resolved?.matchId,
+        csstatsTeamId: teamName === options.teamA ? options.teamACsstatsId : options.teamBCsstatsId,
+        dryRun: options.dryRun,
+        ids: {
+          hltvTeam: teamIds[teamName],
+          hltvMatch: resolved?.matchId,
+          csstatsTeam: teamName === options.teamA ? options.teamACsstatsId : options.teamBCsstatsId,
+          liquipediaPage: teamName
+        }
+      });
+      multiSourceResults.push(result);
+      writes.push(...result.writes.map((write) => ({ file: write.fileName, source: `multi-source:${dataType}`, rows: write.rowsInserted })));
+      sourceReports.push({ source: `multi-source-${dataType}-${teamName}`, status: result.status, message: multiSourceMessage(result) });
+    }
+  }
+
   if (envFlag(process.env, "ENABLE_CSSTATS_DEMO_FETCH")) {
     for (const teamName of [options.teamA, options.teamB]) {
       const demo = await fetchCsstatsDemo({ matchId: options.matchId, teamName, dryRun: options.dryRun });
@@ -145,10 +231,28 @@ export async function runAutoAllResearch(options: {
     dryRun: Boolean(options.dryRun),
     writes,
     sourceReports,
+    multiSourceResults,
     nextAction: writes.length
       ? "Research sources produced normalized private-inbox files. Validate in /admin/imports before Apply."
       : "Research sources did not produce usable rows; use manual CSV/paste fallback."
   };
+}
+
+function missingDataTypes(stillMissing: string[], includeH2h: boolean) {
+  const types: Array<"roster" | "player_stats" | "map_stats" | "veto" | "h2h"> = [];
+  if (stillMissing.includes("roster.csv")) types.push("roster");
+  if (stillMissing.includes("player_stats.csv")) types.push("player_stats");
+  if (stillMissing.includes("map_stats.csv")) types.push("map_stats");
+  if (stillMissing.includes("veto_history.csv")) types.push("veto");
+  if (includeH2h) types.push("h2h");
+  return types;
+}
+
+function multiSourceMessage(result: MultiSourceResult) {
+  const winner = result.sourceResults.find((source) => source.rows.length > 0);
+  if (winner) return `${winner.source}: ${winner.rows.length} row(s). ${winner.warnings.join(" ")}`;
+  const lastReasons = result.sourceResults.slice(-3).flatMap((source) => source.warnings.map((warning) => `${source.source}: ${warning}`));
+  return lastReasons.join(" ") || result.warnings.join(" ") || "No source produced usable rows.";
 }
 
 function parseArgs(argv: string[]) {

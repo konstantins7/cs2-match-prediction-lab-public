@@ -23,6 +23,7 @@ data/reports/
 data/private-inbox/
 data/research-cache/
 data/demos/
+data/community-datasets/
 *.log
 dev-server.log
 tsconfig.tsbuildinfo

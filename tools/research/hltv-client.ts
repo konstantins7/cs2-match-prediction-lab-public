@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import path from "node:path";
 import { fetchText, wait, type FetchLike, type FetcherEnv } from "../data-fetchers/utils";
+import { checkRobotsAllowed } from "./robots-cache";
 
 export type ResearchFetchOptions = {
   env?: FetcherEnv;
@@ -10,6 +11,11 @@ export type ResearchFetchOptions = {
   cacheDir?: string;
   rateLimitMs?: number;
   now?: Date;
+  sourceFlag?: string;
+  allowedHosts?: string[];
+  allowedPathPatterns?: RegExp[];
+  cacheNamespace?: string;
+  robotsCheck?: boolean;
 };
 
 export type ResearchFetchResult = {
@@ -27,14 +33,25 @@ let lastResearchRequestAt = 0;
 export async function researchFetchText(url: string, options: ResearchFetchOptions = {}): Promise<ResearchFetchResult> {
   const env = options.env ?? process.env;
   const warnings: string[] = [];
-  if (!isResearchEnabled(env, "ENABLE_HLTV_AUTOMATION")) {
-    return { status: "disabled", url: redactResearchUrl(url), body: "", warnings: ["Research HLTV automation is disabled."] };
+  const sourceFlag = options.sourceFlag ?? "ENABLE_HLTV_AUTOMATION";
+  if (!isResearchEnabled(env, sourceFlag)) {
+    return { status: "disabled", url: redactResearchUrl(url), body: "", warnings: [`Research source is disabled: ${sourceFlag}.`] };
   }
-  if (!isAllowedHltvUrl(url)) {
-    return { status: "blocked", url: redactResearchUrl(url), body: "", warnings: ["HLTV research URL is outside the allowlist."] };
+  if (!isAllowedResearchUrl(url, options)) {
+    return { status: "blocked", url: redactResearchUrl(url), body: "", warnings: ["Research URL is outside the allowlist."] };
+  }
+  if (options.robotsCheck) {
+    const robots = await checkRobotsAllowed(url, {
+      env,
+      fetchImpl: options.fetchImpl,
+      cacheDir: options.cacheDir ? path.join(options.cacheDir, "robots") : undefined,
+      now: options.now
+    });
+    warnings.push(...robots.warnings);
+    if (!robots.allowed) return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
   }
 
-  const cachePath = cacheFilePath(url, options.cacheDir);
+  const cachePath = cacheFilePath(url, options.cacheDir, options.cacheNamespace);
   const cached = await readFreshCache(cachePath, options.now ?? new Date());
   if (cached !== null) return { status: "cached", url: redactResearchUrl(url), body: cached, warnings };
 
@@ -109,9 +126,10 @@ export function resetHltvResearchRateLimitForTests() {
   lastResearchRequestAt = 0;
 }
 
-function cacheFilePath(url: string, cacheDir?: string) {
+function cacheFilePath(url: string, cacheDir?: string, namespace?: string) {
   const digest = createHash("sha256").update(url).digest("hex");
-  return path.resolve(process.cwd(), cacheDir ?? defaultCacheDir, `${digest}.json`);
+  const root = cacheDir ?? (namespace ? path.join("data", "research-cache", namespace) : defaultCacheDir);
+  return path.resolve(process.cwd(), root, `${digest}.json`);
 }
 
 async function readFreshCache(filePath: string, now: Date) {
@@ -137,4 +155,19 @@ async function guardRateLimit(rateLimitMs: number, waitImpl: (ms: number) => Pro
 
 function redactResearchUrl(url: string) {
   return url.replace(/([?&](?:token|key|api_key|authorization)=)[^&]+/gi, "$1[redacted]");
+}
+
+function isAllowedResearchUrl(rawUrl: string, options: ResearchFetchOptions) {
+  if (!options.allowedHosts?.length && !options.allowedPathPatterns?.length) return isAllowedHltvUrl(rawUrl);
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  const host = url.hostname.toLowerCase();
+  const allowedHosts = options.allowedHosts?.map((value) => value.toLowerCase()) ?? [];
+  if (allowedHosts.length && !allowedHosts.includes(host)) return false;
+  if (options.allowedPathPatterns?.length && !options.allowedPathPatterns.some((pattern) => pattern.test(url.pathname))) return false;
+  return true;
 }

@@ -43,6 +43,19 @@ Allowed only when `ENABLE_RESEARCH_SOURCES=true` and `ENABLE_CSSTATS_DEMO_FETCH=
 - One request per page; no pagination and no broad crawling.
 - Cache all HTTP responses for 24 hours.
 - User-Agent: `CS2MatchPredictionLab/1.0-research (contact: saldinkostya97@gmail.com)`.
+- Research fetchers check cached `robots.txt` before public-page requests and skip disallowed paths.
+- The research branch does not impersonate Googlebot, Bingbot, AhrefsBot, browser clients, or any other third-party identity.
+- Google Cache fallback is intentionally not implemented. The public cache endpoint has been discontinued/unreliable and is not a dependable or appropriate access path for this project.
 - Fail closed: parse errors return empty results and warnings, never fake data.
 - No browser automation, Puppeteer, Playwright, Selenium, Apify, Telegram scraping, captcha/login/protection bypass, or Cloudflare bypass attempts.
 - No direct Prisma writes and no Apply calls from research tools.
+
+## Adaptive Multi-Source Fetching
+
+`tools/research/multi-source-fetcher.ts` is research-only. It may try multiple public source descriptors for `roster`, `player_stats`, `map_stats`, `veto`, and `h2h`, but each descriptor must declare:
+
+- Required identifiers. Missing IDs cause a clean `skipped` result; the fetcher does not guess broad searches.
+- Allowed hosts and path patterns.
+- A parser that returns normalized private-inbox rows only when useful real fields are present.
+
+The fetcher stops at the first source that produces schema-valid rows. Partial rows are reported honestly, and writes go only to `data/private-inbox/` through the existing normalized CSV merge helper. `/admin/imports` remains the only Apply path.
