@@ -1366,6 +1366,26 @@ API keys must live only in local `.env`. Do not paste real keys into README, `.e
 
 HLTV не скрейпится напрямую. Поля `hltvReferenceUrl` могут использоваться только как reference/manual verification URL, потому что агрессивный scraping может нарушать Terms of Service.
 
+### Research branch: Apify HLTV Actor
+
+The `research/apify-integration` branch can optionally use a paid Apify HLTV actor when direct research HTTP access is blocked. This is not enabled in production and is off by default.
+
+```env
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_APIFY_HLTV_ACTOR=true
+APIFY_TOKEN="your_local_token"
+APIFY_HLTV_ACTOR_ID="lukas-kremser/hltv-scraper"
+APIFY_DATASET_TTL_HOURS=24
+```
+
+Run a dry-run first:
+
+```bash
+pnpm data:auto-all:research -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --hltv-match-id 12345 --dry-run
+```
+
+Apify may incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL, and normalized rows still go only to `data/private-inbox/`; `/admin/imports` remains the only Apply path. Never paste real Apify tokens into chat, docs, tests, logs, screenshots, or commits.
+
 ### Automated sync
 
 MVP 0.8.0 не запускает синхронизацию при открытии страниц. Это сделано специально: page-load sync может тормозить dashboard и быстро упереться в rate limits. Обновление запускается только кнопками или CLI. Для live/upcoming feed есть отдельная кнопка `Обновить список матчей`: она обновляет cache, считает diff с предыдущим состоянием и показывает `new / updated / unchanged / stale`.

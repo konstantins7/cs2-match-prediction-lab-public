@@ -4,6 +4,7 @@ import { runAutoFill, type AutoFillMode, type AutoFillResult, type AutoFillWrite
 import { envFlag, privateInboxPath } from "../tools/data-fetchers/utils";
 import {
   fetchCsstatsDemo,
+  fetchHltvViaApify,
   runBo3Cs2ApiFetcher,
   runEsportisResearchFetcher,
   fetchMultiSourceData,
@@ -211,6 +212,41 @@ export async function runAutoAllResearch(options: {
     }
   }
 
+  const shouldTryApify = missingTypes.length > 0 || options.mode === "max";
+  if (shouldTryApify) {
+    const apify = await fetchHltvViaApify({
+      matchId: options.matchId,
+      teamA: options.teamA,
+      teamB: options.teamB,
+      hltvMatchId: resolved?.matchId,
+      dryRun: options.dryRun
+    });
+    writes.push(...apify.writes.map((write) => ({ file: write.fileName, source: "apify-hltv-actor", rows: write.rowsInserted })));
+    sourceReports.push({
+      source: "apify-hltv-actor",
+      status: apify.status,
+      message: apifyMessage(apify)
+    });
+    for (const teamName of [options.teamA, options.teamB]) {
+      const teamId = teamIds[teamName];
+      const teamStatsStillMissing = ["map_stats.csv", "player_stats.csv", "roster.csv"].some((fileName) => safe.stillMissing.includes(fileName));
+      if (!teamId || (!teamStatsStillMissing && options.mode !== "max")) continue;
+      const teamApify = await fetchHltvViaApify({
+        matchId: options.matchId,
+        teamA: teamName,
+        teamB: teamName === options.teamA ? options.teamB : options.teamA,
+        hltvTeamId: teamId,
+        dryRun: options.dryRun
+      });
+      writes.push(...teamApify.writes.map((write) => ({ file: write.fileName, source: `apify-hltv-actor:${teamName}`, rows: write.rowsInserted })));
+      sourceReports.push({
+        source: `apify-hltv-actor-${teamName}`,
+        status: teamApify.status,
+        message: apifyMessage(teamApify)
+      });
+    }
+  }
+
   if (envFlag(process.env, "ENABLE_CSSTATS_DEMO_FETCH")) {
     for (const teamName of [options.teamA, options.teamB]) {
       const demo = await fetchCsstatsDemo({ matchId: options.matchId, teamName, dryRun: options.dryRun });
@@ -253,6 +289,13 @@ function multiSourceMessage(result: MultiSourceResult) {
   if (winner) return `${winner.source}: ${winner.rows.length} row(s). ${winner.warnings.join(" ")}`;
   const lastReasons = result.sourceResults.slice(-3).flatMap((source) => source.warnings.map((warning) => `${source.source}: ${warning}`));
   return lastReasons.join(" ") || result.warnings.join(" ") || "No source produced usable rows.";
+}
+
+function apifyMessage(result: Awaited<ReturnType<typeof fetchHltvViaApify>>) {
+  const fetched = Object.entries(result.fetched).map(([fileName, count]) => `${fileName}=${count}`).join(", ");
+  const cache = result.cacheHit ? "cache hit" : "cache miss";
+  const messages = [...result.warnings, ...result.errors].join(" ");
+  return [fetched || "no rows", cache, messages].filter(Boolean).join(". ");
 }
 
 function parseArgs(argv: string[]) {

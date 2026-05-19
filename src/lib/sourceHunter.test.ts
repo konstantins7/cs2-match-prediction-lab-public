@@ -4,6 +4,17 @@ import { dataSourceRegistry } from "./config/dataSourceRegistry";
 import { getImportProfiles } from "./importProfiles";
 import { getSourceHunterRecommendations } from "./sourceHunter";
 
+function isApifyResearchBranch() {
+  for (const headPath of [".git/HEAD", ".git"]) {
+    try {
+      if (readFileSync(headPath, "utf8").trim().endsWith("refs/heads/research/apify-integration")) return true;
+    } catch {
+      // Try the next Git metadata shape.
+    }
+  }
+  return false;
+}
+
 describe("MVP 0.7.5 Source Hunter and onboarding profiles", () => {
   it("registers new free/optional/future sources with legal modes and statuses", () => {
     const byId = new Map(dataSourceRegistry.map((source) => [source.id, source]));
@@ -27,7 +38,11 @@ describe("MVP 0.7.5 Source Hunter and onboarding profiles", () => {
     expect(hltv?.forbiddenActions).toEqual(expect.arrayContaining(["HLTV scraping", "Apify HLTV actor sync"]));
     expect(telegram?.legalMode).toBe("manual_reference");
     expect(telegram?.forbiddenActions).toContain("Telegram scraping");
-    expect(packageJson.dependencies?.["apify-client"]).toBeUndefined();
+    if (isApifyResearchBranch()) {
+      expect(packageJson.dependencies?.["apify-client"]).toBeDefined();
+    } else {
+      expect(packageJson.dependencies?.["apify-client"]).toBeUndefined();
+    }
     expect(packageJson.devDependencies?.["apify-client"]).toBeUndefined();
     expect(sourceIndex).not.toContain("apify");
     expect(sourceIndex).not.toContain("hltv");

@@ -2,6 +2,17 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { PARSED_DEMO_EXPORT_PROFILE_NOTES, parsedDemoExportTemplate, parsedDemoSourceTools } from "./parsedDemoExportProfiles";
 
+function isApifyResearchBranch() {
+  for (const headPath of [".git/HEAD", ".git"]) {
+    try {
+      if (readFileSync(headPath, "utf8").trim().endsWith("refs/heads/research/apify-integration")) return true;
+    } catch {
+      // Try the next Git metadata shape.
+    }
+  }
+  return false;
+}
+
 describe("MVP 0.7.5 parsed demo export intake", () => {
   it("defines the canonical JSON-first parsed_demo_export shape and supported profiles", () => {
     const template = parsedDemoExportTemplate("match_1", "demoparser");
@@ -85,7 +96,9 @@ describe("MVP 0.7.5 parsed demo export intake", () => {
   it("does not add parser/heavy dependencies or scraping paths", () => {
     const packageJson = JSON.parse(readFileSync("package.json", "utf8")) as { dependencies?: Record<string, string>; devDependencies?: Record<string, string> };
     const allDeps = { ...packageJson.dependencies, ...packageJson.devDependencies };
-    for (const forbidden of ["apify-client", "awpy", "demoparser", "demoinfocs", "xlsx", "better-sqlite3"]) {
+    const forbiddenDeps = ["awpy", "demoparser", "demoinfocs", "xlsx", "better-sqlite3"];
+    if (!isApifyResearchBranch()) forbiddenDeps.unshift("apify-client");
+    for (const forbidden of forbiddenDeps) {
       expect(allDeps[forbidden]).toBeUndefined();
     }
     const intake = readFileSync("src/lib/parsedDemoExport.ts", "utf8").toLowerCase();

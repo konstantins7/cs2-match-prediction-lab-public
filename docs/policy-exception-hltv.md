@@ -1,6 +1,6 @@
 # Policy Exception: HLTV + Demo Automation (Research Branch)
 
-**Branch:** `research/policy-exception-hltv`
+**Branch:** `research/policy-exception-hltv` / `research/apify-integration`
 **Status:** Experimental, NOT for production
 
 This branch explores whether tightly scoped public-page collection can improve CS2 data coverage. It is not part of the production Plan A release and must not be merged without a later explicit policy review.
@@ -38,6 +38,16 @@ Allowed only when `ENABLE_RESEARCH_SOURCES=true` and `ENABLE_CSSTATS_DEMO_FETCH=
 - Store raw files only in ignored `data/demos/`.
 - Parsed output must go through normalized `parsed_demo_export.json`.
 
+## Apify HLTV Actor
+
+Allowed only on the separate `research/apify-integration` branch and only when `ENABLE_RESEARCH_SOURCES=true`, `ENABLE_APIFY_HLTV_ACTOR=true`, and `APIFY_TOKEN` is configured locally:
+
+- Uses a user-selected paid Apify actor such as `lukas-kremser/hltv-scraper`.
+- Actor id is configurable through `APIFY_HLTV_ACTOR_ID`.
+- Recent dataset ids are cached for `APIFY_DATASET_TTL_HOURS` in `data/research-cache/apify/` to avoid unnecessary paid runs.
+- Apify output is treated as untrusted flexible JSON and must pass the same normalized CSV validation before any private-inbox merge.
+- Tokens must never be committed, logged, cached, or pasted into issue text, docs, or screenshots.
+
 ## Safety Rules
 
 - One request per page; no pagination and no broad crawling.
@@ -47,7 +57,8 @@ Allowed only when `ENABLE_RESEARCH_SOURCES=true` and `ENABLE_CSSTATS_DEMO_FETCH=
 - The research branch does not impersonate Googlebot, Bingbot, AhrefsBot, browser clients, or any other third-party identity.
 - Google Cache fallback is intentionally not implemented. The public cache endpoint has been discontinued/unreliable and is not a dependable or appropriate access path for this project.
 - Fail closed: parse errors return empty results and warnings, never fake data.
-- No browser automation, Puppeteer, Playwright, Selenium, Apify, Telegram scraping, captcha/login/protection bypass, or Cloudflare bypass attempts.
+- No local browser automation, Puppeteer, Playwright, Selenium, Telegram scraping, captcha/login/protection bypass, or Cloudflare bypass attempts.
+- Apify is allowed only through the explicit paid actor integration above and remains off by default.
 - No direct Prisma writes and no Apply calls from research tools.
 
 ## Adaptive Multi-Source Fetching
