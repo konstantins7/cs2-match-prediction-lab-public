@@ -1,6 +1,7 @@
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 import { runAutoFill, type AutoFillMode, type AutoFillResult, type AutoFillWrite } from "../tools/auto-fill";
+import { runCommunityDatasetAutoFetch } from "../tools/community-datasets/auto-fetch";
 import { envFlag, privateInboxPath } from "../tools/data-fetchers/utils";
 import {
   fetchCsstatsDemo,
@@ -66,7 +67,18 @@ export async function runAutoAllResearch(options: {
     dryRun: options.dryRun,
     autoLookupCsstats: envFlag(process.env, "ENABLE_CSSTATS_AUTO_LOOKUP", false)
   });
-  const researchEnabled = envFlag(process.env, "ENABLE_RESEARCH_SOURCES") && envFlag(process.env, "ENABLE_HLTV_AUTOMATION");
+  const baseResearchEnabled = envFlag(process.env, "ENABLE_RESEARCH_SOURCES");
+  const hltvResearchEnabled = baseResearchEnabled && envFlag(process.env, "ENABLE_HLTV_AUTOMATION");
+  const fallbackResearchEnabled = baseResearchEnabled && [
+    "ENABLE_WAYBACK_FALLBACK",
+    "ENABLE_SITEMAP_EXPORT_DISCOVERY",
+    "ENABLE_RSS_METADATA_DISCOVERY",
+    "ENABLE_COMMUNITY_DATASETS",
+    "ENABLE_ESPORTIS_SYNC",
+    "ENABLE_BO3_CS2API_SYNC",
+    "ENABLE_CSSTATS_DEMO_FETCH"
+  ].some((flag) => envFlag(process.env, flag));
+  const researchEnabled = hltvResearchEnabled || fallbackResearchEnabled;
   const writes: AutoFillWrite[] = [];
   const sourceReports: ResearchAutoAllResult["sourceReports"] = [];
   const multiSourceResults: MultiSourceResult[] = [];
@@ -76,7 +88,7 @@ export async function runAutoAllResearch(options: {
       researchEnabled: false,
       dryRun: Boolean(options.dryRun),
       writes,
-      sourceReports: [{ source: "hltv-research", status: "skipped", message: "ENABLE_RESEARCH_SOURCES/ENABLE_HLTV_AUTOMATION are not both true." }],
+      sourceReports: [{ source: "research", status: "skipped", message: "No research source flags are enabled." }],
       multiSourceResults,
       nextAction: safe.nextAction
     };
@@ -121,14 +133,16 @@ export async function runAutoAllResearch(options: {
 
   const resolved = options.hltvMatchId
     ? { matchId: options.hltvMatchId, matchUrl: "", score: 1 }
-    : await resolveHltvMatchId({ teamA: options.teamA, teamB: options.teamB });
+    : hltvResearchEnabled
+      ? await resolveHltvMatchId({ teamA: options.teamA, teamB: options.teamB })
+      : null;
   if (!resolved?.matchId) {
-    sourceReports.push({ source: "hltv-match-id", status: "missing", message: "No confident HLTV match ID resolved." });
+    sourceReports.push({ source: "hltv-match-id", status: hltvResearchEnabled ? "missing" : "skipped", message: hltvResearchEnabled ? "No confident HLTV match ID resolved." : "Direct HLTV automation is disabled." });
   } else {
     sourceReports.push({ source: "hltv-match-id", status: "success", message: `Resolved HLTV match ID ${resolved.matchId}.` });
   }
 
-  const parseResult = resolved?.matchId
+  const parseResult = resolved?.matchId && hltvResearchEnabled
     ? await parseHltvMatchPage({
       matchId: options.matchId,
       teamA: options.teamA,
@@ -154,6 +168,10 @@ export async function runAutoAllResearch(options: {
     const teamId = teamIds[teamName];
     if (!teamId) {
       sourceReports.push({ source: `hltv-team-${teamName}`, status: "missing", message: "No HLTV team ID available for map/player stats." });
+      continue;
+    }
+    if (!hltvResearchEnabled) {
+      sourceReports.push({ source: `hltv-team-${teamName}`, status: "skipped", message: "Direct HLTV automation is disabled; fallback descriptors may still use provided IDs." });
       continue;
     }
     const maps = await fetchHltvTeamMapStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun });
@@ -259,6 +277,16 @@ export async function runAutoAllResearch(options: {
       out: path.join(privateInboxPath(), "parsed_demo_export.json")
     });
     sourceReports.push({ source: "research-demo-batch", status: demoBatch.status, message: `players=${demoBatch.players}, maps=${demoBatch.maps}. ${demoBatch.warnings.join(" ")}` });
+  }
+
+  if (envFlag(process.env, "ENABLE_COMMUNITY_DATASETS")) {
+    const community = await runCommunityDatasetAutoFetch({ dryRun: options.dryRun });
+    writes.push(...community.writes.map((write) => ({ file: write.fileName, source: "community-datasets", rows: write.rowsInserted })));
+    sourceReports.push({
+      source: "community-datasets",
+      status: community.status,
+      message: [...community.warnings, ...community.errors].join(" ") || `${community.writes.length} write candidate(s).`
+    });
   }
 
   return {

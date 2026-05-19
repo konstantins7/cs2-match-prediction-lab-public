@@ -70,3 +70,14 @@ Allowed only on the separate `research/apify-integration` branch and only when `
 - A parser that returns normalized private-inbox rows only when useful real fields are present.
 
 The fetcher stops at the first source that produces schema-valid rows. Partial rows are reported honestly, and writes go only to `data/private-inbox/` through the existing normalized CSV merge helper. `/admin/imports` remains the only Apply path.
+
+## Archive and Open-Data Fallbacks
+
+Allowed only on `research/fallback-archives` and only behind explicit flags:
+
+- `ENABLE_WAYBACK_FALLBACK=true` permits Wayback Machine lookup through `archive.org/wayback/available` and cached `web.archive.org` snapshots. It is used only for original URLs already declared in source allowlists and caches archived bodies for 7 days.
+- `ENABLE_RSS_METADATA_DISCOVERY=true` permits RSS/Atom metadata discovery. RSS items can provide match links/IDs but do not count as Real Forecast Ready evidence unless a later normalized source validates rows.
+- `ENABLE_SITEMAP_EXPORT_DISCOVERY=true` permits one cached `/sitemap.xml` request per allowlisted domain to discover export-like CSV/JSON URLs. Pagination and broad crawling remain forbidden.
+- `ENABLE_COMMUNITY_DATASETS=true` permits fetching explicit GitHub raw/gist dataset URLs declared in `tools/community-datasets/registry.json`; rows must validate against accepted private-inbox schemas before they are merged.
+
+Still explicitly not implemented: Bing Cache, public proxy fallbacks such as r.jina.ai/Textise, browser or bot User-Agent impersonation, and any Cloudflare/captcha bypass.

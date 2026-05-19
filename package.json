@@ -31,6 +31,7 @@
     "data:auto-all:research": "tsx scripts/auto-all-research.ts",
     "data:hltv-diagnostics": "tsx scripts/hltv-diagnostics.ts",
     "data:community-datasets": "tsx tools/community-datasets/registry.ts",
+    "data:sync-community-datasets": "tsx tools/community-datasets/auto-fetch.ts",
     "data:benchmark-auto-all": "tsx scripts/benchmark-auto-all.ts",
     "data:benchmark-summary": "tsx scripts/benchmark-summary.ts",
     "data:reality-check": "tsx scripts/reality-check.ts",

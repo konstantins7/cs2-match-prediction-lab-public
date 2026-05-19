@@ -8,5 +8,6 @@ export * from "./esportis-api-client";
 export * from "./multi-source-fetcher";
 export * from "./robots-cache";
 export * from "./apify-hltv-actor";
+export * from "./wayback-fetcher";
 export * from "./csstats-demo-fetcher";
 export * from "./demo-batch-processor";
