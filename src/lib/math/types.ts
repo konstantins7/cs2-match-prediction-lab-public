@@ -165,6 +165,15 @@ export type DeepMatchAnalysis = {
     warnings: string[];
   };
   parsedDemo: ParsedDemoSummary | null;
+  scientificFactors: Array<{
+    id: string;
+    label: string;
+    status: "available" | "partial" | "missing";
+    impact: number;
+    explanation: string;
+    warnings: string[];
+    details: Record<string, unknown>;
+  }>;
   outliers: Array<{ scope: string; id: string; value: number; zScore: number }>;
   csv: string;
 };

@@ -35,6 +35,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   ];
   const advancedNav = [
     ["/admin/backtesting", "Backtesting"],
+    ["/admin/benchmarks", "Benchmarks"],
     ["/admin/data-quality", "Data Quality"],
     ["/admin/imports", "Raw diagnostics"],
     ["/api/admin/model-lab/training-dataset", "Training export"],

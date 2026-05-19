@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fetchText, wait, type FetchLike, type FetcherEnv } from "../data-fetchers/utils";
 import { checkRobotsAllowed } from "./robots-cache";
+import { logResearchEvent } from "./research-log";
 
 export type ResearchFetchOptions = {
   env?: FetcherEnv;
@@ -38,6 +39,7 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
     return { status: "disabled", url: redactResearchUrl(url), body: "", warnings: [`Research source is disabled: ${sourceFlag}.`] };
   }
   if (!isAllowedResearchUrl(url, options)) {
+    await logResearchEvent({ level: "WARN", source: "research-fetch", message: "Research URL outside allowlist.", url }).catch(() => undefined);
     return { status: "blocked", url: redactResearchUrl(url), body: "", warnings: ["Research URL is outside the allowlist."] };
   }
   if (options.robotsCheck) {
@@ -48,7 +50,10 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
       now: options.now
     });
     warnings.push(...robots.warnings);
-    if (!robots.allowed) return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
+    if (!robots.allowed) {
+      await logResearchEvent({ level: "WARN", source: "robots", message: "robots.txt disallow for research request.", url }).catch(() => undefined);
+      return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
+    }
   }
 
   const cachePath = cacheFilePath(url, options.cacheDir, options.cacheNamespace);
@@ -56,20 +61,40 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
   if (cached !== null) return { status: "cached", url: redactResearchUrl(url), body: cached, warnings };
 
   try {
-    await guardRateLimit(options.rateLimitMs ?? 5000, options.waitImpl ?? wait, options.now ?? new Date());
-    const body = await fetchText(url, {
-      headers: {
-        Accept: "text/html,text/plain,*/*",
-        "User-Agent": hltvResearchUserAgent
-      }
-    }, options.fetchImpl);
+    const body = await fetchWithRetries(url, options);
     await mkdir(path.dirname(cachePath), { recursive: true });
     await writeFile(cachePath, `${JSON.stringify({ timestamp: (options.now ?? new Date()).toISOString(), body }, null, 2)}\n`, "utf8");
     return { status: "success", url: redactResearchUrl(url), body, warnings };
   } catch (error) {
     warnings.push(error instanceof Error ? error.message : "HLTV research request failed.");
+    await logResearchEvent({ level: "WARN", source: "research-fetch", message: warnings.at(-1) ?? "Research request failed.", url }).catch(() => undefined);
     return { status: "failed", url: redactResearchUrl(url), body: "", warnings };
   }
+}
+
+async function fetchWithRetries(url: string, options: ResearchFetchOptions) {
+  const waitImpl = options.waitImpl ?? wait;
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      await guardRateLimit(options.rateLimitMs ?? 5000, waitImpl, options.now ?? new Date());
+      const body = await fetchText(url, {
+        headers: {
+          Accept: "text/html,text/plain,*/*",
+          "User-Agent": hltvResearchUserAgent
+        }
+      }, options.fetchImpl);
+      lastResearchRequestAt = Date.now();
+      return body;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!/HTTP 403/i.test(message) || attempt === 2) break;
+      await logResearchEvent({ level: "WARN", source: "research-fetch", message: `403 retry ${attempt + 1}/3 with exponential backoff.`, url }).catch(() => undefined);
+      await waitImpl(500 * 2 ** attempt);
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Research request failed.");
 }
 
 export function isResearchEnabled(env: FetcherEnv, sourceFlag: string) {
@@ -88,6 +113,7 @@ export function isAllowedHltvUrl(rawUrl: string) {
   if (url.pathname === "/search") return url.searchParams.has("query");
   if (/^\/matches\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
   if (/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
+  if (/^\/stats\/teams\/mapstats\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
   if (url.pathname === "/stats/players") return Boolean(url.searchParams.get("team"));
   return false;
 }
@@ -150,7 +176,6 @@ async function guardRateLimit(rateLimitMs: number, waitImpl: (ms: number) => Pro
     const delta = current - lastResearchRequestAt;
     if (delta < rateLimitMs) await waitImpl(rateLimitMs - delta);
   }
-  lastResearchRequestAt = Date.now();
 }
 
 function redactResearchUrl(url: string) {

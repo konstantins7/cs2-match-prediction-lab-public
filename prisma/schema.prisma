@@ -103,6 +103,10 @@ model Match {
   isPinned         Boolean  @default(false)
   manualPriority   Int?
   manualVisibility String?
+  cachedCoverageScore Int?
+  cachedForecastabilityTier String?
+  cachedForecastabilityAt DateTime?
+  cachedForecastabilityVersion String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -122,6 +126,7 @@ model Match {
   @@index([status, startTime])
   @@index([teamAId])
   @@index([teamBId])
+  @@index([cachedForecastabilityTier])
 }
 
 model ResearchPack {

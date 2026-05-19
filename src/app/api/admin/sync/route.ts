@@ -15,6 +15,7 @@ import { probeProviderCapabilities } from "@/lib/providerCapabilityProbe";
 import { enrichFaceitContextForMatch, importFaceitManualIds } from "@/lib/faceitContext";
 import { enrichGridOpenAccessMatch, importGridManualSeriesMapping, syncGridCentralData } from "@/lib/gridOpenAccess";
 import { refreshMatchFeed } from "@/lib/matchFeedCache";
+import { refreshForecastabilityCache, refreshForecastabilityCacheForUpcoming } from "@/lib/data/matchSummaries";
 import { runAnalyticsPipeline } from "@/lib/analyticsPipeline";
 import { runFullMatchAnalysis } from "@/lib/fullMatchAnalysis";
 import { resolvePredictionResultManually, resolvePredictionResults } from "@/lib/predictionLifecycle";
@@ -89,7 +90,8 @@ export async function POST(request: Request) {
     }
     if (body.action === "refresh_match_feed") {
       const result = await refreshMatchFeed();
-      return NextResponse.json({ ok: true, result });
+      const forecastabilityCache = await refreshForecastabilityCacheForUpcoming().catch(() => ({ refreshed: 0, requested: 0 }));
+      return NextResponse.json({ ok: true, result, forecastabilityCache });
     }
     if (body.action === "provider_capability_probe") {
       const result = await probeProviderCapabilities();
@@ -118,6 +120,7 @@ export async function POST(request: Request) {
       if (result.recordsCreated > 0 || result.recordsUpdated > 0) {
         await rebuildSnapshots();
         await runPredictionsForUpcomingMatches();
+        await refreshForecastabilityCache(body.matchId).catch(() => undefined);
       }
       return NextResponse.json({ ok: result.errors.length === 0 || result.recordsFetched > 0, result });
     }
@@ -150,6 +153,7 @@ export async function POST(request: Request) {
       const result = await runSourceSync("manual", "manual_import", body.payload);
       await rebuildSnapshots();
       await runPredictionsForUpcomingMatches();
+      if (body.matchId) await refreshForecastabilityCache(body.matchId).catch(() => undefined);
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "manual_news_import") {
@@ -166,6 +170,7 @@ export async function POST(request: Request) {
       const result = await runSourceSync("parsed-demo", "parsed_demo_import", body.payload);
       await rebuildSnapshots();
       await runPredictionsForUpcomingMatches();
+      if (body.matchId) await refreshForecastabilityCache(body.matchId).catch(() => undefined);
       return NextResponse.json({ ok: true, result });
     }
     if (body.action === "rank_match_confirm") {

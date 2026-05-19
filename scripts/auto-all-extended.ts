@@ -25,6 +25,7 @@ export type ExtendedAutoAllResult = {
   dryRun: boolean;
   writes: AutoFillWrite[];
   sourceReports: Array<{ source: string; status: string; message: string }>;
+  diagnosticTable: Array<{ dataType: string; source: string; status: string; reason: string; rows: number; nextAction: string }>;
   multiSourceResults: MultiSourceResult[];
   nextAction: string;
 };
@@ -93,6 +94,7 @@ export async function runAutoAllExtended(options: {
       dryRun: Boolean(options.dryRun),
       writes,
       sourceReports: [{ source: "research", status: "skipped", message: "No research source flags are enabled." }],
+      diagnosticTable: diagnosticRows(safe, [{ source: "research", status: "skipped", message: "No research source flags are enabled." }], multiSourceResults),
       multiSourceResults,
       nextAction: safe.nextAction
     };
@@ -106,6 +108,7 @@ export async function runAutoAllExtended(options: {
       dryRun: Boolean(options.dryRun),
       writes,
       sourceReports: [{ source: "hltv-research", status: "skipped", message: "Safe sources already covered the required private-inbox files." }],
+      diagnosticTable: diagnosticRows(safe, [{ source: "hltv-research", status: "skipped", message: "Safe sources already covered the required private-inbox files." }], multiSourceResults),
       multiSourceResults,
       nextAction: safe.nextAction
     };
@@ -274,11 +277,65 @@ export async function runAutoAllExtended(options: {
     dryRun: Boolean(options.dryRun),
     writes,
     sourceReports,
+    diagnosticTable: diagnosticRows(safe, sourceReports, multiSourceResults),
     multiSourceResults,
     nextAction: writes.length
       ? "Research sources produced normalized private-inbox files. Validate in /admin/imports before Apply."
       : "Research sources did not produce usable rows; use manual CSV/paste fallback."
   };
+}
+
+function diagnosticRows(safe: AutoFillResult, sourceReports: ExtendedAutoAllResult["sourceReports"], multiSourceResults: MultiSourceResult[]) {
+  const rows: ExtendedAutoAllResult["diagnosticTable"] = [];
+  for (const report of safe.sourceReports) {
+    rows.push({
+      dataType: inferDataType(report.source, report.message),
+      source: report.source,
+      status: report.status,
+      reason: report.message,
+      rows: rowsFromMessage(report.message),
+      nextAction: safe.stillMissing.length ? `Still missing ${safe.stillMissing.join(", ")}` : "Validate generated files in /admin/imports if any writes were produced."
+    });
+  }
+  for (const report of sourceReports) {
+    rows.push({
+      dataType: inferDataType(report.source, report.message),
+      source: report.source,
+      status: report.status,
+      reason: report.message,
+      rows: rowsFromMessage(report.message),
+      nextAction: report.status === "success" ? "Validate generated files in /admin/imports before Apply." : "Try explicit IDs, API keys, or manual CSV fallback."
+    });
+  }
+  for (const result of multiSourceResults) {
+    for (const source of result.sourceResults) {
+      rows.push({
+        dataType: result.dataType,
+        source: source.source,
+        status: source.status,
+        reason: source.warnings.join(" ") || source.url || "No additional detail.",
+        rows: source.rows.length,
+        nextAction: source.rows.length ? "Validate generated files in /admin/imports before Apply." : "Continue to next source or provide manual CSV."
+      });
+    }
+  }
+  return rows;
+}
+
+function inferDataType(source: string, message: string) {
+  const value = `${source} ${message}`.toLowerCase();
+  if (value.includes("roster")) return "roster";
+  if (value.includes("player")) return "player_stats";
+  if (value.includes("map")) return "map_stats";
+  if (value.includes("veto")) return "veto";
+  if (value.includes("h2h")) return "h2h";
+  if (value.includes("demo")) return "parsed_demo";
+  return "general";
+}
+
+function rowsFromMessage(message: string) {
+  const match = message.match(/(?:rows?|row\(s\)|players|maps|veto|h2h)=?\s*(\d+)/i);
+  return match ? Number(match[1]) : 0;
 }
 
 function missingDataTypes(stillMissing: string[], includeH2h: boolean) {

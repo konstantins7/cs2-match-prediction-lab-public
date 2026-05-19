@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { type FetchLike, type FetcherEnv } from "../data-fetchers/utils";
 import { searchGoogleCse } from "./google-cse-fetcher";
+import { getCachedIdentifier, setCachedIdentifier } from "./id-cache";
 import { extractHltvTeamIdsFromRss, fetchRssItems } from "./rss-fetcher";
 
 export type HltvTeamIdResolveResult = {
@@ -20,6 +21,8 @@ export async function resolveHltvTeamId(options: {
   now?: Date;
 }): Promise<HltvTeamIdResolveResult> {
   const cachePath = teamCachePath(options.teamName, options.cacheDir);
+  const sharedCached = await getCachedIdentifier("hltvTeam", options.teamName, options.now ?? new Date());
+  if (sharedCached) return { teamName: options.teamName, teamId: sharedCached, source: "cache", warnings: [] };
   const cached = await readTeamCache(cachePath, options.now ?? new Date());
   if (cached) return { teamName: options.teamName, teamId: cached, source: "cache", warnings: [] };
 
@@ -34,6 +37,7 @@ export async function resolveHltvTeamId(options: {
   const rssId = extractHltvTeamIdsFromRss(rss.items, options.teamName)[0] ?? "";
   if (rssId) {
     await writeTeamCache(cachePath, rssId, options.now);
+    await setCachedIdentifier("hltvTeam", options.teamName, rssId, "rss", options.now ?? new Date());
     return { teamName: options.teamName, teamId: rssId, source: "rss", warnings: rss.warnings };
   }
 
@@ -45,6 +49,7 @@ export async function resolveHltvTeamId(options: {
   const cseId = cse.links.map((link) => link.match(/\/team\/(\d+)\//i)?.[1] ?? "").find(Boolean) ?? "";
   if (cseId) {
     await writeTeamCache(cachePath, cseId, options.now);
+    await setCachedIdentifier("hltvTeam", options.teamName, cseId, "google-cse", options.now ?? new Date());
     return { teamName: options.teamName, teamId: cseId, source: "google-cse", warnings: cse.warnings };
   }
 

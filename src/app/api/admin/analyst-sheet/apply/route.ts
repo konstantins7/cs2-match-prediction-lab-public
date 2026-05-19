@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { applyAnalystSheetImport } from "@/lib/analystSheetImport";
+import { refreshForecastabilityCache } from "@/lib/data/matchSummaries";
 
 export async function POST(request: Request) {
   try {
@@ -8,6 +9,9 @@ export async function POST(request: Request) {
       matchId: typeof body.matchId === "string" ? body.matchId : "",
       sheets: Array.isArray(body.sheets) ? body.sheets : []
     });
+    if (result.ok && result.applied && typeof body.matchId === "string") {
+      await refreshForecastabilityCache(body.matchId).catch(() => undefined);
+    }
     return NextResponse.json(result, { status: result.ok ? 200 : 400 });
   } catch (error) {
     return NextResponse.json(
