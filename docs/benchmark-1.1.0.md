@@ -1,7 +1,7 @@
 # Benchmark Baseline for MVP 1.1.0
 
 **Date:** 2026-05-19
-**Branch:** `research/fallback-archives`
+**Branch:** `release/1.1.0` from `research/fallback-archives`
 **Mode:** dry-run
 
 This document records measured coverage only. Extended sources are opt-in, and scientific analysis is advisory; it does not change Real Forecast Ready gates.
@@ -55,7 +55,24 @@ Top blockers:
 4. `veto_history.csv` (16)
 5. missing player stats (15)
 
-Extended non-Apify source smoke with `ENABLE_RESEARCH_SOURCES=false` correctly skipped all research work and wrote nothing. The expected non-Apify target remains a realistic 30-40% RFR only when identifiers, snapshots, RSS metadata, or community datasets are available. Without those inputs, the correct behavior is skipped/failed source reports with no fake rows.
+Extended non-Apify smoke:
+
+```bash
+ENABLE_RESEARCH_SOURCES=true ENABLE_ARCHIVE_TODAY_FALLBACK=true ENABLE_RSS_METADATA_DISCOVERY=true ENABLE_SITEMAP_EXPORT_DISCOVERY=true npm run data:auto-all:extended -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
+```
+
+Observed result:
+
+| Metric | Result |
+|--------|--------|
+| Safe files before | `roster.csv` |
+| Potential writes | 0 |
+| Still missing | `map_stats.csv`, `player_stats.csv`, `veto_history.csv` |
+| Extended write behavior | dry-run, no private-inbox writes |
+| Main reasons | missing source identifiers, robots disallow/403, missing Google CSE key |
+| Next action | manual CSV/paste fallback or provide API keys/explicit IDs/community datasets |
+
+The expected non-Apify target remains a realistic 30-40% RFR only when identifiers, snapshots, RSS metadata, or community datasets are available. Without those inputs, the correct behavior is skipped/failed source reports with no fake rows.
 
 ## Notes
 
