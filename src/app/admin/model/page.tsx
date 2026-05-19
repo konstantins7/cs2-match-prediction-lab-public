@@ -1,4 +1,5 @@
 import { ModelWeightEditor } from "@/components/ModelWeightEditor";
+import { CalibratedWeightsPanel } from "@/components/CalibratedWeightsPanel";
 import { prisma } from "@/lib/prisma";
 import { buildPredictionInput, getDefaultModelWeights } from "@/lib/predictionEngine";
 
@@ -26,6 +27,7 @@ export default async function AdminModelPage() {
           ))}
         </div>
       </section>
+      <CalibratedWeightsPanel />
       <ModelWeightEditor input={JSON.parse(JSON.stringify(input))} initialWeights={weights} />
     </div>
   );

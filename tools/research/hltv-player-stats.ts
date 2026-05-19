@@ -15,20 +15,35 @@ export async function fetchHltvPlayerStats(options: HltvPlayerStatsOptions) {
   const warnings: string[] = [];
   const writes: CsvMergeResult[] = [];
   if (!/^\d+$/.test(options.teamId)) return { rows: [], writes, warnings: ["HLTV team id is required for player stats."] };
-  const url = new URL("https://www.hltv.org/stats/players");
-  url.searchParams.set("team", options.teamId);
-  const response = await researchFetchText(url.toString(), options);
-  if (!response.body) return { rows: [], writes, warnings: response.warnings };
-  const rows = extractHltvPlayerStats(response.body, {
-    matchId: options.matchId,
-    teamName: options.teamName,
-    collectedAt: getISODate(options.now),
-    period: options.period ?? "hltv_player_stats",
-    confidence: options.confidence ?? 72
-  });
-  if (rows.length) writes.push(await mergeSheetRows("player_stats", rows, ["matchId", "teamName", "nickname", "sourceName", "period"], options));
-  else warnings.push("HLTV player stats page had no parseable rows.");
-  return { rows, writes, warnings: [...response.warnings, ...warnings] };
+  const rows: Array<Record<string, unknown>> = [];
+  const allWarnings: string[] = [];
+  for (let page = 0; page < 5; page += 1) {
+    const url = new URL("https://www.hltv.org/stats/players");
+    url.searchParams.set("team", options.teamId);
+    if (page > 0) url.searchParams.set("offset", String(page * 50));
+    const response = await researchFetchText(url.toString(), options);
+    allWarnings.push(...response.warnings);
+    if (!response.body) break;
+    const pageRows = extractHltvPlayerStats(response.body, {
+      matchId: options.matchId,
+      teamName: options.teamName,
+      collectedAt: getISODate(options.now),
+      period: options.period ?? "hltv_player_stats",
+      confidence: options.confidence ?? 72
+    });
+    const before = rows.length;
+    for (const row of pageRows) {
+      const key = `${row.teamName}|${row.nickname}|${row.period}`;
+      if (!rows.some((existing) => `${existing.teamName}|${existing.nickname}|${existing.period}` === key)) rows.push(row);
+    }
+    if (pageRows.length < 50 || rows.length === before) break;
+  }
+  if (!rows.length) {
+    warnings.push("HLTV player stats page had no parseable rows.");
+    return { rows, writes, warnings: [...allWarnings, ...warnings] };
+  }
+  writes.push(await mergeSheetRows("player_stats", rows, ["matchId", "teamName", "nickname", "sourceName", "period"], options));
+  return { rows, writes, warnings: [...allWarnings, ...warnings] };
 }
 
 export function extractHltvPlayerStats(html: string, context: { matchId: string; teamName: string; collectedAt: string; period: string; confidence: number }) {

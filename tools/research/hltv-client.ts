@@ -3,12 +3,14 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { fetchText, wait, type FetchLike, type FetcherEnv } from "../data-fetchers/utils";
 import { checkRobotsAllowed } from "./robots-cache";
+import { logResearchEvent } from "./research-log";
 
 export type ResearchFetchOptions = {
   env?: FetcherEnv;
   fetchImpl?: FetchLike;
   waitImpl?: (ms: number) => Promise<void>;
   cacheDir?: string;
+  noCache?: boolean;
   rateLimitMs?: number;
   now?: Date;
   sourceFlag?: string;
@@ -27,7 +29,9 @@ export type ResearchFetchResult = {
 
 export const hltvResearchUserAgent = "CS2MatchPredictionLab/1.0-research (contact: saldinkostya97@gmail.com)";
 export const hltvCacheTtlMs = 24 * 60 * 60 * 1000;
+const hltvBlockedTtlMs = 6 * 60 * 60 * 1000;
 const defaultCacheDir = path.join("data", "research-cache", "hltv");
+const blockedCacheDir = path.join("data", "cache", "hltv", "blocked");
 let lastResearchRequestAt = 0;
 
 export async function researchFetchText(url: string, options: ResearchFetchOptions = {}): Promise<ResearchFetchResult> {
@@ -38,6 +42,7 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
     return { status: "disabled", url: redactResearchUrl(url), body: "", warnings: [`Research source is disabled: ${sourceFlag}.`] };
   }
   if (!isAllowedResearchUrl(url, options)) {
+    await logResearchEvent({ level: "WARN", source: "research-fetch", message: "Research URL outside allowlist.", url }).catch(() => undefined);
     return { status: "blocked", url: redactResearchUrl(url), body: "", warnings: ["Research URL is outside the allowlist."] };
   }
   if (options.robotsCheck) {
@@ -48,27 +53,60 @@ export async function researchFetchText(url: string, options: ResearchFetchOptio
       now: options.now
     });
     warnings.push(...robots.warnings);
-    if (!robots.allowed) return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
+    if (!robots.allowed) {
+      await logResearchEvent({ level: "WARN", source: "robots", message: "robots.txt disallow for research request.", url }).catch(() => undefined);
+      return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
+    }
+  }
+
+  const now = options.now ?? new Date();
+  const blockPath = blockedCachePath(url, options.cacheDir);
+  const cachedBlock = options.noCache ? null : await readFreshBlock(blockPath, now);
+  if (cachedBlock) {
+    warnings.push("Recent HTTP 403 cached for 6 hours; use Apify, Jina fallback, or manual CSV instead of retrying direct HLTV.");
+    return { status: "blocked", url: redactResearchUrl(url), body: "", warnings };
   }
 
   const cachePath = cacheFilePath(url, options.cacheDir, options.cacheNamespace);
-  const cached = await readFreshCache(cachePath, options.now ?? new Date());
+  const cached = options.noCache ? null : await readFreshCache(cachePath, now);
   if (cached !== null) return { status: "cached", url: redactResearchUrl(url), body: cached, warnings };
 
   try {
-    await guardRateLimit(options.rateLimitMs ?? 5000, options.waitImpl ?? wait, options.now ?? new Date());
+    const body = await fetchWithRetries(url, options);
+    await mkdir(path.dirname(cachePath), { recursive: true });
+    await writeFile(cachePath, `${JSON.stringify({ timestamp: (options.now ?? new Date()).toISOString(), body }, null, 2)}\n`, "utf8");
+    return { status: "success", url: redactResearchUrl(url), body, warnings };
+  } catch (error) {
+    warnings.push(error instanceof Error ? error.message : "HLTV research request failed.");
+    await logResearchEvent({ level: "WARN", source: "research-fetch", message: warnings.at(-1) ?? "Research request failed.", url }).catch(() => undefined);
+    return { status: "failed", url: redactResearchUrl(url), body: "", warnings };
+  }
+}
+
+async function fetchWithRetries(url: string, options: ResearchFetchOptions) {
+  const waitImpl = options.waitImpl ?? wait;
+  try {
+    await guardRateLimit(options.rateLimitMs ?? 5000, waitImpl, options.now ?? new Date());
     const body = await fetchText(url, {
       headers: {
         Accept: "text/html,text/plain,*/*",
         "User-Agent": hltvResearchUserAgent
       }
     }, options.fetchImpl);
-    await mkdir(path.dirname(cachePath), { recursive: true });
-    await writeFile(cachePath, `${JSON.stringify({ timestamp: (options.now ?? new Date()).toISOString(), body }, null, 2)}\n`, "utf8");
-    return { status: "success", url: redactResearchUrl(url), body, warnings };
+    lastResearchRequestAt = Date.now();
+    return body;
   } catch (error) {
-    warnings.push(error instanceof Error ? error.message : "HLTV research request failed.");
-    return { status: "failed", url: redactResearchUrl(url), body: "", warnings };
+    const message = error instanceof Error ? error.message : String(error);
+    if (/HTTP 403/i.test(message)) {
+      await writeBlockCache(blockedCachePath(url, options.cacheDir), options.now ?? new Date(), message).catch(() => undefined);
+      await logResearchEvent({
+        level: "WARN",
+        source: "hltv",
+        message: "HTTP 403 from HLTV cached for 6 hours; try Apify, Jina fallback, or manual CSV. No alternate User-Agent retry attempted.",
+        url
+      }).catch(() => undefined);
+    }
+    throw error instanceof Error ? error : new Error("Research request failed.");
   }
 }
 
@@ -88,6 +126,7 @@ export function isAllowedHltvUrl(rawUrl: string) {
   if (url.pathname === "/search") return url.searchParams.has("query");
   if (/^\/matches\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
   if (/^\/stats\/teams\/maps\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
+  if (/^\/stats\/teams\/mapstats\/\d+\/[a-z0-9-]+$/i.test(url.pathname)) return true;
   if (url.pathname === "/stats/players") return Boolean(url.searchParams.get("team"));
   return false;
 }
@@ -150,11 +189,30 @@ async function guardRateLimit(rateLimitMs: number, waitImpl: (ms: number) => Pro
     const delta = current - lastResearchRequestAt;
     if (delta < rateLimitMs) await waitImpl(rateLimitMs - delta);
   }
-  lastResearchRequestAt = Date.now();
+}
+
+async function readFreshBlock(filePath: string, now: Date) {
+  try {
+    const cached = JSON.parse(await readFile(filePath, "utf8")) as { timestamp?: string };
+    const timestamp = cached.timestamp ? new Date(cached.timestamp).getTime() : 0;
+    return Number.isFinite(timestamp) && now.getTime() - timestamp < hltvBlockedTtlMs;
+  } catch {
+    return false;
+  }
+}
+
+async function writeBlockCache(filePath: string, now: Date, reason: string) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  await writeFile(filePath, `${JSON.stringify({ timestamp: now.toISOString(), reason }, null, 2)}\n`, "utf8");
 }
 
 function redactResearchUrl(url: string) {
   return url.replace(/([?&](?:token|key|api_key|authorization)=)[^&]+/gi, "$1[redacted]");
+}
+
+function blockedCachePath(url: string, cacheDir?: string) {
+  const digest = createHash("sha256").update(url).digest("hex");
+  return path.resolve(process.cwd(), cacheDir ? path.join(cacheDir, "blocked") : blockedCacheDir, `${digest}.json`);
 }
 
 function isAllowedResearchUrl(rawUrl: string, options: ResearchFetchOptions) {

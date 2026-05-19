@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { redactString } from "./security/redaction";
+import { logUserAction } from "./userActionLogger";
 import { runAutoFill, type AutoFillMode, type AutoFillProgressEvent, type AutoFillResult } from "../../tools/auto-fill";
 
 export type AutoAllJobStatus = "queued" | "running" | "completed" | "error";
@@ -65,6 +66,13 @@ async function runJob(jobId: string) {
   const job = jobs.get(jobId);
   if (!job) return;
   mutateJob(job, { status: "running" });
+  const startedAt = Date.now();
+  await logUserAction({
+    actionName: "auto_all",
+    matchId: job.matchId,
+    params: { mode: job.mode, dryRun: job.dryRun, teamNames: job.teamNames },
+    status: "started"
+  }).catch(() => undefined);
   try {
     const result = await runAutoFill({
       matchId: job.matchId,
@@ -78,8 +86,24 @@ async function runJob(jobId: string) {
       }
     });
     mutateJob(job, { status: "completed", result });
+    await logUserAction({
+      actionName: "auto_all",
+      matchId: job.matchId,
+      params: { mode: job.mode, dryRun: job.dryRun, writes: result.writes.length, stillMissing: result.stillMissing },
+      durationMs: Date.now() - startedAt,
+      status: "completed"
+    }).catch(() => undefined);
   } catch (error) {
-    mutateJob(job, { status: "error", error: redactString(error instanceof Error ? error.message : "Auto-All failed.") });
+    const message = redactString(error instanceof Error ? error.message : "Auto-All failed.");
+    mutateJob(job, { status: "error", error: message });
+    await logUserAction({
+      actionName: "auto_all",
+      matchId: job.matchId,
+      params: { mode: job.mode, dryRun: job.dryRun },
+      durationMs: Date.now() - startedAt,
+      status: "error",
+      errorMessage: message
+    }).catch(() => undefined);
   }
 }
 

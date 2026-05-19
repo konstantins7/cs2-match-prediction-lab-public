@@ -25,6 +25,7 @@ data/research-cache/
 data/analysis-cache/
 data/demos/
 data/community-datasets/
+data/logs/
 *.log
 dev-server.log
 tsconfig.tsbuildinfo

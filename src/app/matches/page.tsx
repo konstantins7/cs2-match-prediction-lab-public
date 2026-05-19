@@ -1,13 +1,11 @@
 import Link from "next/link";
 import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
-import { MatchTable } from "@/components/MatchTable";
+import { LightweightMatchTable } from "@/components/LightweightMatchTable";
 import { MatchFeedRefreshButton } from "@/components/MatchFeedRefreshButton";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { PageHeader } from "@/components/ui";
-import { rankForecastAutopilotCandidates, scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
-import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
-import { getCalculatedMatches, type MatchFocusFilter } from "@/lib/data/matches";
-import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
+import type { MatchFocusFilter } from "@/lib/data/matches";
+import { getCachedReadinessDistribution, getCommandCenterSummary, getLightweightMatchSummaries } from "@/lib/data/matchSummaries";
 import { getMatchFeedStatus } from "@/lib/matchFeedCache";
 
 type Search = {
@@ -18,6 +16,8 @@ type Search = {
   sourceMode?: string;
   focus?: MatchFocusFilter;
   sort?: string;
+  page?: string;
+  limit?: string;
 };
 
 function filterLink(label: string, href: string) {
@@ -30,24 +30,28 @@ function filterLink(label: string, href: string) {
 
 export default async function MatchesPage({ searchParams }: { searchParams: Promise<Search> }) {
   const params = await searchParams;
-  const [rows, status, readinessDistribution, matchFeedStatus] = await Promise.all([
-    getCalculatedMatches({
+  const [summaryPage, commandCenter, readinessDistribution, matchFeedStatus] = await Promise.all([
+    getLightweightMatchSummaries({
       status: params.status,
       format: params.format,
       top: params.top ? Number(params.top) : undefined,
-      highConfidence: params.confidence === "high",
       sourceMode: params.sourceMode,
       focus: params.focus ?? "pro",
-      limit: 60
+      sort: params.sort,
+      page: params.page ? Number(params.page) : 1,
+      limit: params.limit ? Number(params.limit) : 20
     }),
-    getDashboardDataStatus(),
-    getReadinessDistribution(),
+    getCommandCenterSummary(),
+    getCachedReadinessDistribution(),
     getMatchFeedStatus()
   ]);
-  const fullStatus = { ...status, readinessDistribution };
-  const sortedRows = params.sort === "forecastable"
-    ? sortByForecastability(rows)
-    : rows;
+  const fullStatus = {
+    realMatchesCount: commandCenter.upcoming + commandCenter.live + commandCenter.finished,
+    proFocusCount: commandCenter.upcoming,
+    averageDataQuality: 0,
+    fixtureOnlyCount: commandCenter.uncached,
+    readinessDistribution
+  };
 
   return (
     <div className="space-y-5">
@@ -83,13 +87,31 @@ export default async function MatchesPage({ searchParams }: { searchParams: Prom
           <OneClickResearchButton compact />
         </div>
       </details>
-      <MatchTable rows={sortedRows} />
+      <LightweightMatchTable rows={summaryPage.rows} />
+      <Pagination page={summaryPage.page} hasNextPage={summaryPage.hasNextPage} params={params} />
     </div>
   );
 }
 
-function sortByForecastability(rows: Awaited<ReturnType<typeof getCalculatedMatches>>) {
-  const scored = rows.map((row) => scoreForecastAutopilotCandidate({ input: row.input, prediction: row.prediction, priority: row.priority }));
-  const order = new Map(rankForecastAutopilotCandidates(scored).map((candidate, index) => [candidate.matchId, index]));
-  return [...rows].sort((a, b) => (order.get(a.match.id) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.match.id) ?? Number.MAX_SAFE_INTEGER));
+function Pagination({ page, hasNextPage, params }: { page: number; hasNextPage: boolean; params: Search }) {
+  const previous = page > 1 ? pageLink(params, page - 1) : "";
+  const next = hasNextPage ? pageLink(params, page + 1) : "";
+  return (
+    <nav className="flex items-center justify-between rounded border border-lab-border bg-lab-panel p-3 text-sm">
+      <span className="text-lab-muted">Page {page}</span>
+      <div className="flex gap-2">
+        {previous ? <Link href={previous} className="rounded border border-lab-border px-3 py-1.5 text-lab-cyan">Назад</Link> : null}
+        {next ? <Link href={next} className="rounded border border-lab-border px-3 py-1.5 text-lab-cyan">Дальше</Link> : null}
+      </div>
+    </nav>
+  );
+}
+
+function pageLink(params: Search, page: number) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value && key !== "page") query.set(key, value);
+  });
+  query.set("page", String(page));
+  return `/matches?${query.toString()}`;
 }

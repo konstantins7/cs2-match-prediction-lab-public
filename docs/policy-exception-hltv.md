@@ -28,7 +28,10 @@ Allowed only when both `ENABLE_RESEARCH_SOURCES=true` and `ENABLE_HLTV_AUTOMATIO
 4. Team player stats
    - `GET https://www.hltv.org/stats/players?team={teamId}`.
    - Parse rating, ADR, KAST, impact and sample maps.
+   - Pagination is capped at 5 pages and only when the previous page produced rows.
    - Output normalized `player_stats.csv`.
+
+Direct HLTV `403` responses are cached for 6 hours. The app does not retry with browser-like headers or alternate User-Agent strings; it reports Apify, Jina, or manual CSV as alternatives.
 
 ## Archive and Open-Data Fallbacks
 
@@ -40,8 +43,10 @@ Allowed only behind explicit flags:
 - `ENABLE_SITEMAP_EXPORT_DISCOVERY=true` permits one cached `/sitemap.xml` or `/sitemap_index.xml` request per allowlisted domain to discover export-like CSV/JSON URLs. Pagination and broad crawling remain forbidden.
 - `ENABLE_GRAPHQL_DISCOVERY=true` permits explicit open GraphQL endpoint checks for known hosts. Unknown schemas, errors, or auth requirements produce skipped reports rather than fake rows.
 - `ENABLE_GOOGLE_CSE_FALLBACK=true` permits Google Custom Search based identifier discovery when `GOOGLE_CSE_API_KEY` and `GOOGLE_CSE_CX` are configured. Quota errors are reported and redacted.
+- Google CSE usage is tracked locally and disabled at the 80% daily guardrail by default.
 - `ENABLE_JINA_PROXY_FALLBACK=true` permits Jina Reader fallback only after a direct source fails, only for allowlisted URLs, and only with a 2 MB response cap. It is unsuitable for complex large tables and remains strict opt-in.
 - `ENABLE_COMMUNITY_DATASETS=true` permits fetching explicit GitHub raw/gist dataset URLs declared in `tools/community-datasets/registry.json`; rows must validate against accepted private-inbox schemas before merge.
+- Community dataset target rows must include `sourceDate` or `collectedAt` before the target match start; otherwise the dataset is skipped for pre-match evidence.
 
 ## Scientific Analysis
 

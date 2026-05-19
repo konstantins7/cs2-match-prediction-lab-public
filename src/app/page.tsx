@@ -3,15 +3,11 @@ import { DashboardStatusStrip } from "@/components/DashboardStatusStrip";
 import { ForecastAutopilotButton } from "@/components/ForecastAutopilotButton";
 import { ForecastCommandCenter } from "@/components/ForecastCommandCenter";
 import { ForecastConciergePanel } from "@/components/ForecastConciergePanel";
-import { MatchCard } from "@/components/MatchCard";
+import { LightweightMatchCard } from "@/components/LightweightMatchCard";
 import { MatchFeedRefreshButton } from "@/components/MatchFeedRefreshButton";
 import { OneClickResearchButton } from "@/components/OneClickResearchButton";
 import { ActionButton, InfoBanner, PageHeader } from "@/components/ui";
-import { rankForecastAutopilotCandidates, scoreForecastAutopilotCandidate } from "@/lib/autoResearch/candidateSelector";
-import { getAutoResearchMetrics } from "@/lib/autoResearch";
-import { getDashboardDataStatus } from "@/lib/data/dataCoverage";
-import { getCalculatedMatches } from "@/lib/data/matches";
-import { getReadinessDistribution } from "@/lib/data/readinessDistribution";
+import { getCachedReadinessDistribution, getCommandCenterSummary, getLightweightMatchSummaries, type LightweightMatchSummary } from "@/lib/data/matchSummaries";
 import { getMatchFeedStatus } from "@/lib/matchFeedCache";
 import { buildSourceSetupChecklist, isNoExtraApiMode } from "@/lib/sourceSetup";
 
@@ -19,24 +15,51 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const now = new Date();
-  const [upcoming, live, status, readinessDistribution, commandMetrics, matchFeedStatus] = await Promise.all([
-    getCalculatedMatches({ status: "upcoming", limit: 24, focus: "all_real" }),
-    getCalculatedMatches({ status: "live", limit: 6, focus: "all_real" }),
-    getDashboardDataStatus(),
-    getReadinessDistribution(),
-    getAutoResearchMetrics(),
+  const [upcomingPage, livePage, readinessDistribution, commandCenter, matchFeedStatus] = await Promise.all([
+    getLightweightMatchSummaries({ status: "upcoming", limit: 24, focus: "all_real" }),
+    getLightweightMatchSummaries({ status: "live", limit: 6, focus: "all_real" }),
+    getCachedReadinessDistribution(),
+    getCommandCenterSummary(),
     getMatchFeedStatus()
   ]);
+  const upcoming = upcomingPage.rows;
+  const live = livePage.rows;
+  const status = {
+    lastPandaScoreSyncAt: null,
+    lastValveSyncAt: null,
+    lastCsUpdatesSyncAt: null,
+    lastPredictionRecalculationAt: null,
+    realMatchesCount: commandCenter.upcoming + commandCenter.live + commandCenter.finished,
+    proFocusCount: commandCenter.upcoming,
+    averageDataQuality: 0,
+    fixtureOnlyCount: commandCenter.uncached,
+    teamsWithPlayerRoster: 0,
+    matchesEnoughForBasicPrediction: commandCenter.basicOnly
+  };
   const fullStatus = { ...status, readinessDistribution };
+  const commandMetrics = {
+    matches: status.realMatchesCount,
+    readyForecasts: readinessDistribution.realActionable,
+    basicPreview: readinessDistribution.real.L1_BASIC_CONTEXT + readinessDistribution.real.L2_BASIC_PREDICTION,
+    needsManualData: commandCenter.uncached + commandCenter.blocked,
+    teamsWithRank: 0,
+    L0_FIXTURE_ONLY: readinessDistribution.real.L0_FIXTURE_ONLY,
+    L1_BASIC_CONTEXT: readinessDistribution.real.L1_BASIC_CONTEXT,
+    L2_BASIC_PREDICTION: readinessDistribution.real.L2_BASIC_PREDICTION,
+    L3_ANALYTICAL: readinessDistribution.real.L3_ANALYTICAL,
+    L4_DEEP: readinessDistribution.real.L4_DEEP,
+    teamsWithRoster: status.teamsWithPlayerRoster,
+    matchesWithMapVeto: 0,
+    researchTasks: commandCenter.uncached + commandCenter.blocked,
+    sourceSetupNeeded: 0
+  };
   const sourceSetup = buildSourceSetupChecklist(false, status.teamsWithPlayerRoster > 0 || status.matchesEnoughForBasicPrediction > 0);
   const noExtraApiMode = isNoExtraApiMode(sourceSetup);
-  const today = upcoming.filter((row) => sameDay(new Date(row.match.startTime), now)).slice(0, 6);
-  const nearby = upcoming.filter((row) => !sameDay(new Date(row.match.startTime), now)).slice(0, 6);
-  const bestIds = rankForecastAutopilotCandidates(upcoming.map((row) => scoreForecastAutopilotCandidate({ input: row.input, prediction: row.prediction, priority: row.priority })))
-    .slice(0, 5)
-    .map((candidate) => candidate.matchId);
-  const byId = new Map(upcoming.map((row) => [row.match.id, row]));
-  const best = bestIds.map((id) => byId.get(id)).filter((row): row is NonNullable<typeof row> => Boolean(row));
+  const today = upcoming.filter((row) => sameDay(new Date(row.startTime), now)).slice(0, 6);
+  const nearby = upcoming.filter((row) => !sameDay(new Date(row.startTime), now)).slice(0, 6);
+  const best = [...upcoming]
+    .sort((a, b) => (b.cachedCoverageScore ?? -1) - (a.cachedCoverageScore ?? -1) || b.priority.priorityScore - a.priority.priorityScore)
+    .slice(0, 5);
 
   return (
     <div className="space-y-6">
@@ -83,7 +106,7 @@ export default async function HomePage() {
   );
 }
 
-function MatchSection({ title, rows, empty }: { title: string; rows: Awaited<ReturnType<typeof getCalculatedMatches>>; empty: string }) {
+function MatchSection({ title, rows, empty }: { title: string; rows: LightweightMatchSummary[]; empty: string }) {
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -92,7 +115,7 @@ function MatchSection({ title, rows, empty }: { title: string; rows: Awaited<Ret
       </div>
       {rows.length ? (
         <div className="grid gap-4 lg:grid-cols-2">
-          {rows.map((row) => <MatchCard key={`${title}-${row.match.id}`} row={row} />)}
+          {rows.map((row) => <LightweightMatchCard key={`${title}-${row.id}`} row={row} />)}
         </div>
       ) : (
         <div className="rounded border border-lab-border bg-lab-panel p-4 text-sm text-lab-muted">{empty}</div>

@@ -19,6 +19,8 @@ import { RealForecastBadge, SourceLevelBadge } from "./RealForecastBadge";
 import { MatchForecastStatusPanel } from "./MatchForecastStatusPanel";
 import { ForecastAutopilotButton } from "./ForecastAutopilotButton";
 import { AutoAllButton } from "./AutoAllButton";
+import { ExtendedAutoAllButton } from "./ExtendedAutoAllButton";
+import { AiDataExtractor } from "./AiDataExtractor";
 import { ScientificAnalysisPanel } from "./ScientificAnalysisPanel";
 import { FullMatchAnalysisPanel } from "./FullMatchAnalysisPanel";
 import { ForecastConciergePanel } from "./ForecastConciergePanel";
@@ -79,12 +81,14 @@ export function MatchDetailTabs({
   return (
     <div className="space-y-5">
       <FullMatchAnalysisPanel matchId={input.match.id} />
+      <AiDataExtractor matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
       <details className="rounded border border-lab-border bg-lab-panel p-4">
         <summary className="cursor-pointer font-semibold text-lab-cyan">Advanced: technical readiness and autopilot</summary>
         <div className="mt-4 space-y-4">
           <MatchForecastStatusPanel input={input} prediction={prediction} researchTasks={researchTasks} />
           <ForecastAutopilotButton matchId={input.match.id} compact />
           <AutoAllButton matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
+          <ExtendedAutoAllButton matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
           {autopilotCandidate ? <CurrentMatchAutopilotRecommendation candidate={autopilotCandidate} /> : null}
           <ForecastConciergePanel mode="match" input={input} prediction={prediction} researchTasks={researchTasks} />
         </div>

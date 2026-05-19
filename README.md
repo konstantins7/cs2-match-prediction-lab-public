@@ -24,6 +24,52 @@ pnpm test
 pnpm build
 ```
 
+## MVP 1.2.0: coverage push and model calibration
+
+v1.2.0 keeps the production-safe path unchanged: `data:auto-all`, `data:pipeline`, Apply, Real Forecast Ready gates, seed data and page-load behavior are not loosened. New capabilities are opt-in:
+
+- `data:auto-all:extended` can use research identifiers, HLTV research pages, Liquipedia opensearch, Google CSE, community datasets, archives and local demo exports when the matching env flags are enabled.
+- Match pages include `Всё возможное auto`, an SSE-powered extended flow that reports progress and writes only normalized files to `data/private-inbox/`.
+- Long-running UI and CLI actions write redacted JSONL entries to `data/logs/user-actions.log`; inspect the latest entries with `pnpm user:log:tail`.
+- `/lab/explorer` shows finished-match prediction review, reliability bins and training CSV export.
+- `pnpm model:calibrate` writes `data/model/calibrated_weights.json`; `/admin/model` can reset it. Calibrated weights are advisory and off by default.
+- `pnpm model:optimize-params` writes advisory Elo/decay/smoothing search output to `data/model/best_params.json`.
+
+Coverage flags remain local-only:
+
+```env
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_HLTV_AUTOMATION=true
+ENABLE_RSS_METADATA_DISCOVERY=true
+ENABLE_GOOGLE_CSE_FALLBACK=true
+GOOGLE_CSE_API_KEY="..."
+GOOGLE_CSE_CX="..."
+ENABLE_COMMUNITY_DATASETS=true
+RESEARCH_DEMO_PARSER_CMD="demoinfocs"
+```
+
+HLTV direct requests fail closed on the first `403`, cache that block for 6 hours and suggest Jina/Apify/manual CSV instead of retrying with browser-like headers. Community datasets are rejected for pre-match evidence unless their `sourceDate` or `collectedAt` is before the target match start.
+
+## MVP 1.3.0: local AI import assistant
+
+v1.3.0 adds a text-first local AI assistant for pasted CS2 match/stat pages. It uses Ollama on `127.0.0.1`, converts extracted facts into the existing analyst-sheet CSV schemas, then applies only after explicit user confirmation through the existing analyst-sheet Apply path.
+
+```env
+ENABLE_LOCAL_AI=true
+LOCAL_AI_MODEL="llama3.2:3b"
+LOCAL_AI_BASE_URL="http://127.0.0.1:11434"
+LOCAL_AI_TIMEOUT_MS=30000
+```
+
+Setup:
+
+```bash
+ollama pull llama3.2:3b
+pnpm ai:setup
+```
+
+The assistant supports pasted text, `.txt`, `.html`, and `.md` in this release. Screenshots/OCR are intentionally deferred to v1.4.0. See `docs/local-ai-import.md`.
+
 Альтернатива через npm/npx, если pnpm недоступен:
 
 ```bash

@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.3.0 - Local AI Import Assistant
+
+- Added opt-in local AI extraction through Ollama on `127.0.0.1`, disabled by default behind `ENABLE_LOCAL_AI`.
+- Added `Быстрый AI импорт` on match pages for pasted text/HTML/Markdown, editable sheet previews, and explicit analyst-sheet Apply.
+- Added local AI cache, technical metrics logs, setup helper, and confirmed-example export script.
+- Documented text-first scope and deferred screenshot/OCR support to v1.4.0.
+
+## v1.2.0 - Coverage Push, Research Diagnostics, and Model Calibration
+
+- Added `feat/1.2.0` research coverage plan implementation: HLTV fail-fast 403 cache, capped player-stat pagination, mapstats fallback, shared ID cache, CSE quota guard, and extended diagnostics.
+- Added user action loading/logging primitives: reusable async-action hook, disabled/loading buttons for major long-running actions, redacted server JSONL logs, and `user:log:tail`.
+- Added one-click extended Auto-All SSE flow on match pages through `/api/auto-all-extended`, with private-inbox-only writes and explicit Apply still required.
+- Added community dataset leakage guards: target rows require `sourceDate`/`collectedAt <= match.startTime`; violating datasets are skipped instead of partially merged.
+- Added optional external demo parser handling through `RESEARCH_DEMO_PARSER_CMD` without adding parser dependencies to the app.
+- Added offline calibration scripts: `model:calibrate` and `model:optimize-params`, plus `/admin/model` reset controls for calibrated weights.
+- Added `/lab/explorer` for paginated historical review, reliability bins, and training CSV export.
+- Extended scientific factors with map-specific Elo proxy, player-form trend, roster-change risk, H2H last-meeting signal, and first pick/ban tendencies.
+
 ## v1.1.0 - Extended Sources and Scientific Analysis
 
 - Added optional `data:auto-all:extended` research flow with Archive.today, Wayback, RSS/Atom metadata, sitemap/export discovery, GraphQL discovery, Google CSE identifier fallback, Jina Reader fallback, and community dataset sync behind explicit env flags.

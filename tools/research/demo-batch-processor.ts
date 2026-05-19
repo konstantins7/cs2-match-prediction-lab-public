@@ -1,4 +1,5 @@
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { getISODate } from "../data-fetchers/utils";
 import { normalizeAwpyJson } from "../parsed-demo/normalize-awpy";
@@ -13,6 +14,8 @@ export type ResearchDemoBatchOptions = {
   confidence?: number;
   out?: string;
   dryRun?: boolean;
+  parserCommand?: string;
+  parserTimeoutMs?: number;
 };
 
 export type ResearchDemoBatchResult = {
@@ -35,9 +38,30 @@ export async function processResearchDemoBatch(options: ResearchDemoBatchOptions
   } catch {
     return { status: "skipped", out, jsonFiles: 0, demFiles: 0, players: 0, maps: 0, warnings: [`Demo folder not found: ${folder}.`] };
   }
-  const jsonFiles = names.filter((name) => name.toLowerCase().endsWith(".json"));
   const demFiles = names.filter((name) => /\.(dem|dem\.bz2)$/i.test(name));
-  if (demFiles.length) warnings.push("Raw .dem files are present, but this branch only normalizes local AWPy JSON exports unless an external parser is run separately.");
+  if (demFiles.length) {
+    const parser = options.parserCommand ?? process.env.RESEARCH_DEMO_PARSER_CMD ?? "";
+    if (!parser) {
+      warnings.push("Raw .dem files are present; external parser not configured. Set RESEARCH_DEMO_PARSER_CMD in PATH to convert demos.");
+    } else if (await commandExists(parser)) {
+      for (const demFile of demFiles) {
+        const input = path.join(folder, demFile);
+        const output = path.join(folder, `${demFile.replace(/\.(dem|dem\.bz2)$/i, "")}.json`);
+        if (!options.dryRun) {
+          const result = await runParser(parser, input, output, options.parserTimeoutMs ?? 60_000);
+          if (!result.ok) warnings.push(`${demFile}: ${result.message}`);
+        }
+      }
+      try {
+        names = await readdir(folder);
+      } catch {
+        // Keep original names if a parser run removed or locked the folder.
+      }
+    } else {
+      warnings.push(`External demo parser not found in PATH: ${parser}.`);
+    }
+  }
+  const jsonFiles = names.filter((name) => name.toLowerCase().endsWith(".json"));
   const exports = [];
   for (const fileName of jsonFiles) {
     try {
@@ -78,4 +102,31 @@ export async function processResearchDemoBatch(options: ResearchDemoBatchOptions
     maps: merged.maps.length,
     warnings
   };
+}
+
+function commandExists(command: string) {
+  return new Promise<boolean>((resolve) => {
+    const checker = process.platform === "win32" ? "where.exe" : "which";
+    const child = spawn(checker, [command], { stdio: "ignore" });
+    child.on("close", (code) => resolve(code === 0));
+    child.on("error", () => resolve(false));
+  });
+}
+
+function runParser(command: string, input: string, output: string, timeoutMs: number) {
+  return new Promise<{ ok: boolean; message: string }>((resolve) => {
+    const child = spawn(command, [input, output], { stdio: "ignore" });
+    const timeout = setTimeout(() => {
+      child.kill();
+      resolve({ ok: false, message: `external parser timed out after ${timeoutMs}ms.` });
+    }, timeoutMs);
+    child.on("close", (code) => {
+      clearTimeout(timeout);
+      resolve({ ok: code === 0, message: code === 0 ? "parsed" : `external parser exited with ${code}.` });
+    });
+    child.on("error", (error) => {
+      clearTimeout(timeout);
+      resolve({ ok: false, message: error.message });
+    });
+  });
 }

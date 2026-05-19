@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type React from "react";
+import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 type Analysis = {
   matchId: string;
@@ -12,6 +13,7 @@ type Analysis = {
   mapProbabilities: Array<{ mapName: string; teamAWinProbability: number; teamBWinProbability: number; teamASample: number; teamBSample: number; warnings: string[] }>;
   prediction: { teamA: string; teamB: string; teamAProbability: number; components: Record<string, number>; warnings: string[] };
   parsedDemo: { pistolRounds: number } | null;
+  scientificFactors: Array<{ id: string; label: string; status: "available" | "partial" | "missing"; impact: number; explanation: string; warnings: string[]; details: Record<string, unknown> }>;
   outliers: Array<{ id: string; value: number; zScore: number }>;
   csv: string;
 };
@@ -106,6 +108,8 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
             <Heatmap rows={analysis.playerMapEfficiency} selected={selected} onSelect={setSelected} />
             <TrendCard metric={selectedMetric} />
           </div>
+          <ScientificFactorsCard factors={analysis.scientificFactors} />
+          <EloTrendCard analysis={analysis} />
           <div className="grid gap-4 lg:grid-cols-2">
             <MapProbabilityTable rows={analysis.mapProbabilities} teamA={teamA} teamB={teamB} />
             <SynergyTable rows={analysis.teamSynergy} />
@@ -115,10 +119,61 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
               <h3 className="font-semibold text-white">Parsed demo round analytics</h3>
               <p className="mt-2 text-sm text-lab-muted">Pistol rounds detected: {analysis.parsedDemo.pistolRounds}. CT/T splits appear here when parsed demo exports include round-side winners.</p>
             </section>
-          ) : null}
+          ) : (
+            <section className="rounded border border-lab-border bg-lab-panel p-4">
+              <h3 className="font-semibold text-white">Раунд-анализ</h3>
+              <p className="mt-2 text-sm text-lab-muted">Недостаточно данных для раундового анализа. Загрузите parsed demo export через /admin/imports, чтобы увидеть economy, pistol и clutch summaries.</p>
+            </section>
+          )}
+          <p className="text-xs text-lab-muted">PDF экспорт пока отложен: используйте печать страницы браузера и Save as PDF. CSV ниже содержит агрегаты и player-map rows.</p>
           <CsvDownload csv={analysis.csv} matchId={matchId} />
         </>
       ) : null}
+    </section>
+  );
+}
+
+function ScientificFactorsCard({ factors }: { factors: Analysis["scientificFactors"] }) {
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">Advisory scientific factors</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {factors.length ? factors.map((factor) => (
+          <article key={factor.id} className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <p className="font-medium text-white">{factor.label}</p>
+              <span className={factor.status === "available" ? "text-lab-green" : factor.status === "partial" ? "text-lab-amber" : "text-lab-muted"}>{factor.status}</span>
+            </div>
+            <p className="mt-1 text-sm text-lab-muted">{factor.explanation}</p>
+            <p className="mt-2 text-sm text-lab-cyan">Impact: {factor.impact > 0 ? "+" : ""}{factor.impact}% advisory</p>
+            {factor.warnings.length ? <p className="mt-1 text-xs text-lab-amber">{factor.warnings[0]}</p> : null}
+          </article>
+        )) : <p className="text-sm text-lab-muted">No advisory factors available.</p>}
+      </div>
+    </section>
+  );
+}
+
+function EloTrendCard({ analysis }: { analysis: Analysis }) {
+  const data = [
+    { point: "Elo", value: analysis.prediction.components.elo ?? 50 },
+    { point: "Maps", value: analysis.prediction.components.maps ?? 50 },
+    { point: "Synergy", value: analysis.prediction.components.synergy ?? 50 },
+    { point: "Final", value: analysis.prediction.teamAProbability }
+  ];
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">Model trend view</h3>
+      <div className="mt-3 h-56">
+        <ResponsiveContainer width="100%" height="100%">
+          <LineChart data={data}>
+            <XAxis dataKey="point" stroke="#94a3b8" />
+            <YAxis stroke="#94a3b8" domain={[0, 100]} />
+            <Tooltip contentStyle={{ background: "#101620", border: "1px solid rgba(148,163,184,0.25)", color: "#fff" }} />
+            <Line type="monotone" dataKey="value" stroke="#44ffd6" strokeWidth={2} dot />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
     </section>
   );
 }

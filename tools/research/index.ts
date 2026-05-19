@@ -19,5 +19,6 @@ export {
 export * from "./graphql-client";
 export * from "./google-cse-fetcher";
 export * from "./hltv-team-id-resolver";
+export * from "./liquipedia-opensearch";
 export * from "./csstats-demo-fetcher";
 export * from "./demo-batch-processor";

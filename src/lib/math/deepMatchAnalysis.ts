@@ -7,6 +7,7 @@ import { calculateMapProbabilities } from "./mapWinProbability";
 import { weightedScientificPrediction } from "./mlPredictor";
 import { calculatePlayerMapEfficiency, detectOutliers } from "./playerMapEfficiency";
 import { calculateTeamSynergy } from "./teamSynergy";
+import { calculateScientificFactors } from "@/lib/scientific/scientificFactors";
 import type { AnalysisParams, DeepMatchAnalysis, NumericWeights } from "./types";
 
 const analysisTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -26,6 +27,7 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
   const teamElo = calculateTeamElo(data.h2h, teams);
   const playerElo = calculatePlayerElo(data.playerStats);
   const outliers = detectOutliers(data.playerStats.map((row) => ({ id: `${row.teamName}:${row.nickname}:${row.mapName ?? "overall"}`, value: row.rating })), "player_rating");
+  const scientificFactors = calculateScientificFactors(data, teams);
   const prediction = weightedScientificPrediction({
     teamA: teams[0] ?? "",
     teamB: teams[1] ?? "",
@@ -66,8 +68,9 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
       warnings: prediction.warnings
     },
     parsedDemo: data.parsedDemo,
+    scientificFactors,
     outliers,
-    csv: toAnalysisCsv(playerMapEfficiency)
+    csv: toAnalysisCsv(playerMapEfficiency, scientificFactors)
   };
   await writeAnalysisCache(normalized, fingerprint, analysis);
   return analysis;
@@ -144,7 +147,24 @@ async function writeAnalysisCache(params: AnalysisParams, fingerprint: string, a
   await writeFile(cacheFile(params), `${JSON.stringify({ timestamp: new Date().toISOString(), fingerprint, params, analysis }, null, 2)}\n`, "utf8");
 }
 
-function toAnalysisCsv(rows: DeepMatchAnalysis["playerMapEfficiency"]) {
-  const headers = ["teamName", "nickname", "mapName", "rating", "adr", "kast", "impact", "normalizedRating", "trendSlope", "sampleSize"];
-  return `${headers.join(",")}\n${rows.map((row) => headers.map((header) => quoteCsv(String(row[header as keyof typeof row] ?? ""))).join(",")).join("\n")}${rows.length ? "\n" : ""}`;
+function toAnalysisCsv(rows: DeepMatchAnalysis["playerMapEfficiency"], factors: DeepMatchAnalysis["scientificFactors"]) {
+  const headers = ["section", "teamName", "nickname", "mapName", "rating", "adr", "kast", "impact", "normalizedRating", "trendSlope", "sampleSize", "factorId", "factorStatus", "factorExplanation"];
+  const playerRows = rows.map((row) => [
+    "player_map",
+    row.teamName,
+    row.nickname,
+    row.mapName,
+    row.rating,
+    row.adr,
+    row.kast,
+    row.impact,
+    row.normalizedRating,
+    row.trendSlope,
+    row.sampleSize,
+    "",
+    "",
+    ""
+  ]);
+  const factorRows = factors.map((factor) => ["scientific_factor", "", "", "", "", "", "", factor.impact, "", "", "", factor.id, factor.status, factor.explanation]);
+  return `${headers.join(",")}\n${[...playerRows, ...factorRows].map((row) => row.map((value) => quoteCsv(String(value ?? ""))).join(",")).join("\n")}${rows.length || factors.length ? "\n" : ""}`;
 }

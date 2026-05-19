@@ -20,6 +20,11 @@ export type CommunityDatasetAutoFetchOptions = {
   inboxPath?: string;
   dryRun?: boolean;
   now?: Date;
+  target?: {
+    matchId: string;
+    teamNames: string[];
+    matchStartTime: Date;
+  };
 };
 
 export type CommunityDatasetAutoFetchReport = {
@@ -72,13 +77,16 @@ export async function runCommunityDatasetAutoFetch(options: CommunityDatasetAuto
         }
       }, options.fetchImpl);
       const normalized = normalizeCommunityPayload(content);
-      const validation = validateNormalizedFile({ fileName: entry.fileName, rows: normalized.rows, content: normalized.content });
+      const leakage = filterForTarget(normalized.rows, options.target);
+      warnings.push(...leakage.warnings.map((warning) => `${entry.id}: ${warning}`));
+      if (!leakage.ok) continue;
+      const validation = validateNormalizedFile({ fileName: entry.fileName, rows: leakage.rows, content: rowsToCsv(leakage.rows) || normalized.content });
       warnings.push(...validation.warnings.map((warning) => `${entry.id}: ${warning}`));
-      if (!validation.isValid || !normalized.rows.length) {
+      if (!validation.isValid || !leakage.rows.length) {
         warnings.push(`${entry.id}: dataset did not validate against ${entry.fileName}.`);
         continue;
       }
-      writes.push(await mergeSheetRows(sheetType, normalized.rows, uniqueColumnsBySheet[sheetType], {
+      writes.push(await mergeSheetRows(sheetType, leakage.rows, uniqueColumnsBySheet[sheetType], {
         dryRun: options.dryRun,
         inboxPath: options.inboxPath,
         env
@@ -96,6 +104,45 @@ export async function runCommunityDatasetAutoFetch(options: CommunityDatasetAuto
     warnings,
     errors
   };
+}
+
+function filterForTarget(rows: Array<Record<string, unknown>>, target: CommunityDatasetAutoFetchOptions["target"]) {
+  if (!target) return { ok: true, rows, warnings: [] };
+  const warnings: string[] = [];
+  const targetTeams = target.teamNames.map((team) => team.trim().toLowerCase()).filter(Boolean);
+  const filtered: Array<Record<string, unknown>> = [];
+  let leakageViolation = false;
+  for (const row of rows) {
+    if (String(row.matchId ?? target.matchId) !== target.matchId && row.matchId) continue;
+    const rowTeams = [row.teamName, row.team, row.teamA, row.teamB, row.affectedTeam].map((value) => String(value ?? "").trim().toLowerCase()).filter(Boolean);
+    if (targetTeams.length && rowTeams.length && !rowTeams.some((team) => targetTeams.includes(team))) continue;
+    const rawDate = row.sourceDate ?? row.collectedAt ?? row.date ?? row.publishedAt;
+    if (!rawDate) {
+      warnings.push("row missing sourceDate/collectedAt; rejected for pre-match evidence.");
+      leakageViolation = true;
+      continue;
+    }
+    const timestamp = new Date(String(rawDate)).getTime();
+    if (!Number.isFinite(timestamp) || timestamp > target.matchStartTime.getTime()) {
+      warnings.push("row sourceDate/collectedAt is after match start; rejected to prevent data leakage.");
+      leakageViolation = true;
+      continue;
+    }
+    filtered.push({ ...row, matchId: target.matchId });
+  }
+  if (leakageViolation) return { ok: false, rows: [], warnings: [...new Set(warnings), "dataset skipped because at least one target row violates pre-match leakage rules."] };
+  return { ok: true, rows: filtered, warnings };
+}
+
+function rowsToCsv(rows: Array<Record<string, unknown>>) {
+  const headers = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  if (!headers.length) return "";
+  return `${headers.join(",")}\n${rows.map((row) => headers.map((header) => csvEscape(row[header])).join(",")).join("\n")}\n`;
+}
+
+function csvEscape(value: unknown) {
+  const text = String(value ?? "");
+  return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 export function normalizeCommunityPayload(content: string) {
@@ -207,6 +254,13 @@ export async function runCommunityDatasetAutoFetchCli(argv = process.argv.slice(
     dryRun: Boolean(args["dry-run"]),
     registryPath: typeof args.registry === "string" ? args.registry : undefined,
     inboxPath: typeof args.inbox === "string" ? args.inbox : undefined,
+    target: typeof args.matchId === "string" && typeof args.matchStartTime === "string"
+      ? {
+        matchId: args.matchId,
+        teamNames: [typeof args.teamA === "string" ? args.teamA : "", typeof args.teamB === "string" ? args.teamB : ""].filter(Boolean),
+        matchStartTime: new Date(args.matchStartTime)
+      }
+      : undefined,
     now: new Date(getISODate())
   });
   console.log(JSON.stringify(report, null, 2));
