@@ -245,9 +245,11 @@ Rules:
 - Allowed CSV hosts are `csgostats.gg` and `csstats.gg`; local files are supported.
 - `data:auto-fill` writes only exact app-visible files such as `map_stats.csv` and `player_stats.csv`.
 - If auto-fill cannot close a block, it returns exact template commands and the next action.
-- HLTV remains manual/paste-only; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included.
+- HLTV remains manual/paste-only in the safe default commands; no HLTV network fetcher, RSS fetcher, browser automation or scraper is included in `data:auto-all` or `data:pipeline`.
 
-Research fallback archives live only on `research/fallback-archives` and are disabled by default:
+### Extended Data Sources (optional)
+
+MVP 1.0.0 Plan B includes an opt-in extended command for researchers who want additional coverage beyond the safe free-source path. It is off by default and never runs from `data:auto-all` or `data:pipeline`.
 
 ```bash
 ENABLE_RESEARCH_SOURCES=true
@@ -256,11 +258,23 @@ ENABLE_SITEMAP_EXPORT_DISCOVERY=true
 ENABLE_RSS_METADATA_DISCOVERY=true
 ENABLE_COMMUNITY_DATASETS=true
 
-npm run data:auto-all:research -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
+npm run data:auto-all:extended -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --mode max --dry-run
 npm run data:sync-community-datasets -- --dry-run
 ```
 
-This research slice allows Wayback snapshots for allowlisted source URLs, RSS/Atom metadata, JSON-LD extraction, sitemap/export discovery, and explicit GitHub raw/gist community datasets. It still excludes Bing Cache, public proxy fallbacks, bot/browser User-Agent impersonation, Apify, browser automation, Cloudflare/captcha bypass, Prisma writes, and Apply calls.
+The extended slice allows Wayback snapshots for allowlisted source URLs, RSS/Atom metadata, JSON-LD extraction, sitemap/export discovery, and explicit GitHub raw/gist community datasets. It still excludes Bing Cache, public proxy fallbacks, bot/browser User-Agent impersonation, browser automation, Cloudflare/captcha bypass, Prisma writes, and Apply calls.
+
+Paid Apify HLTV Actor fallback is also available but must be enabled separately:
+
+```env
+ENABLE_RESEARCH_SOURCES=true
+ENABLE_APIFY_HLTV_ACTOR=true
+APIFY_TOKEN="your_rotated_local_token"
+APIFY_HLTV_ACTOR_ID="lukas-kremser/hltv-scraper"
+APIFY_DATASET_TTL_HOURS=24
+```
+
+Apify can incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL. Any Apify token pasted into chat or logs should be revoked and replaced; keep fresh tokens only in `.env.local`.
 
 AWPy batch JSON merge:
 
@@ -280,7 +294,7 @@ npm run demo:batch -- \
 
 ## Zero-Touch Data Acquisition
 
-MVP 0.9.5 добавляет `data:auto-all`: единый локальный запуск, который пробует все безопасные auto-fill источники и возвращает честный отчёт о том, что получилось закрыть.
+MVP 0.9.5 добавляет `data:auto-all`: единый локальный запуск, который пробует все безопасные auto-fill источники и возвращает честный отчёт о том, что получилось закрыть. MVP 1.0.0 сохраняет это поведение без изменений; extended sources доступны только через отдельный `data:auto-all:extended`.
 
 ```bash
 npm run data:auto-all -- \
@@ -1381,9 +1395,9 @@ API keys must live only in local `.env`. Do not paste real keys into README, `.e
 
 HLTV не скрейпится напрямую. Поля `hltvReferenceUrl` могут использоваться только как reference/manual verification URL, потому что агрессивный scraping может нарушать Terms of Service.
 
-### Research branch: Apify HLTV Actor
+### Optional extended Apify HLTV Actor
 
-The `research/apify-integration` branch can optionally use a paid Apify HLTV actor when direct research HTTP access is blocked. This is not enabled in production and is off by default.
+The `data:auto-all:extended` command can optionally use a paid Apify HLTV actor when direct research HTTP access is blocked. This is not enabled in the safe default commands and is off by default.
 
 ```env
 ENABLE_RESEARCH_SOURCES=true
@@ -1396,10 +1410,10 @@ APIFY_DATASET_TTL_HOURS=24
 Run a dry-run first:
 
 ```bash
-pnpm data:auto-all:research -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --hltv-match-id 12345 --dry-run
+pnpm data:auto-all:extended -- --matchId pandascore_match_1488973 --teamA "Evo Novo" --teamB "WAZABI" --hltv-match-id 12345 --dry-run
 ```
 
-Apify may incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL, and normalized rows still go only to `data/private-inbox/`; `/admin/imports` remains the only Apply path. Never paste real Apify tokens into chat, docs, tests, logs, screenshots, or commits.
+Apify may incur costs per actor run. Dataset ids are cached under `data/research-cache/apify/` for the configured TTL, and normalized rows still go only to `data/private-inbox/`; `/admin/imports` remains the only Apply path. Never paste real Apify tokens into chat, docs, tests, logs, screenshots, or commits. If a token was pasted anywhere, revoke it and create a fresh one before running a live benchmark.
 
 ### Automated sync
 

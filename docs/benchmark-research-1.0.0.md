@@ -74,7 +74,7 @@ Command:
 
 ```bash
 ENABLE_RESEARCH_SOURCES=true ENABLE_HLTV_AUTOMATION=true \
-npm run data:auto-all:research -- \
+npm run data:auto-all:extended -- \
   --matchId pandascore_match_1488973 \
   --teamA "Evo Novo" \
   --teamB "WAZABI" \
@@ -98,7 +98,7 @@ Command:
 
 ```bash
 ENABLE_RESEARCH_SOURCES=true ENABLE_HLTV_AUTOMATION=true \
-npm run data:auto-all:research -- \
+npm run data:auto-all:extended -- \
   --matchId pandascore_match_1488973 \
   --teamA "Evo Novo" \
   --teamB "WAZABI" \
@@ -130,7 +130,7 @@ ENABLE_WAYBACK_FALLBACK=true \
 ENABLE_SITEMAP_EXPORT_DISCOVERY=false \
 ENABLE_RSS_METADATA_DISCOVERY=false \
 ENABLE_COMMUNITY_DATASETS=false \
-npm run data:auto-all:research -- \
+npm run data:auto-all:extended -- \
   --matchId pandascore_match_1488973 \
   --teamA "Evo Novo" \
   --teamB "WAZABI" \

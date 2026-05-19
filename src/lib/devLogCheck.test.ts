@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import packageJson from "../../package.json";
 import { checkDevLogContent } from "./devLogCheck";
 
-describe("MVP 0.9.5 safety checks", () => {
-  it("package version is 0.9.5", () => {
-    expect(packageJson.version).toBe("0.9.5");
+describe("MVP 1.0.0 safety checks", () => {
+  it("package version is 1.0.0", () => {
+    expect(packageJson.version).toBe("1.0.0");
   });
 
   it("dev log checker fails when Fast Refresh is caused by runtime errors", () => {

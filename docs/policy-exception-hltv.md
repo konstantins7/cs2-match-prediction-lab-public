@@ -1,9 +1,9 @@
-# Policy Exception: HLTV + Demo Automation (Research Branch)
+# Optional Extended Sources: HLTV + Archive + Apify
 
-**Branch:** `research/policy-exception-hltv` / `research/apify-integration`
-**Status:** Experimental, NOT for production
+**Release:** `v1.0.0` Plan B
+**Status:** Optional, off by default, not part of the safe production auto-all path
 
-This branch explores whether tightly scoped public-page collection can improve CS2 data coverage. It is not part of the production Plan A release and must not be merged without a later explicit policy review.
+The default `data:auto-all` and `data:pipeline` commands stay on the safe free-source path. Extended sources are available only through `data:auto-all:extended` and only when `ENABLE_RESEARCH_SOURCES=true` plus the source-specific flag is set.
 
 ## Allowed HLTV Operations
 
@@ -40,7 +40,7 @@ Allowed only when `ENABLE_RESEARCH_SOURCES=true` and `ENABLE_CSSTATS_DEMO_FETCH=
 
 ## Apify HLTV Actor
 
-Allowed only on the separate `research/apify-integration` branch and only when `ENABLE_RESEARCH_SOURCES=true`, `ENABLE_APIFY_HLTV_ACTOR=true`, and `APIFY_TOKEN` is configured locally:
+Allowed only when `ENABLE_RESEARCH_SOURCES=true`, `ENABLE_APIFY_HLTV_ACTOR=true`, and `APIFY_TOKEN` is configured locally:
 
 - Uses a user-selected paid Apify actor such as `lukas-kremser/hltv-scraper`.
 - Actor id is configurable through `APIFY_HLTV_ACTOR_ID`.
@@ -73,7 +73,7 @@ The fetcher stops at the first source that produces schema-valid rows. Partial r
 
 ## Archive and Open-Data Fallbacks
 
-Allowed only on `research/fallback-archives` and only behind explicit flags:
+Allowed only behind explicit flags:
 
 - `ENABLE_WAYBACK_FALLBACK=true` permits Wayback Machine lookup through `archive.org/wayback/available` and cached `web.archive.org` snapshots. It is used only for original URLs already declared in source allowlists and caches archived bodies for 7 days.
 - `ENABLE_RSS_METADATA_DISCOVERY=true` permits RSS/Atom metadata discovery. RSS items can provide match links/IDs but do not count as Real Forecast Ready evidence unless a later normalized source validates rows.
@@ -81,3 +81,7 @@ Allowed only on `research/fallback-archives` and only behind explicit flags:
 - `ENABLE_COMMUNITY_DATASETS=true` permits fetching explicit GitHub raw/gist dataset URLs declared in `tools/community-datasets/registry.json`; rows must validate against accepted private-inbox schemas before they are merged.
 
 Still explicitly not implemented: Bing Cache, public proxy fallbacks such as r.jina.ai/Textise, browser or bot User-Agent impersonation, and any Cloudflare/captcha bypass.
+
+## Token Safety
+
+Any Apify token shared in chat, tickets, screenshots, or logs must be treated as compromised and rotated. Keep fresh tokens only in local `.env.local`; never commit them.

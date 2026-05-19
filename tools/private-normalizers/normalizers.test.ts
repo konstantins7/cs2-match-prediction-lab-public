@@ -21,6 +21,12 @@ function isApifyResearchBranch() {
       // Try the next Git metadata shape.
     }
   }
+  try {
+    const packageJson = JSON.parse(readFileSync(path.join(process.cwd(), "package.json"), "utf8")) as { version?: string; scripts?: Record<string, string> };
+    if (packageJson.version === "1.0.0" && packageJson.scripts?.["data:auto-all:extended"]) return true;
+  } catch {
+    // Older branches do not expose the extended release script.
+  }
   return false;
 }
 
