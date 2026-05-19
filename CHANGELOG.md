@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.4.0 - Local AI OCR, Batch Import, and Fine-Tuning Prep
+
+- Added browser-local OCR for screenshots through lazy `tesseract.js`; screenshots stay in the browser and only recognized text is sent to the local AI extraction API.
+- Added source detection and adaptive prompt metadata for HLTV, Liquipedia, ESL, BLAST, and unknown copied text.
+- Added opt-in timed-confirm Apply for high-confidence extractions; it uses the existing `/api/ai/apply-local` path after a visible cancel window.
+- Added `/admin/ai-batch` with client-side ZIP parsing through JSZip, batch progress, cancellation, concurrency limits, and selected Apply.
+- Added `ai:prepare-dataset`, `ai:finetune`, and `ocr:local` helpers for local fine-tuning preparation and optional local OCR fallback.
+- Added optional accepted-example capture for fine-tuning; no cloud AI SDKs or hosted endpoints are introduced.
+
 ## v1.3.0 - Local AI Import Assistant
 
 - Added opt-in local AI extraction through Ollama on `127.0.0.1`, disabled by default behind `ENABLE_LOCAL_AI`.

@@ -38,12 +38,15 @@ export async function POST(request: Request) {
       teamB: typeof body.teamB === "string" ? body.teamB : "",
       inputText,
       sourceHint: typeof body.sourceHint === "string" ? body.sourceHint : undefined,
+      sourceSite: typeof body.sourceSite === "string" ? body.sourceSite : undefined,
+      promptVariant: typeof body.promptVariant === "string" ? body.promptVariant : undefined,
+      modelOverride: typeof body.modelOverride === "string" ? body.modelOverride : undefined,
       selfCheck: body.selfCheck === true
     });
     await logUserAction({
       actionName: "local_ai_extract",
       matchId,
-      params: { sheets: result.sheets.length, confidence: result.confidence, cached: result.cached },
+      params: { sheets: result.sheets.length, confidence: result.confidence, cached: result.cached, detectedSource: result.detectedSource, promptVersion: result.promptVersion },
       durationMs: Date.now() - startedAt,
       status: result.ok ? "completed" : "error",
       errorMessage: result.ok ? undefined : result.suggestedNextAction

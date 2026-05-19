@@ -6,6 +6,7 @@ import { redactString } from "@/lib/security/redaction";
 export type LocalAIEnv = {
   ENABLE_LOCAL_AI?: string;
   LOCAL_AI_MODEL?: string;
+  LOCAL_AI_FINETUNED_MODEL?: string;
   LOCAL_AI_BASE_URL?: string;
   LOCAL_AI_TIMEOUT_MS?: string;
 };
@@ -42,9 +43,31 @@ export function isLocalAIEnabled(env: LocalAIEnv = process.env as unknown as Loc
 export function localAIConfig(env: LocalAIEnv = process.env as unknown as LocalAIEnv) {
   return {
     model: env.LOCAL_AI_MODEL || "llama3.2:3b",
+    fineTunedModel: env.LOCAL_AI_FINETUNED_MODEL || "cs2-prediction-finetuned",
     baseUrl: (env.LOCAL_AI_BASE_URL || "http://127.0.0.1:11434").replace(/\/$/, ""),
     timeoutMs: Number(env.LOCAL_AI_TIMEOUT_MS || 30_000)
   };
+}
+
+export async function listLocalAIModels(input: { env?: LocalAIEnv; fetchImpl?: typeof fetch; timeoutMs?: number } = {}) {
+  if (!isLocalAIEnabled(input.env)) return { enabled: false, models: [] as string[], fineTunedAvailable: false };
+  const config = localAIConfig(input.env);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), input.timeoutMs ?? 3_000);
+  try {
+    const response = await (input.fetchImpl || fetch)(`${config.baseUrl}/api/tags`, { signal: controller.signal });
+    const parsed = await response.json() as { models?: Array<{ name?: string; model?: string }> };
+    const models = (parsed.models ?? []).map((model) => model.name || model.model || "").filter(Boolean);
+    return {
+      enabled: true,
+      models,
+      fineTunedAvailable: models.some((model) => model === config.fineTunedModel || model.startsWith(`${config.fineTunedModel}:`))
+    };
+  } catch {
+    return { enabled: true, models: [] as string[], fineTunedAvailable: false };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 export async function askLocalAI(input: LocalAIRequest): Promise<LocalAIResponse> {

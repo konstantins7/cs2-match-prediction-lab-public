@@ -50,6 +50,33 @@ RESEARCH_DEMO_PARSER_CMD="demoinfocs"
 
 HLTV direct requests fail closed on the first `403`, cache that block for 6 hours and suggest Jina/Apify/manual CSV instead of retrying with browser-like headers. Community datasets are rejected for pre-match evidence unless their `sourceDate` or `collectedAt` is before the target match start.
 
+## MVP 1.4.0: OCR, batch AI import, timed Apply, and fine-tuning prep
+
+v1.4.0 extends local AI import with browser OCR, source-aware prompts, client-side ZIP batch import, optional timed-confirm Apply, and local fine-tuning preparation. The model still runs locally through Ollama, and Apply still goes through the existing analyst-sheet validation path.
+
+```env
+ENABLE_LOCAL_AI=true
+LOCAL_AI_MODEL="llama3.2:3b"
+LOCAL_AI_FINETUNED_MODEL="cs2-prediction-finetuned"
+LOCAL_AI_BASE_URL="http://127.0.0.1:11434"
+LOCAL_AI_TIMEOUT_MS=30000
+AI_AUTO_APPLY_ENABLED=false
+AI_AUTO_APPLY_MIN_CONFIDENCE=85
+AI_AUTO_APPLY_DELAY_MS=5000
+```
+
+- Match page: upload text or PNG/JPG/WebP screenshot, OCR locally in the browser, review tables, then Apply.
+- `/admin/ai-batch`: upload ZIP/multiple files/JSON array, process up to 50 local text jobs, then Apply selected valid jobs.
+- `pnpm ai:prepare-dataset`: create ShareGPT-style JSONL from opted-in confirmed examples.
+- `pnpm ai:finetune`: optional local orchestration helper; it checks tooling and prints instructions instead of installing Python dependencies.
+- `pnpm ocr:local -- --image screenshot.png`: optional CLI fallback when local `tesseract` is installed.
+
+Windows Ollama install helper:
+
+```powershell
+irm https://ollama.com/install.ps1 | iex
+```
+
 ## MVP 1.3.0: local AI import assistant
 
 v1.3.0 adds a text-first local AI assistant for pasted CS2 match/stat pages. It uses Ollama on `127.0.0.1`, converts extracted facts into the existing analyst-sheet CSV schemas, then applies only after explicit user confirmation through the existing analyst-sheet Apply path.

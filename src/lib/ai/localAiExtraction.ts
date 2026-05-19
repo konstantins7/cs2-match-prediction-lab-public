@@ -3,6 +3,7 @@ import path from "node:path";
 import { analystSheetTemplates, analystSheetTypes, quoteCsv, type AnalystSheetType } from "@/lib/analystSheetTemplates";
 import { validateNormalizedFile, type NormalizedFileValidationResult } from "@/lib/validation/normalizedFileValidator";
 import { hash, logAI, askLocalAI, type LocalAIEnv } from "./localAIClient";
+import { detectSource, sourcePromptFragment, type LocalAiSourceSite } from "./sourceDetection";
 
 export type AiExtractedSheet = {
   sheetType: AnalystSheetType;
@@ -15,7 +16,11 @@ export type LocalAiExtractionResult = {
   ok: boolean;
   extractionId: string;
   sourceSite: string;
+  detectedSource: LocalAiSourceSite;
+  promptVersion: string;
+  promptVariant: string;
   confidence: number;
+  timedApplyEligible: boolean;
   warnings: string[];
   sheets: AiExtractedSheet[];
   suggestedNextAction: string;
@@ -29,6 +34,9 @@ export type LocalAiExtractionInput = {
   teamB: string;
   inputText: string;
   sourceHint?: string;
+  sourceSite?: LocalAiSourceSite;
+  promptVariant?: string;
+  modelOverride?: string;
   selfCheck?: boolean;
   env?: LocalAIEnv;
   fetchImpl?: typeof fetch;
@@ -46,29 +54,33 @@ type AiPayload = {
   newsEvents?: unknown;
 };
 
-const promptVersion = "local-ai-extraction-v1";
+const promptVersion = "local-ai-extraction-v2";
 const activeMaps = ["Mirage", "Inferno", "Nuke", "Ancient", "Anubis", "Dust2", "Train", "Vertigo", "Overpass"];
 const extractionCacheDir = path.join(process.cwd(), "data", "cache", "ai-responses", "extractions");
 const acceptedCacheDir = path.join(process.cwd(), "data", "cache", "ai-responses", "accepted");
 
 export async function extractWithLocalAI(input: LocalAiExtractionInput): Promise<LocalAiExtractionResult> {
   const startedAt = Date.now();
-  const system = buildSystemPrompt();
-  const prompt = buildUserPrompt(input);
+  const detectedSource = input.sourceSite || detectSource(input.inputText, input.sourceHint);
+  const promptVariant = input.promptVariant || "default";
+  const system = buildSystemPrompt(detectedSource, promptVariant);
+  const prompt = buildUserPrompt(input, detectedSource, promptVariant);
   const first = await askLocalAI({
     prompt,
     system,
+    model: input.modelOverride,
     env: input.env,
     fetchImpl: input.fetchImpl,
-    cacheKeyParts: [input.matchId, input.teamA, input.teamB, input.sourceHint || "", promptVersion]
+    cacheKeyParts: [input.matchId, input.teamA, input.teamB, input.sourceHint || "", detectedSource, promptVariant, promptVersion]
   });
   const responseText = input.selfCheck
     ? (await askLocalAI({
         prompt: buildSelfCheckPrompt(first.text),
         system,
+        model: input.modelOverride,
         env: input.env,
         fetchImpl: input.fetchImpl,
-        cacheKeyParts: [input.matchId, first.cacheKey, "self-check", promptVersion]
+        cacheKeyParts: [input.matchId, first.cacheKey, "self-check", detectedSource, promptVariant, promptVersion]
       })).text
     : first.text;
   const parsed = parseJsonPayload(responseText);
@@ -78,8 +90,11 @@ export async function extractWithLocalAI(input: LocalAiExtractionInput): Promise
     teamA: input.teamA,
     teamB: input.teamB,
     extractionId: hash(`${input.matchId}\n${input.teamA}\n${input.teamB}\n${input.inputText}\n${promptVersion}`),
+    detectedSource,
+    promptVariant,
     cached: first.cached,
-    durationMs: Date.now() - startedAt
+    durationMs: Date.now() - startedAt,
+    env: input.env
   });
   await persistExtraction(result).catch(() => undefined);
   await logAI({
@@ -88,6 +103,9 @@ export async function extractWithLocalAI(input: LocalAiExtractionInput): Promise
     model: first.model,
     durationMs: result.durationMs,
     sourceSite: result.sourceSite,
+    detectedSource: result.detectedSource,
+    promptVersion: result.promptVersion,
+    promptVariant: result.promptVariant,
     confidence: result.confidence,
     warnings: result.warnings.length,
     sheets: Object.fromEntries(result.sheets.map((sheet) => [sheet.sheetType, sheet.rows.length]))
@@ -101,8 +119,11 @@ export function buildExtractionResult(input: {
   teamA: string;
   teamB: string;
   extractionId: string;
+  detectedSource?: LocalAiSourceSite;
+  promptVariant?: string;
   cached: boolean;
   durationMs: number;
+  env?: LocalAIEnv;
 }): LocalAiExtractionResult {
   const collectedAt = new Date().toISOString();
   const sourceSite = stringValue(input.payload.sourceSite) || "unknown";
@@ -122,7 +143,11 @@ export function buildExtractionResult(input: {
     ok: sheets.length > 0 && hardErrors.length === 0,
     extractionId: input.extractionId,
     sourceSite,
+    detectedSource: input.detectedSource || "other",
+    promptVersion,
+    promptVariant: input.promptVariant || "default",
     confidence,
+    timedApplyEligible: sheets.length > 0 && hardErrors.length === 0 && confidence >= autoApplyMinConfidence(input.env),
     warnings: [...warnings, ...sheets.flatMap((entry) => entry.validation.warnings)],
     sheets,
     suggestedNextAction: hardErrors.length
@@ -140,11 +165,23 @@ export async function readPersistedExtraction(extractionId: string) {
   return parsed;
 }
 
-export async function persistAcceptedExtraction(input: { extractionId: string; matchId: string; sheets: Array<{ sheetType: AnalystSheetType; content: string }> }) {
+export async function persistAcceptedExtraction(input: {
+  extractionId: string;
+  matchId: string;
+  inputText?: string;
+  sourceSite?: string;
+  promptVersion?: string;
+  promptVariant?: string;
+  sheets: Array<{ sheetType: AnalystSheetType; content: string }>;
+}) {
   await mkdir(acceptedCacheDir, { recursive: true });
   await writeFile(path.join(acceptedCacheDir, `${safeFileName(input.extractionId)}.json`), JSON.stringify({
     timestamp: new Date().toISOString(),
     matchId: input.matchId,
+    inputText: input.inputText,
+    sourceSite: input.sourceSite,
+    promptVersion: input.promptVersion,
+    promptVariant: input.promptVariant,
     sheets: input.sheets
   }, null, 2), "utf8");
 }
@@ -310,7 +347,7 @@ function newsRows(value: unknown, context: RowContext) {
 
 type RowContext = { matchId: string; teamA: string; teamB: string; collectedAt: string; sourceSite: string; confidence: number };
 
-function buildSystemPrompt() {
+function buildSystemPrompt(source: LocalAiSourceSite, promptVariant: string) {
   return [
     "You are a CS2 data extraction assistant running locally.",
     "Extract only facts present in the provided text. Never invent players, maps, stats, veto, H2H or dates.",
@@ -319,16 +356,20 @@ function buildSystemPrompt() {
     "Use CS2 map names: Mirage, Inferno, Nuke, Ancient, Anubis, Dust2, Train, Vertigo, Overpass.",
     "Player stats may include maps, kills, deaths, assists, kd, rating, adr, kast, impact.",
     "Map stats may include mapsPlayed, wins, losses, winRate, roundsWon, roundsLost, ctRoundWinRate, tRoundWinRate, pickRate, banRate, deciderRate.",
-    "Veto rows may include teamName, mapName, action, pickRate, banRate, deciderRate."
+    "Veto rows may include teamName, mapName, action, pickRate, banRate, deciderRate.",
+    `Prompt version: ${promptVersion}. Prompt variant: ${promptVariant}. Detected source: ${source}.`,
+    sourcePromptFragment(source)
   ].join("\n");
 }
 
-function buildUserPrompt(input: LocalAiExtractionInput) {
+function buildUserPrompt(input: LocalAiExtractionInput, source: LocalAiSourceSite, promptVariant: string) {
   return [
     `matchId: ${input.matchId}`,
     `expectedTeamA: ${input.teamA}`,
     `expectedTeamB: ${input.teamB}`,
     `sourceHint: ${input.sourceHint || "unknown"}`,
+    `detectedSource: ${source}`,
+    `promptVariant: ${promptVariant}`,
     "Return JSON only. Keep unknown fields empty, not guessed.",
     "Copied text:",
     input.inputText.slice(0, 60_000)
@@ -438,6 +479,11 @@ async function persistExtraction(result: LocalAiExtractionResult) {
 
 function safeFileName(value: string) {
   return value.replace(/[^a-z0-9_-]/gi, "").slice(0, 96);
+}
+
+function autoApplyMinConfidence(env: LocalAIEnv = process.env as unknown as LocalAIEnv) {
+  const parsed = Number((env as Record<string, string | undefined>).AI_AUTO_APPLY_MIN_CONFIDENCE || 85);
+  return Number.isFinite(parsed) ? parsed : 85;
 }
 
 export const localAiPromptVersion = promptVersion;
