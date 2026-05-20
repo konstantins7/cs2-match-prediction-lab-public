@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.5.0 - AI Dashboard, History, Diagnostics, and Research Merge
+
+- Added `/admin/ai-dashboard` for local Ollama status, model visibility, AI cache stats, extraction usage, and guided fine-tuning actions.
+- Added `/admin/ai-history` with paginated local extraction history, redacted/truncated input previews, raw output inspection, CSV export, and bad-example marking.
+- Added structured AI extraction diagnostics for disabled Ollama, timeouts, connection failures, invalid JSON, empty sheets, low confidence, and validation errors.
+- Added focused research gap-fill support for `data:auto-all:extended` and AI merge/apply preview controls.
+- Added AI evidence provenance to scientific analysis so users can see which blocks came from Local AI extraction.
+
+## v1.4.0 - Local AI OCR, Batch Import, and Fine-Tuning Prep
+
+- Added browser-local OCR for screenshots through lazy `tesseract.js`; screenshots stay in the browser and only recognized text is sent to the local AI extraction API.
+- Added source detection and adaptive prompt metadata for HLTV, Liquipedia, ESL, BLAST, and unknown copied text.
+- Added opt-in timed-confirm Apply for high-confidence extractions; it uses the existing `/api/ai/apply-local` path after a visible cancel window.
+- Added `/admin/ai-batch` with client-side ZIP parsing through JSZip, batch progress, cancellation, concurrency limits, and selected Apply.
+- Added `ai:prepare-dataset`, `ai:finetune`, and `ocr:local` helpers for local fine-tuning preparation and optional local OCR fallback.
+- Added optional accepted-example capture for fine-tuning; no cloud AI SDKs or hosted endpoints are introduced.
+
 ## v1.3.0 - Local AI Import Assistant
 
 - Added opt-in local AI extraction through Ollama on `127.0.0.1`, disabled by default behind `ENABLE_LOCAL_AI`.

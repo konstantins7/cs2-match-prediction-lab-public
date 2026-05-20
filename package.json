@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "1.3.0",
+  "version": "1.5.0",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -46,6 +46,9 @@
     "model:optimize-params": "tsx scripts/optimize-params.ts",
     "ai:setup": "tsx scripts/ai-setup.ts",
     "ai:export-finetuning-dataset": "tsx scripts/ai-export-finetuning-dataset.ts",
+    "ai:prepare-dataset": "tsx scripts/ai-prepare-dataset.ts",
+    "ai:finetune": "tsx scripts/ai-finetune.ts",
+    "ocr:local": "tsx scripts/ocr-local.ts",
     "data:reality-check": "tsx scripts/reality-check.ts",
     "template:map-stats": "tsx scripts/template-analyst-sheet.ts --type map_stats",
     "template:player-stats": "tsx scripts/template-analyst-sheet.ts --type player_stats",
@@ -57,11 +60,13 @@
   "dependencies": {
     "@prisma/client": "5.22.0",
     "clsx": "^2.1.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.468.0",
     "next": "^15.3.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "recharts": "^2.15.0"
+    "recharts": "^2.15.0",
+    "tesseract.js": "^7.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",

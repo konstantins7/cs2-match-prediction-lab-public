@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { redactString } from "@/lib/security/redaction";
 import { logUserAction } from "@/lib/userActionLogger";
 import { runAutoAllExtended } from "../../../../scripts/auto-all-extended";
+import type { FocusDataType } from "../../../../scripts/auto-all-extended";
 import type { AutoFillMode } from "../../../../tools/auto-fill";
 
 export const dynamic = "force-dynamic";
@@ -60,7 +61,8 @@ export async function GET(request: Request) {
             teamBHltvId: text(searchParams.get("teamBHltvId")),
             teamACsstatsId: text(searchParams.get("teamACsstatsId")),
             teamBCsstatsId: text(searchParams.get("teamBCsstatsId")),
-            includeH2h: searchParams.get("includeH2h") === "true"
+            includeH2h: searchParams.get("includeH2h") === "true",
+            focusDataTypes: focus(searchParams.get("focus"))
           });
           send({
             step: "complete",
@@ -113,4 +115,10 @@ function text(value: unknown) {
 
 function mode(value: unknown): AutoFillMode {
   return value === "fast" || value === "deeper" || value === "max" ? value : "max";
+}
+
+function focus(value: unknown): FocusDataType[] | undefined {
+  const allowed = new Set<FocusDataType>(["roster", "player_stats", "map_stats", "veto", "h2h", "news_events"]);
+  const items = text(value).split(",").map((item) => item.trim()).filter((item): item is FocusDataType => allowed.has(item as FocusDataType));
+  return items.length ? [...new Set(items)] : undefined;
 }

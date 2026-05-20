@@ -61,3 +61,14 @@ pnpm model:optimize-params
 ```
 
 The outputs under `data/model/` are ignored local artifacts. They improve backtesting workflows only and do not change production defaults unless an admin explicitly opts into them later.
+
+## 7. Local AI Import Tools
+
+When public sources cannot fill enough blocks, use the local AI assistant as an operator-guided fallback:
+
+- Match pages include `Быстрый AI импорт` for pasted text, OCR text, and editable sheet preview.
+- `/admin/ai-batch` processes multiple local text files or ZIP jobs.
+- `/admin/ai-dashboard` shows Ollama status, cache stats, usage, and fine-tuning helpers.
+- `/admin/ai-history` keeps a redacted extraction history for diagnostics.
+
+See `docs/local-ai-import.md` for setup, privacy limits, and the Apply-only confirmation flow.

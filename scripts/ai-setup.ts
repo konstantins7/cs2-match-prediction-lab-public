@@ -10,7 +10,7 @@ async function main() {
     console.log(JSON.stringify({
       ok: false,
       step: "ollama",
-      message: "Ollama was not found in PATH. Install it from https://ollama.com, then run pnpm ai:setup again.",
+      message: "Ollama was not found in PATH. Install it from https://ollama.com, then run pnpm ai:setup again. Windows PowerShell: irm https://ollama.com/install.ps1 | iex",
       env: recommendedEnv()
     }, null, 2));
     return;
@@ -44,6 +44,7 @@ function recommendedEnv() {
   return {
     ENABLE_LOCAL_AI: "true",
     LOCAL_AI_MODEL: model,
+    LOCAL_AI_FINETUNED_MODEL: process.env.LOCAL_AI_FINETUNED_MODEL || "cs2-prediction-finetuned",
     LOCAL_AI_BASE_URL: baseUrl,
     LOCAL_AI_TIMEOUT_MS: "30000"
   };

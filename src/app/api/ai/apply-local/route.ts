@@ -31,12 +31,22 @@ export async function POST(request: Request) {
     const result = await applyAnalystSheetImport({ matchId, sheets });
     if (result.ok && result.applied && matchId) {
       await refreshForecastabilityCache(matchId).catch(() => undefined);
-      await persistAcceptedExtraction({ extractionId: extractionId || `manual-${Date.now()}`, matchId, sheets }).catch(() => undefined);
+      if (body.saveForFineTuning === true) {
+        await persistAcceptedExtraction({
+          extractionId: extractionId || `manual-${Date.now()}`,
+          matchId,
+          inputText: typeof body.inputText === "string" ? body.inputText : undefined,
+          sourceSite: typeof body.sourceSite === "string" ? body.sourceSite : undefined,
+          promptVersion: typeof body.promptVersion === "string" ? body.promptVersion : undefined,
+          promptVariant: typeof body.promptVariant === "string" ? body.promptVariant : undefined,
+          sheets
+        }).catch(() => undefined);
+      }
     }
     await logUserAction({
       actionName: "local_ai_apply",
       matchId,
-      params: { extractionId, applied: result.applied, sheets: sheets.length },
+      params: { extractionId, applied: result.applied, sheets: sheets.length, autoApply: body.autoApply === true, saveForFineTuning: body.saveForFineTuning === true },
       durationMs: Date.now() - startedAt,
       status: result.ok ? "completed" : "error",
       errorMessage: result.ok ? undefined : result.errors.join("; ")

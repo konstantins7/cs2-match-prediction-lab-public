@@ -174,6 +174,16 @@ export type DeepMatchAnalysis = {
     warnings: string[];
     details: Record<string, unknown>;
   }>;
+  aiEvidenceSummary: Array<{
+    block: string;
+    rows: number;
+    confidenceMin: number;
+    confidenceMax: number;
+    sourceSite: string;
+    extractedAt: string;
+    promptVersion: string;
+    modifiedAfterAi: boolean;
+  }>;
   outliers: Array<{ scope: string; id: string; value: number; zScore: number }>;
   csv: string;
 };

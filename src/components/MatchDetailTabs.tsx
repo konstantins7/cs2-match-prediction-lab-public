@@ -81,7 +81,7 @@ export function MatchDetailTabs({
   return (
     <div className="space-y-5">
       <FullMatchAnalysisPanel matchId={input.match.id} />
-      <AiDataExtractor matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} />
+      <AiDataExtractor matchId={input.match.id} teamA={input.teamA.name} teamB={input.teamB.name} realForecastReady={prediction.realForecast.isReady} />
       <details className="rounded border border-lab-border bg-lab-panel p-4">
         <summary className="cursor-pointer font-semibold text-lab-cyan">Advanced: technical readiness and autopilot</summary>
         <div className="mt-4 space-y-4">

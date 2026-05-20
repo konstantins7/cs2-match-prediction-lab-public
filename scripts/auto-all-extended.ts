@@ -32,6 +32,8 @@ export type ExtendedAutoAllResult = {
   nextAction: string;
 };
 
+export type FocusDataType = "roster" | "player_stats" | "map_stats" | "veto" | "h2h" | "news_events";
+
 export async function runAutoAllExtendedCli(argv = process.argv.slice(2)) {
   const args = parseArgs(argv);
   const input = {
@@ -46,7 +48,8 @@ export async function runAutoAllExtendedCli(argv = process.argv.slice(2)) {
     teamACsstatsId: stringArg(args, "teamA-csstats-id"),
     teamBCsstatsId: stringArg(args, "teamB-csstats-id"),
     includeH2h: Boolean(args["include-h2h"]),
-    noCache: Boolean(args["no-cache"])
+    noCache: Boolean(args["no-cache"]),
+    focusDataTypes: parseFocus(stringArg(args, "focus"))
   };
   const startedAt = Date.now();
   await logUserAction({ actionName: "auto_all_extended", matchId: input.matchId, params: { mode: input.mode, dryRun: input.dryRun }, status: "started" }).catch(() => undefined);
@@ -73,6 +76,7 @@ export async function runAutoAllExtended(options: {
   teamBCsstatsId?: string;
   includeH2h?: boolean;
   noCache?: boolean;
+  focusDataTypes?: FocusDataType[];
 }): Promise<ExtendedAutoAllResult> {
   if (options.noCache && process.env.NODE_ENV === "production" && process.env.ALLOW_RESEARCH_NO_CACHE !== "true") {
     throw new Error("--no-cache is disabled in production unless ALLOW_RESEARCH_NO_CACHE=true is set.");
@@ -130,6 +134,11 @@ export async function runAutoAllExtended(options: {
     };
   }
 
+  const focus = new Set(options.focusDataTypes ?? []);
+  const hasFocus = focus.size > 0;
+  const wants = (type: FocusDataType) => !hasFocus || focus.has(type);
+
+  if (wants("roster") || wants("player_stats") || wants("map_stats") || wants("news_events")) {
   const esportis = await runEsportisResearchFetcher({
     matchId: options.matchId,
     teamNames: [options.teamA, options.teamB],
@@ -141,7 +150,11 @@ export async function runAutoAllExtended(options: {
     status: esportis.status,
     message: [...esportis.warnings, ...esportis.errors].join(" ") || `${Object.values(esportis.fetched).reduce((sum, value) => sum + value, 0)} normalized row(s).`
   });
+  } else {
+    sourceReports.push({ source: "esport.is-research", status: "skipped", message: `Skipped by focus=${[...focus].join(",")}.` });
+  }
 
+  if (wants("roster") || wants("player_stats") || wants("map_stats")) {
   const bo3 = await runBo3Cs2ApiFetcher({
     matchId: options.matchId,
     teamNames: [options.teamA, options.teamB],
@@ -153,6 +166,9 @@ export async function runAutoAllExtended(options: {
     status: bo3.status,
     message: [...bo3.warnings, ...bo3.errors].join(" ") || `${Object.values(bo3.fetched).reduce((sum, value) => sum + value, 0)} normalized row(s).`
   });
+  } else {
+    sourceReports.push({ source: "bo3-cs2api-research", status: "skipped", message: `Skipped by focus=${[...focus].join(",")}.` });
+  }
 
   const resolved = options.hltvMatchId
     ? { matchId: options.hltvMatchId, matchUrl: "", score: 1 }
@@ -165,7 +181,7 @@ export async function runAutoAllExtended(options: {
     sourceReports.push({ source: "hltv-match-id", status: "success", message: `Resolved HLTV match ID ${resolved.matchId}.` });
   }
 
-  const parseResult = resolved?.matchId && hltvResearchEnabled
+  const parseResult = resolved?.matchId && hltvResearchEnabled && (wants("veto") || wants("h2h") || wants("roster"))
     ? await parseHltvMatchPage({
       matchId: options.matchId,
       teamA: options.teamA,
@@ -208,15 +224,23 @@ export async function runAutoAllExtended(options: {
       sourceReports.push({ source: `hltv-team-${teamName}`, status: "skipped", message: "Direct HLTV automation is disabled; fallback descriptors may still use provided IDs." });
       continue;
     }
+    if (!wants("map_stats") && !wants("player_stats")) {
+      sourceReports.push({ source: `hltv-team-${teamName}`, status: "skipped", message: `Skipped by focus=${[...focus].join(",")}.` });
+      continue;
+    }
+    if (wants("map_stats")) {
     const maps = await fetchHltvTeamMapStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun, noCache: options.noCache });
     writes.push(...maps.writes.map((write) => ({ file: write.fileName, source: "hltv-team-maps", rows: write.rowsInserted })));
     sourceReports.push({ source: `hltv-team-maps-${teamName}`, status: maps.rows.length ? "success" : "partial", message: `map rows=${maps.rows.length}. ${maps.warnings.join(" ")}` });
+    }
+    if (wants("player_stats")) {
     const players = await fetchHltvPlayerStats({ matchId: options.matchId, teamName, teamId, dryRun: options.dryRun, noCache: options.noCache });
     writes.push(...players.writes.map((write) => ({ file: write.fileName, source: "hltv-player-stats", rows: write.rowsInserted })));
     sourceReports.push({ source: `hltv-player-stats-${teamName}`, status: players.rows.length ? "success" : "partial", message: `player rows=${players.rows.length}. ${players.warnings.join(" ")}` });
+    }
   }
 
-  const missingTypes = missingDataTypes(safe.stillMissing, options.includeH2h || options.mode === "max");
+  const missingTypes = missingDataTypes(safe.stillMissing, options.includeH2h || options.mode === "max").filter((type) => wants(type === "veto" ? "veto" : type));
   for (const dataType of missingTypes) {
     if (dataType === "veto" || dataType === "h2h") {
       const result = await fetchMultiSourceData({
@@ -264,7 +288,7 @@ export async function runAutoAllExtended(options: {
     }
   }
 
-  if (envFlag(process.env, "ENABLE_CSSTATS_DEMO_FETCH")) {
+  if (envFlag(process.env, "ENABLE_CSSTATS_DEMO_FETCH") && (!hasFocus || focus.has("player_stats") || focus.has("map_stats"))) {
     for (const teamName of [options.teamA, options.teamB]) {
       const demo = await fetchCsstatsDemo({ matchId: options.matchId, teamName, dryRun: options.dryRun });
       sourceReports.push({ source: `csstats-demo-${teamName}`, status: demo.status, message: demo.demoPath ? `demo=${demo.demoPath}` : demo.warnings.join(" ") });
@@ -278,7 +302,7 @@ export async function runAutoAllExtended(options: {
     sourceReports.push({ source: "research-demo-batch", status: demoBatch.status, message: `players=${demoBatch.players}, maps=${demoBatch.maps}. ${demoBatch.warnings.join(" ")}` });
   }
 
-  if (envFlag(process.env, "ENABLE_COMMUNITY_DATASETS")) {
+  if (envFlag(process.env, "ENABLE_COMMUNITY_DATASETS") && (!hasFocus || [...focus].some((type) => type !== "h2h"))) {
     const matchStartTime = await getMatchStartTime(options.matchId);
     const community = await runCommunityDatasetAutoFetch({
       dryRun: options.dryRun,
@@ -298,7 +322,7 @@ export async function runAutoAllExtended(options: {
     dryRun: Boolean(options.dryRun),
     writes,
     sourceReports,
-    diagnosticTable: diagnosticRows(safe, sourceReports, multiSourceResults),
+    diagnosticTable: filterDiagnosticsByFocus(diagnosticRows(safe, sourceReports, multiSourceResults), options.focusDataTypes),
     multiSourceResults,
     nextAction: writes.length
       ? "Research sources produced normalized private-inbox files. Validate in /admin/imports before Apply."
@@ -376,6 +400,18 @@ function missingDataTypes(stillMissing: string[], includeH2h: boolean) {
   if (stillMissing.includes("veto_history.csv")) types.push("veto");
   if (includeH2h) types.push("h2h");
   return types;
+}
+
+function parseFocus(value: string): FocusDataType[] | undefined {
+  const allowed = new Set<FocusDataType>(["roster", "player_stats", "map_stats", "veto", "h2h", "news_events"]);
+  const items = value.split(",").map((item) => item.trim()).filter((item): item is FocusDataType => allowed.has(item as FocusDataType));
+  return items.length ? [...new Set(items)] : undefined;
+}
+
+function filterDiagnosticsByFocus(rows: ExtendedAutoAllResult["diagnosticTable"], focus?: FocusDataType[]) {
+  if (!focus?.length) return rows;
+  const allowed = new Set<string>(focus);
+  return rows.filter((row) => row.dataType === "general" || allowed.has(row.dataType));
 }
 
 function multiSourceMessage(result: MultiSourceResult) {
