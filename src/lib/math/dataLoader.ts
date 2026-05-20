@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readdir, readFile, stat } from "node:fs/promises";
 import path from "node:path";
-import type { H2hRow, MapStatsRow, ParsedDemoSummary, PlayerStatsRow, PrivateAnalysisData, RosterRow } from "./types";
+import type { H2hRow, MapStatsRow, NewsEventRow, ParsedDemoSummary, PlayerStatsRow, PrivateAnalysisData, RosterRow, VetoHistoryRow } from "./types";
 
 const inboxDir = path.join(process.cwd(), "data", "private-inbox");
 
@@ -12,13 +12,17 @@ export async function loadPrivateAnalysisData(matchId: string): Promise<PrivateA
   const roster = parseCsvRows(files.get("roster.csv") ?? "").filter((row) => row.matchId === matchId).map(rosterRow);
   const playerStats = parseCsvRows(files.get("player_stats.csv") ?? "").filter((row) => row.matchId === matchId).map(playerStatsRow);
   const mapStats = parseCsvRows(files.get("map_stats.csv") ?? "").filter((row) => row.matchId === matchId).map(mapStatsRow);
+  const vetoHistory = parseCsvRows(files.get("veto_history.csv") ?? "").filter((row) => row.matchId === matchId).map(vetoHistoryRow);
   const h2h = parseCsvRows(files.get("h2h.csv") ?? "").filter((row) => row.matchId === matchId).map(h2hRow);
+  const newsEvents = parseCsvRows(files.get("news_events.csv") ?? "").filter((row) => row.matchId === matchId).map(newsEventRow);
   const parsedDemo = parseDemo(files.get("parsed_demo_export.json") ?? "", warnings);
   return {
     roster,
     playerStats,
     mapStats,
+    vetoHistory,
     h2h,
+    newsEvents,
     parsedDemo,
     fingerprint: await inboxFingerprint(),
     warnings
@@ -30,7 +34,7 @@ async function readInboxFiles() {
   try {
     const entries = await readdir(inboxDir);
     for (const fileName of entries) {
-      if (!["roster.csv", "player_stats.csv", "map_stats.csv", "h2h.csv", "parsed_demo_export.json"].includes(fileName)) continue;
+      if (!["roster.csv", "player_stats.csv", "map_stats.csv", "veto_history.csv", "h2h.csv", "news_events.csv", "parsed_demo_export.json"].includes(fileName)) continue;
       files.set(fileName, await readFile(path.join(inboxDir, fileName), "utf8"));
     }
   } catch {
@@ -162,6 +166,32 @@ function h2hRow(row: Record<string, string>): H2hRow {
     scoreA: num(row.scoreA),
     scoreB: num(row.scoreB),
     sampleSize: num(row.sampleSize),
+    confidence: num(row.confidence)
+  };
+}
+
+function vetoHistoryRow(row: Record<string, string>): VetoHistoryRow {
+  return {
+    matchId: row.matchId,
+    teamName: row.teamName,
+    mapName: row.mapName,
+    sampleSize: num(row.sampleSize),
+    pickRate: num(row.pickRate),
+    banRate: num(row.banRate),
+    deciderRate: num(row.deciderRate),
+    confidence: num(row.confidence)
+  };
+}
+
+function newsEventRow(row: Record<string, string>): NewsEventRow {
+  return {
+    matchId: row.matchId,
+    sourceName: row.sourceName,
+    title: row.title,
+    affectedTeam: row.affectedTeam,
+    affectedPlayer: row.affectedPlayer,
+    eventType: row.eventType,
+    impactScore: num(row.impactScore),
     confidence: num(row.confidence)
   };
 }

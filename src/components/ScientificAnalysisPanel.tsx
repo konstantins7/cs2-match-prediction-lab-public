@@ -15,6 +15,15 @@ type Analysis = {
   parsedDemo: { pistolRounds: number } | null;
   scientificFactors: Array<{ id: string; label: string; status: "available" | "partial" | "missing"; impact: number; explanation: string; warnings: string[]; details: Record<string, unknown> }>;
   aiEvidenceSummary: Array<{ block: string; rows: number; confidenceMin: number; confidenceMax: number; sourceSite: string; extractedAt: string; promptVersion: string; modifiedAfterAi: boolean }>;
+  similarMatches: Array<{ matchId: string; eventName: string; date: string; teamA: string; teamB: string; winner?: string | null; score?: string | null; similarityScore: number; reasons: string[] }>;
+  anomalies: Array<{ id: string; scope: "player" | "team" | "veto" | "roster"; severity: "warning" | "critical"; metric: string; subject: string; value: number | string; baseline?: number | string; zScore?: number; explanation: string; recommendation: string }>;
+  modelPredictions: {
+    elo: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+    bayesianMap: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+    weighted: { teamAProbability: number; teamBProbability: number; weightsUsed: string; warnings: string[] };
+    ensemble: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+  };
+  dataRecommendations: Array<{ id: string; block: string; severity: "low" | "medium" | "high"; title: string; action: string; sourceHint: string; completedKey: string }>;
   outliers: Array<{ id: string; value: number; zScore: number }>;
   csv: string;
 };
@@ -31,6 +40,17 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [useCalibratedStyle, setUseCalibratedStyle] = useState(false);
+  const [completedRecommendations, setCompletedRecommendations] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    setUseCalibratedStyle(localStorage.getItem("cs2-scientific-calibrated-style") === "true");
+    try {
+      setCompletedRecommendations(JSON.parse(localStorage.getItem(`cs2-recommendations:${matchId}`) ?? "{}") as Record<string, boolean>);
+    } catch {
+      setCompletedRecommendations({});
+    }
+  }, [matchId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,14 +58,15 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
     setError("");
     const params = new URLSearchParams({
       mode: "deep",
-      v: "1",
+      v: "2",
       periodDays: String(periodDays),
       decayDays: String(decayDays),
       teamA,
       teamB,
       eloWeight: String(weights.elo),
       mapsWeight: String(weights.maps),
-      synergyWeight: String(weights.synergy)
+      synergyWeight: String(weights.synergy),
+      useCalibratedStyle: String(useCalibratedStyle)
     });
     fetch(`/api/match-analysis/${encodeURIComponent(matchId)}?${params.toString()}`, { signal: controller.signal })
       .then((response) => response.json() as Promise<ApiResponse>)
@@ -59,7 +80,7 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
       })
       .finally(() => setLoading(false));
     return () => controller.abort();
-  }, [matchId, teamA, teamB, periodDays, decayDays, weights]);
+  }, [matchId, teamA, teamB, periodDays, decayDays, weights, useCalibratedStyle]);
 
   const selectedMetric = useMemo(() => analysis?.playerMapEfficiency.find((row) => keyFor(row) === selected), [analysis, selected]);
 
@@ -97,6 +118,19 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
           <WeightControl label="Elo" value={weights.elo} onChange={(value) => setWeights((current) => ({ ...current, elo: value }))} />
           <WeightControl label="Maps" value={weights.maps} onChange={(value) => setWeights((current) => ({ ...current, maps: value }))} />
           <WeightControl label="Synergy" value={weights.synergy} onChange={(value) => setWeights((current) => ({ ...current, synergy: value }))} />
+          <ControlBlock title="Model mode">
+            <label className="flex items-center gap-2 text-sm text-lab-muted">
+              <input
+                type="checkbox"
+                checked={useCalibratedStyle}
+                onChange={(event) => {
+                  setUseCalibratedStyle(event.target.checked);
+                  localStorage.setItem("cs2-scientific-calibrated-style", String(event.target.checked));
+                }}
+              />
+              calibrated-style weights
+            </label>
+          </ControlBlock>
         </div>
         {loading ? <p className="mt-4 text-sm text-lab-muted">Считаю локальную математику...</p> : null}
         {error ? <p className="mt-4 text-sm text-lab-red">{error}</p> : null}
@@ -106,6 +140,18 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
         <>
           <QualityCard analysis={analysis} />
           <AiEvidenceCard rows={analysis.aiEvidenceSummary} />
+          <RecommendationsCard
+            rows={analysis.dataRecommendations}
+            completed={completedRecommendations}
+            onToggle={(key) => {
+              const next = { ...completedRecommendations, [key]: !completedRecommendations[key] };
+              setCompletedRecommendations(next);
+              localStorage.setItem(`cs2-recommendations:${matchId}`, JSON.stringify(next));
+            }}
+          />
+          <ModelComparisonCard predictions={analysis.modelPredictions} teamA={teamA} teamB={teamB} />
+          <SimilarMatchesCard rows={analysis.similarMatches} />
+          <AnomalyCard rows={analysis.anomalies} />
           <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
             <Heatmap rows={analysis.playerMapEfficiency} selected={selected} onSelect={setSelected} />
             <TrendCard metric={selectedMetric} />
@@ -128,6 +174,7 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
             </section>
           )}
           <p className="text-xs text-lab-muted">PDF экспорт пока отложен: используйте печать страницы браузера и Save as PDF. CSV ниже содержит агрегаты и player-map rows.</p>
+          <ExportReportButton analysis={analysis} teamA={teamA} teamB={teamB} />
           <CsvDownload csv={analysis.csv} matchId={matchId} />
         </>
       ) : null}
@@ -171,6 +218,130 @@ function ScientificFactorsCard({ factors }: { factors: Analysis["scientificFacto
       </div>
     </section>
   );
+}
+
+function ModelComparisonCard({ predictions, teamA, teamB }: { predictions: Analysis["modelPredictions"]; teamA: string; teamB: string }) {
+  const rows = [
+    { id: "elo", label: "Elo", ...predictions.elo, note: predictions.elo.warnings[0] },
+    { id: "bayesianMap", label: "Bayesian maps", ...predictions.bayesianMap, note: predictions.bayesianMap.warnings[0] },
+    { id: "weighted", label: `Weighted (${predictions.weighted.weightsUsed})`, ...predictions.weighted, note: predictions.weighted.warnings[0] },
+    { id: "ensemble", label: "Ensemble", ...predictions.ensemble, note: predictions.ensemble.warnings[0] }
+  ];
+  const copy = () => {
+    const text = rows.map((row) => `${row.label}: ${teamA} ${row.teamAProbability}% / ${teamB} ${row.teamBProbability}%`).join("\n");
+    void navigator.clipboard?.writeText(text);
+  };
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="font-semibold text-white">Сравнение моделей</h3>
+          <p className="mt-1 text-sm text-lab-muted">Advisory-only comparison. Production calculatePrediction remains unchanged.</p>
+        </div>
+        <button type="button" onClick={copy} className={passiveButton}>Copy probabilities</button>
+      </div>
+      <div className="mt-3 grid gap-3 md:grid-cols-4">
+        {rows.map((row) => (
+          <article key={row.id} className="rounded border border-lab-border bg-lab-panel2 p-3">
+            <p className="text-sm text-lab-muted">{row.label}</p>
+            <p className="mt-2 text-2xl font-semibold text-white">{Math.round(row.teamAProbability)}%</p>
+            <p className="text-xs text-lab-muted">{teamA} vs {teamB}</p>
+            <div className="mt-3 h-2 rounded bg-lab-border">
+              <div className="h-2 rounded bg-lab-cyan" style={{ width: `${Math.max(1, Math.min(99, row.teamAProbability))}%` }} />
+            </div>
+            {row.note ? <p className="mt-2 text-xs text-lab-amber">{row.note}</p> : null}
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SimilarMatchesCard({ rows }: { rows: Analysis["similarMatches"] }) {
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">Похожие матчи</h3>
+      <p className="mt-1 text-sm text-lab-muted">Similarity uses cached finished-match features. Run sync:match-features after importing history.</p>
+      <div className="mt-3 overflow-x-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="text-xs uppercase text-lab-muted"><tr><th className="py-2">Match</th><th>Score</th><th>Winner</th><th>Reasons</th></tr></thead>
+          <tbody className="divide-y divide-lab-border">
+            {rows.length ? rows.map((row) => (
+              <tr key={row.matchId}>
+                <td className="py-2 text-white">{row.teamA} vs {row.teamB}<span className="ml-2 text-xs text-lab-muted">{new Date(row.date).toLocaleDateString()}</span></td>
+                <td>{row.similarityScore}%</td>
+                <td>{row.winner ?? "n/a"}</td>
+                <td className="max-w-xl text-lab-muted">{row.reasons.join("; ") || "No strong single reason."}</td>
+              </tr>
+            )) : <tr><td className="py-3 text-lab-muted" colSpan={4}>No cached similar matches yet.</td></tr>}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function AnomalyCard({ rows }: { rows: Analysis["anomalies"] }) {
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">Аномалии</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {rows.length ? rows.map((row) => (
+          <article key={row.id} className={`rounded border p-3 ${row.severity === "critical" ? "border-lab-red/60 bg-lab-red/10" : "border-lab-amber/60 bg-lab-amber/10"}`}>
+            <p className="text-sm uppercase text-lab-muted">{row.scope} · {row.metric}</p>
+            <p className="mt-1 font-medium text-white">{row.subject}</p>
+            <p className="mt-1 text-sm text-lab-muted">{row.explanation}</p>
+            <p className="mt-2 text-xs text-lab-amber">{row.recommendation}</p>
+          </article>
+        )) : <p className="text-sm text-lab-muted">No significant anomalies in current local data.</p>}
+      </div>
+    </section>
+  );
+}
+
+function RecommendationsCard({ rows, completed, onToggle }: { rows: Analysis["dataRecommendations"]; completed: Record<string, boolean>; onToggle: (key: string) => void }) {
+  return (
+    <section className="rounded border border-lab-border bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">Рекомендации по данным</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        {rows.length ? rows.map((row) => (
+          <label key={row.id} className={`block rounded border p-3 ${completed[row.completedKey] ? "border-lab-green/50 bg-lab-green/10" : "border-lab-border bg-lab-panel2"}`}>
+            <span className="flex items-start gap-3">
+              <input type="checkbox" checked={Boolean(completed[row.completedKey])} onChange={() => onToggle(row.completedKey)} className="mt-1" />
+              <span>
+                <span className="font-medium text-white">{row.title}</span>
+                <span className="ml-2 text-xs uppercase text-lab-muted">{row.severity} · {row.block} · {row.sourceHint}</span>
+                <span className="mt-1 block text-sm text-lab-muted">{row.action}</span>
+              </span>
+            </span>
+          </label>
+        )) : <p className="text-sm text-lab-muted">No high-priority data gaps detected in local analysis inputs.</p>}
+      </div>
+    </section>
+  );
+}
+
+function ExportReportButton({ analysis, teamA, teamB }: { analysis: Analysis; teamA: string; teamB: string }) {
+  const exportHtml = () => {
+    const win = window.open("", "_blank");
+    if (!win) return;
+    const rows = [
+      `<h1>${escapeHtml(teamA)} vs ${escapeHtml(teamB)}</h1>`,
+      `<p>Generated: ${escapeHtml(new Date().toISOString())}</p>`,
+      `<h2>Model comparison</h2>${htmlTable(["Model", teamA, teamB], [
+        ["Elo", analysis.modelPredictions.elo.teamAProbability, analysis.modelPredictions.elo.teamBProbability],
+        ["Bayesian maps", analysis.modelPredictions.bayesianMap.teamAProbability, analysis.modelPredictions.bayesianMap.teamBProbability],
+        ["Weighted", analysis.modelPredictions.weighted.teamAProbability, analysis.modelPredictions.weighted.teamBProbability],
+        ["Ensemble", analysis.modelPredictions.ensemble.teamAProbability, analysis.modelPredictions.ensemble.teamBProbability]
+      ])}`,
+      `<h2>Anomalies</h2>${htmlTable(["Scope", "Subject", "Explanation"], analysis.anomalies.map((row) => [row.scope, row.subject, row.explanation]))}`,
+      `<h2>Similar matches</h2>${htmlTable(["Match", "Similarity", "Reasons"], analysis.similarMatches.map((row) => [`${row.teamA} vs ${row.teamB}`, `${row.similarityScore}%`, row.reasons.join("; ")]))}`,
+      `<h2>Recommendations</h2>${htmlTable(["Block", "Title", "Action"], analysis.dataRecommendations.map((row) => [row.block, row.title, row.action]))}`
+    ];
+    win.document.write(`<!doctype html><html><head><title>CS2 analysis report</title><style>body{font-family:Arial,sans-serif;margin:32px;color:#111}table{border-collapse:collapse;width:100%;margin:12px 0 24px}td,th{border:1px solid #ddd;padding:8px;text-align:left}th{background:#f3f4f6}@media print{button{display:none}}</style></head><body><button onclick="window.print()">Print / Save as PDF</button>${rows.join("\n")}</body></html>`);
+    win.document.close();
+  };
+  return <button type="button" onClick={exportHtml} className="mr-3 inline-flex rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan">Экспорт отчёта (HTML)</button>;
 }
 
 function EloTrendCard({ analysis }: { analysis: Analysis }) {
@@ -294,6 +465,15 @@ function SynergyTable({ rows }: { rows: Analysis["teamSynergy"] }) {
 function CsvDownload({ csv, matchId }: { csv: string; matchId: string }) {
   const href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
   return <a href={href} download={`${matchId}_scientific_metrics.csv`} className="inline-flex rounded border border-lab-cyan px-3 py-2 text-sm text-lab-cyan">Download scientific metrics CSV</a>;
+}
+
+function htmlTable(headers: string[], rows: Array<Array<string | number>>) {
+  if (!rows.length) return "<p>No rows.</p>";
+  return `<table><thead><tr>${headers.map((header) => `<th>${escapeHtml(header)}</th>`).join("")}</tr></thead><tbody>${rows.map((row) => `<tr>${row.map((cell) => `<td>${escapeHtml(String(cell ?? ""))}</td>`).join("")}</tr>`).join("")}</tbody></table>`;
+}
+
+function escapeHtml(value: string) {
+  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
 function WeightControl({ label, value, onChange }: { label: string; value: number; onChange: (value: number) => void }) {

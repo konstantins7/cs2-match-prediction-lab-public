@@ -28,6 +28,8 @@ data/community-datasets/
 data/logs/
 data/model/
 data/ai-finetuning/
+data/runtime/
+data/backups/
 *.log
 dev-server.log
 tsconfig.tsbuildinfo

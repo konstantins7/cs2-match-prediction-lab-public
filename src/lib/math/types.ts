@@ -12,6 +12,7 @@ export type AnalysisParams = {
   decayDays: number;
   version: number;
   weights: NumericWeights;
+  useCalibratedStyle: boolean;
 };
 
 export type RosterRow = {
@@ -80,11 +81,35 @@ export type H2hRow = {
   confidence?: number;
 };
 
+export type VetoHistoryRow = {
+  matchId: string;
+  teamName: string;
+  mapName: string;
+  sampleSize: number;
+  pickRate: number;
+  banRate: number;
+  deciderRate: number;
+  confidence?: number;
+};
+
+export type NewsEventRow = {
+  matchId: string;
+  sourceName: string;
+  title: string;
+  affectedTeam?: string;
+  affectedPlayer?: string;
+  eventType?: string;
+  impactScore: number;
+  confidence?: number;
+};
+
 export type PrivateAnalysisData = {
   roster: RosterRow[];
   playerStats: PlayerStatsRow[];
   mapStats: MapStatsRow[];
+  vetoHistory: VetoHistoryRow[];
   h2h: H2hRow[];
+  newsEvents: NewsEventRow[];
   parsedDemo: ParsedDemoSummary | null;
   fingerprint: string;
   warnings: string[];
@@ -136,6 +161,48 @@ export type MapProbability = {
   warnings: string[];
 };
 
+export type SimilarMatch = {
+  matchId: string;
+  eventName: string;
+  date: string;
+  teamA: string;
+  teamB: string;
+  winner?: string | null;
+  score?: string | null;
+  similarityScore: number;
+  reasons: string[];
+};
+
+export type AnomalyFinding = {
+  id: string;
+  scope: "player" | "team" | "veto" | "roster";
+  severity: "warning" | "critical";
+  metric: string;
+  subject: string;
+  value: number | string;
+  baseline?: number | string;
+  zScore?: number;
+  explanation: string;
+  recommendation: string;
+};
+
+export type ModelPredictions = {
+  elo: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+  bayesianMap: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+  weighted: { teamAProbability: number; teamBProbability: number; weightsUsed: string; warnings: string[] };
+  ensemble: { teamAProbability: number; teamBProbability: number; warnings: string[] };
+};
+
+export type DataRecommendation = {
+  id: string;
+  block: "roster" | "player_stats" | "map_stats" | "veto_history" | "h2h" | "news_events";
+  severity: "low" | "medium" | "high";
+  title: string;
+  action: string;
+  sourceHint: "ai_import" | "research_extended" | "manual_csv" | "parsed_demo";
+  completedKey: string;
+};
+
 export type DeepMatchAnalysis = {
   matchId: string;
   version: number;
@@ -184,6 +251,10 @@ export type DeepMatchAnalysis = {
     promptVersion: string;
     modifiedAfterAi: boolean;
   }>;
+  similarMatches: SimilarMatch[];
+  anomalies: AnomalyFinding[];
+  modelPredictions: ModelPredictions;
+  dataRecommendations: DataRecommendation[];
   outliers: Array<{ scope: string; id: string; value: number; zScore: number }>;
   csv: string;
 };

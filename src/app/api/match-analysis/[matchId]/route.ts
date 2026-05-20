@@ -17,7 +17,8 @@ export async function GET(request: Request, { params }: { params: Promise<{ matc
       elo: Number(url.searchParams.get("eloWeight") ?? "0.34"),
       maps: Number(url.searchParams.get("mapsWeight") ?? "0.43"),
       synergy: Number(url.searchParams.get("synergyWeight") ?? "0.23")
-    }
+    },
+    useCalibratedStyle: url.searchParams.get("useCalibratedStyle") === "true"
   });
   return NextResponse.json({ ok: true, analysis });
 }

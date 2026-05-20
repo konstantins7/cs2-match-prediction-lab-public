@@ -1,9 +1,11 @@
 export type BacktestResult = {
   scope?: string;
+  model?: string;
   testedMatches: number;
   correctPredictions: number;
   accuracy: number;
   brierScore: number;
+  logLoss: number;
   averageConfidence: number;
   calibrationBuckets: Array<{ bucket: string; matches: number; accuracy: number; avgConfidence: number }>;
   errorBreakdown: Array<{ label: string; count: number; note: string }>;
@@ -13,7 +15,7 @@ export function BacktestSummary({ result }: { result: BacktestResult }) {
   if (result.testedMatches === 0) {
     return (
       <div className="rounded border border-lab-border bg-lab-panel p-4">
-        {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}</h2>}
+        {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}{result.model ? ` · ${modelLabel(result.model)}` : ""}</h2>}
         <p className="mt-2 text-sm text-lab-amber">Недостаточно матчей для backtesting в этом scope.</p>
       </div>
     );
@@ -21,12 +23,13 @@ export function BacktestSummary({ result }: { result: BacktestResult }) {
 
   return (
     <div className="space-y-4">
-      {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}</h2>}
-      <div className="grid gap-3 md:grid-cols-5">
+      {result.scope && <h2 className="text-lg font-semibold text-white">{scopeLabel(result.scope)}{result.model ? ` · ${modelLabel(result.model)}` : ""}</h2>}
+      <div className="grid gap-3 md:grid-cols-6">
         <Stat label="Tested" value={String(result.testedMatches)} />
         <Stat label="Correct" value={String(result.correctPredictions)} />
         <Stat label="Accuracy" value={`${Math.round(result.accuracy * 100)}%`} />
         <Stat label="Brier Score" value={result.brierScore.toFixed(3)} />
+        <Stat label="Log loss" value={result.logLoss.toFixed(3)} />
         <Stat label="Avg confidence" value={`${Math.round(result.averageConfidence)}%`} />
       </div>
       <section className="rounded border border-lab-border bg-lab-panel p-4">
@@ -70,6 +73,14 @@ function scopeLabel(scope: string) {
   if (scope === "pandascore_fixtures") return "PandaScore fixtures-only";
   if (scope === "sample_dev_only") return "Sample/dev only";
   return "All matches";
+}
+
+function modelLabel(model: string) {
+  if (model === "elo") return "Elo advisory";
+  if (model === "bayesian_map") return "Bayesian maps";
+  if (model === "weighted") return "Weighted advisory";
+  if (model === "ensemble") return "Ensemble advisory";
+  return "Rule-based";
 }
 
 function Stat({ label, value }: { label: string; value: string }) {

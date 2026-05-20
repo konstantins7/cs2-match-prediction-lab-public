@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.7.0 - Full Local Automation
+
+- Added safe zero-touch setup, update, doctor, cleanup, scheduler, dependency, and local release helper scripts.
+- Added `/admin/health` plus admin APIs for health, automation status, run-once automation, and cleanup.
+- Added a local automation runner for extended Auto-All preparation, forecastability cache refresh, match-feature sync, dataset prep, and cleanup without hidden Apply.
+- Added guided-safe Ollama setup posture and automation documentation.
+
+## v1.6.0 - Smart Match Analytics
+
+- Added advisory smart analysis fields for similar matches, anomaly detection, model comparison, and data-quality recommendations.
+- Added `MatchFeatureHistory` plus `sync:match-features` for explicit finished-match feature caching; no page-load writes are introduced.
+- Added `/api/match/[matchId]/similar` and extended `/api/match-analysis/[matchId]?mode=deep&v=2`.
+- Added scientific UI blocks for similar matches, anomalies, advisory model comparison, recommendations, and print-friendly HTML report export.
+- Added advisory model comparison to `/admin/backtesting` with accuracy, Brier score, log loss, and CSV export.
+- Kept `calculatePrediction`, Apply, Real Forecast Ready gates, and production prediction storage unchanged.
+
 ## v1.5.0 - AI Dashboard, History, Diagnostics, and Research Merge
 
 - Added `/admin/ai-dashboard` for local Ollama status, model visibility, AI cache stats, extraction usage, and guided fine-tuning actions.
