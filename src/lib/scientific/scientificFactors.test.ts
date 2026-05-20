@@ -6,7 +6,9 @@ const emptyData: PrivateAnalysisData = {
   roster: [],
   playerStats: [],
   mapStats: [],
+  vetoHistory: [],
   h2h: [],
+  newsEvents: [],
   parsedDemo: null,
   fingerprint: "empty",
   warnings: []

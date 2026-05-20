@@ -1,6 +1,6 @@
 {
   "name": "cs2-match-prediction-lab",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "private": true,
   "packageManager": "pnpm@11.1.0",
   "scripts": {
@@ -22,6 +22,7 @@
     "sync:pandascore-free": "tsx src/scripts/sync.ts pandascore-free",
     "sync:snapshots": "tsx src/scripts/sync.ts snapshots",
     "sync:predictions": "tsx src/scripts/sync.ts predictions",
+    "sync:match-features": "tsx scripts/sync-match-features.ts",
     "data:fetch-esportis": "tsx tools/data-fetchers/fetch-esportis.ts --force",
     "data:fetch-pandascore": "tsx tools/data-fetchers/fetch-pandascore.ts --force",
     "data:fetch-grid": "tsx tools/data-fetchers/fetch-grid.ts --force",

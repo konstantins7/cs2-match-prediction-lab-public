@@ -50,6 +50,18 @@ RESEARCH_DEMO_PARSER_CMD="demoinfocs"
 
 HLTV direct requests fail closed on the first `403`, cache that block for 6 hours and suggest Jina/Apify/manual CSV instead of retrying with browser-like headers. Community datasets are rejected for pre-match evidence unless their `sourceDate` or `collectedAt` is before the target match start.
 
+## MVP 1.6.0: smart match analytics
+
+v1.6.0 expands the read-only scientific layer into a match-analysis workspace. It does not change `calculatePrediction`, Apply, Real Forecast Ready gates, or saved prediction picks.
+
+- `/api/match-analysis/[matchId]?mode=deep&v=2` adds similar matches, anomaly findings, advisory model comparison, and data recommendations.
+- `pnpm sync:match-features` explicitly rebuilds cached finished-match features for similarity search. Pages never write this cache on load.
+- `/api/match/[matchId]/similar?limit=10` returns cached similar finished matches with reasons.
+- The `Научный анализ` tab shows “Похожие матчи”, “Аномалии”, “Сравнение моделей”, “Рекомендации”, and print-friendly HTML report export.
+- `/admin/backtesting?model=ensemble` compares advisory model variants and can export summary CSV.
+
+Report export is intentionally HTML + browser Print/Save as PDF. Native PDF generation and external ML libraries are deferred.
+
 ## MVP 1.5.0: AI dashboard, history, diagnostics, and guided fine-tuning
 
 v1.5.0 turns local AI import into an inspectable admin workflow. It does not add cloud AI and does not change Apply, forecast math, or Real Forecast Ready gates.

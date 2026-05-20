@@ -8,6 +8,11 @@ import { weightedScientificPrediction } from "./mlPredictor";
 import { calculatePlayerMapEfficiency, detectOutliers } from "./playerMapEfficiency";
 import { calculateTeamSynergy } from "./teamSynergy";
 import { calculateScientificFactors } from "@/lib/scientific/scientificFactors";
+import { detectScientificAnomalies } from "@/lib/scientific/anomalyDetection";
+import { buildDataRecommendations } from "@/lib/scientific/dataRecommendations";
+import { findSimilarMatches } from "@/lib/scientific/matchSimilarity";
+import { compareAdvisoryModels } from "@/lib/scientific/modelComparison";
+import { prisma } from "@/lib/prisma";
 import type { AnalysisParams, DeepMatchAnalysis, NumericWeights } from "./types";
 
 const analysisTtlMs = 7 * 24 * 60 * 60 * 1000;
@@ -29,6 +34,23 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
   const outliers = detectOutliers(data.playerStats.map((row) => ({ id: `${row.teamName}:${row.nickname}:${row.mapName ?? "overall"}`, value: row.rating })), "player_rating");
   const scientificFactors = calculateScientificFactors(data, teams);
   const aiEvidenceSummary = await buildAiEvidenceSummary(normalized.matchId);
+  const dbMatch = normalized.version >= 2 ? await readMatchModelContext(normalized.matchId) : null;
+  const anomalies = normalized.version >= 2 ? detectScientificAnomalies(data) : [];
+  const similarMatches = normalized.version >= 2 ? await findSimilarMatches(normalized.matchId, 10).catch(() => []) : [];
+  const modelPredictions = compareAdvisoryModels({
+    teamA: teams[0] ?? "",
+    teamB: teams[1] ?? "",
+    teamAInternalElo: dbMatch?.teamA.internalElo,
+    teamBInternalElo: dbMatch?.teamB.internalElo,
+    teamElo,
+    mapProbabilities,
+    synergies: teamSynergy,
+    weights: normalized.weights,
+    useCalibratedStyle: normalized.useCalibratedStyle
+  });
+  const dataRecommendations = normalized.version >= 2
+    ? buildDataRecommendations(data, { matchId: normalized.matchId, aiConfidence: aiEvidenceSummary.length ? Math.max(...aiEvidenceSummary.map((row) => row.confidenceMax)) : null })
+    : [];
   const prediction = weightedScientificPrediction({
     teamA: teams[0] ?? "",
     teamB: teams[1] ?? "",
@@ -71,6 +93,10 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
     parsedDemo: data.parsedDemo,
     scientificFactors,
     aiEvidenceSummary,
+    similarMatches,
+    anomalies,
+    modelPredictions,
+    dataRecommendations,
     outliers,
     csv: toAnalysisCsv(playerMapEfficiency, scientificFactors)
   };
@@ -109,7 +135,8 @@ function normalizeParams(params: Partial<AnalysisParams> & { matchId: string }):
     version: Number(params.version || 1),
     periodDays: Number(params.periodDays || 40),
     decayDays: Number(params.decayDays || 14),
-    weights: normalizeWeights(params.weights ?? { elo: 0.34, maps: 0.43, synergy: 0.23 })
+    weights: normalizeWeights(params.weights ?? { elo: 0.34, maps: 0.43, synergy: 0.23 }),
+    useCalibratedStyle: Boolean(params.useCalibratedStyle)
   };
 }
 
@@ -170,6 +197,16 @@ async function readAnalysisCache(params: AnalysisParams, fingerprint: string) {
 async function writeAnalysisCache(params: AnalysisParams, fingerprint: string, analysis: DeepMatchAnalysis) {
   await mkdir(cacheRoot, { recursive: true });
   await writeFile(cacheFile(params), `${JSON.stringify({ timestamp: new Date().toISOString(), fingerprint, params, analysis }, null, 2)}\n`, "utf8");
+}
+
+async function readMatchModelContext(matchId: string) {
+  return prisma.match.findUnique({
+    where: { id: matchId },
+    select: {
+      teamA: { select: { internalElo: true } },
+      teamB: { select: { internalElo: true } }
+    }
+  });
 }
 
 function toAnalysisCsv(rows: DeepMatchAnalysis["playerMapEfficiency"], factors: DeepMatchAnalysis["scientificFactors"]) {

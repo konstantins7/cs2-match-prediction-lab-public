@@ -122,6 +122,7 @@ model Match {
   newsImpactSnapshots NewsImpactSnapshot[]
   analysisJobs     AnalysisJob[]
   predictionPicks  PredictionPick[]
+  featureHistory   MatchFeatureHistory?
 
   @@index([status, startTime])
   @@index([teamAId])
@@ -960,6 +961,31 @@ model MatchFeatureSnapshot {
   @@index([readinessLevel])
   @@index([modelVersion, featureSchemaVersion])
   @@index([dataLeakageCheckPassed])
+}
+
+model MatchFeatureHistory {
+  id                String   @id @default(cuid())
+  matchId           String   @unique
+  teamAId           String
+  teamBId           String
+  avgTeamARating    Float
+  avgTeamBRating    Float
+  mapPoolOverlap    Float
+  rosterStability   Float
+  recentWinRateA    Float
+  recentWinRateB    Float
+  tournamentTier    Int
+  isLan             Boolean
+  mapPoolJson       String   @default("[]")
+  rosterAJson       String   @default("[]")
+  rosterBJson       String   @default("[]")
+  computedAt        DateTime @default(now())
+
+  match             Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@index([matchId])
+  @@index([teamAId, teamBId])
+  @@index([computedAt])
 }
 
 model ExternalSourceRecord {
