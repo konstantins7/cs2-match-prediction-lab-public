@@ -14,6 +14,7 @@ type Analysis = {
   prediction: { teamA: string; teamB: string; teamAProbability: number; components: Record<string, number>; warnings: string[] };
   parsedDemo: { pistolRounds: number } | null;
   scientificFactors: Array<{ id: string; label: string; status: "available" | "partial" | "missing"; impact: number; explanation: string; warnings: string[]; details: Record<string, unknown> }>;
+  aiEvidenceSummary: Array<{ block: string; rows: number; confidenceMin: number; confidenceMax: number; sourceSite: string; extractedAt: string; promptVersion: string; modifiedAfterAi: boolean }>;
   outliers: Array<{ id: string; value: number; zScore: number }>;
   csv: string;
 };
@@ -104,6 +105,7 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
       {analysis ? (
         <>
           <QualityCard analysis={analysis} />
+          <AiEvidenceCard rows={analysis.aiEvidenceSummary} />
           <div className="grid gap-4 xl:grid-cols-[1.4fr_0.8fr]">
             <Heatmap rows={analysis.playerMapEfficiency} selected={selected} onSelect={setSelected} />
             <TrendCard metric={selectedMetric} />
@@ -129,6 +131,23 @@ export function ScientificAnalysisPanel({ matchId, teamA, teamB }: { matchId: st
           <CsvDownload csv={analysis.csv} matchId={matchId} />
         </>
       ) : null}
+    </section>
+  );
+}
+
+function AiEvidenceCard({ rows }: { rows: Analysis["aiEvidenceSummary"] }) {
+  if (!rows.length) return null;
+  return (
+    <section className="rounded border border-lab-cyan/40 bg-lab-panel p-4">
+      <h3 className="font-semibold text-white">AI evidence provenance</h3>
+      <p className="mt-1 text-sm text-lab-muted">Blocks marked here include rows sourced from Local AI extraction. Treat them as advisory provenance, not a forecast gate change.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {rows.map((row) => (
+          <span key={row.block} className="rounded border border-lab-cyan/35 bg-lab-cyan/10 px-3 py-2 text-sm text-lab-cyan">
+            AI · {row.block}: {row.rows} rows · confidence {row.confidenceMin}-{row.confidenceMax}{row.modifiedAfterAi ? " · modified" : ""}
+          </span>
+        ))}
+      </div>
     </section>
   );
 }

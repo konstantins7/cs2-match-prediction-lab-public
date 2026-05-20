@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.5.0 - AI Dashboard, History, Diagnostics, and Research Merge
+
+- Added `/admin/ai-dashboard` for local Ollama status, model visibility, AI cache stats, extraction usage, and guided fine-tuning actions.
+- Added `/admin/ai-history` with paginated local extraction history, redacted/truncated input previews, raw output inspection, CSV export, and bad-example marking.
+- Added structured AI extraction diagnostics for disabled Ollama, timeouts, connection failures, invalid JSON, empty sheets, low confidence, and validation errors.
+- Added focused research gap-fill support for `data:auto-all:extended` and AI merge/apply preview controls.
+- Added AI evidence provenance to scientific analysis so users can see which blocks came from Local AI extraction.
+
 ## v1.4.0 - Local AI OCR, Batch Import, and Fine-Tuning Prep
 
 - Added browser-local OCR for screenshots through lazy `tesseract.js`; screenshots stay in the browser and only recognized text is sent to the local AI extraction API.

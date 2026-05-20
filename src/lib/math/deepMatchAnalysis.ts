@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { quoteCsv } from "../analystSheetTemplates";
-import { inboxFingerprint, loadPrivateAnalysisData } from "./dataLoader";
+import { analystSheetTemplates, quoteCsv, type AnalystSheetType } from "../analystSheetTemplates";
+import { inboxFingerprint, loadPrivateAnalysisData, parseCsvRows } from "./dataLoader";
 import { calculateTeamElo, calculatePlayerElo } from "./eloRating";
 import { calculateMapProbabilities } from "./mapWinProbability";
 import { weightedScientificPrediction } from "./mlPredictor";
@@ -28,6 +28,7 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
   const playerElo = calculatePlayerElo(data.playerStats);
   const outliers = detectOutliers(data.playerStats.map((row) => ({ id: `${row.teamName}:${row.nickname}:${row.mapName ?? "overall"}`, value: row.rating })), "player_rating");
   const scientificFactors = calculateScientificFactors(data, teams);
+  const aiEvidenceSummary = await buildAiEvidenceSummary(normalized.matchId);
   const prediction = weightedScientificPrediction({
     teamA: teams[0] ?? "",
     teamB: teams[1] ?? "",
@@ -69,11 +70,35 @@ export async function buildDeepMatchAnalysis(params: Partial<AnalysisParams> & {
     },
     parsedDemo: data.parsedDemo,
     scientificFactors,
+    aiEvidenceSummary,
     outliers,
     csv: toAnalysisCsv(playerMapEfficiency, scientificFactors)
   };
   await writeAnalysisCache(normalized, fingerprint, analysis);
   return analysis;
+}
+
+async function buildAiEvidenceSummary(matchId: string): Promise<DeepMatchAnalysis["aiEvidenceSummary"]> {
+  const blocks: DeepMatchAnalysis["aiEvidenceSummary"] = [];
+  for (const [sheetType, template] of Object.entries(analystSheetTemplates) as Array<[AnalystSheetType, typeof analystSheetTemplates[AnalystSheetType]]>) {
+    const content = await readFile(path.join(process.cwd(), "data", "private-inbox", template.filename), "utf8").catch(() => "");
+    if (!content.trim()) continue;
+    const rows = parseCsvRows(content).filter((row) => row.matchId === matchId && /local ai extraction/i.test(row.sourceName || ""));
+    if (!rows.length) continue;
+    const confidences = rows.map((row) => Number(row.confidence)).filter((value) => Number.isFinite(value));
+    const collected = rows.map((row) => row.collectedAt || row.publishedAt || "").filter(Boolean).sort();
+    blocks.push({
+      block: sheetType,
+      rows: rows.length,
+      confidenceMin: confidences.length ? Math.min(...confidences) : 0,
+      confidenceMax: confidences.length ? Math.max(...confidences) : 0,
+      sourceSite: "Local AI extraction",
+      extractedAt: collected.at(-1) || "",
+      promptVersion: "unknown",
+      modifiedAfterAi: false
+    });
+  }
+  return blocks;
 }
 
 function normalizeParams(params: Partial<AnalysisParams> & { matchId: string }): AnalysisParams {

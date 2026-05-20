@@ -32,6 +32,14 @@ type ExtractResult = {
   sheets?: AiSheet[];
   suggestedNextAction?: string;
   errors?: string[];
+  diagnostics?: {
+    reasonCode: string;
+    headline: string;
+    tips: string[];
+    missingBlocks: AnalystSheetType[];
+    fieldIssues: Array<{ sheetType: AnalystSheetType; field?: string; severity: "error" | "warning"; message: string }>;
+    ollamaHint?: string;
+  };
 };
 
 type ApplyResult = {
@@ -60,6 +68,12 @@ type ExtendedEvent = {
   message: string;
 };
 
+type ResearchPreviewSheet = {
+  sheetType: AnalystSheetType;
+  content: string;
+  validation: { rowsParsed?: number; errors?: string[]; warnings?: string[] };
+};
+
 const maxImageBytes = 10 * 1024 * 1024;
 const allowedImageTypes = ["image/png", "image/jpeg", "image/webp"];
 
@@ -86,8 +100,10 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
   const [ocrProgress, setOcrProgress] = useState(0);
   const [ocrWarning, setOcrWarning] = useState("");
   const [gapEvents, setGapEvents] = useState<ExtendedEvent[]>([]);
+  const [researchSheets, setResearchSheets] = useState<ResearchPreviewSheet[]>([]);
   const gapSourceRef = useRef<EventSource | null>(null);
   const countdownRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const extractControllerRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     void fetch("/api/ai/status")
@@ -106,9 +122,13 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
     setApplyResult(null);
     setCountdown(null);
     setAutoApplyCancelled(false);
+    extractControllerRef.current?.abort();
+    const controller = new AbortController();
+    extractControllerRef.current = controller;
     const response = await fetch("/api/ai/extract-local", {
       method: "POST",
       headers: { "content-type": "application/json" },
+      signal: controller.signal,
       body: JSON.stringify({
         matchId,
         teamA,
@@ -156,6 +176,7 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
 
   const applyAction = useAsyncAction(async () => applySheets(false), { actionName: "local_ai_apply" });
   const timedApplyAction = useAsyncAction(async () => applySheets(true), { actionName: "local_ai_timed_apply" });
+  const mergedApplyAction = useAsyncAction(async () => applyMergedSheets(), { actionName: "local_ai_research_merge_apply" });
 
   const sheets = useMemo(() => result?.sheets ?? [], [result]);
   const active = sheets.find((sheet) => sheet.sheetType === activeSheet) ?? sheets[0];
@@ -253,9 +274,20 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
     if (countdownRef.current) clearTimeout(countdownRef.current);
   }
 
+  function cancelExtraction() {
+    extractControllerRef.current?.abort();
+  }
+
+  async function pasteClipboard() {
+    const text = await navigator.clipboard.readText();
+    setInputText(text);
+    if (!sourceHint) setSourceHint("clipboard");
+  }
+
   function fillGaps() {
     gapSourceRef.current?.close();
     setGapEvents([]);
+    setResearchSheets([]);
     const params = new URLSearchParams({
       matchId,
       teamA,
@@ -273,6 +305,7 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
       if (event.step === "complete" || event.status === "error") {
         source.close();
         gapSourceRef.current = null;
+        if (event.step === "complete") void loadResearchPreview();
         router.refresh();
       }
     };
@@ -281,6 +314,40 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
       source.close();
       gapSourceRef.current = null;
     };
+  }
+
+  async function loadResearchPreview() {
+    const params = new URLSearchParams({ matchId, focus: missingBlocks.join(",") });
+    const response = await fetch(`/api/admin/ai/research-preview?${params.toString()}`);
+    const json = await response.json() as { sheets?: ResearchPreviewSheet[] };
+    setResearchSheets(json.sheets ?? []);
+  }
+
+  async function applyMergedSheets() {
+    const merged = analystSheetTypes
+      .map((sheetType) => {
+        const ai = contents[sheetType] ?? "";
+        const research = researchSheets.find((sheet) => sheet.sheetType === sheetType)?.content ?? "";
+        const content = mergeCsvContent(ai, research);
+        return { sheetType, content };
+      })
+      .filter((sheet) => sheet.content.trim().length > 0);
+    const response = await fetch("/api/ai/apply-local", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        matchId,
+        extractionId: result?.extractionId,
+        sheets: merged,
+        sourceSite: result?.detectedSource ?? result?.sourceSite,
+        promptVersion: result?.promptVersion,
+        promptVariant: result?.promptVariant
+      })
+    });
+    const json = await response.json() as ApplyResult;
+    setApplyResult(json);
+    if (json.ok) router.refresh();
+    return json;
   }
 
   return (
@@ -380,6 +447,14 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
             >
               {extractAction.isLoading ? "Распознаём..." : "Распознать локально"}
             </button>
+            <button type="button" onClick={() => void pasteClipboard()} className="rounded border border-lab-border px-3 py-2 text-sm text-lab-cyan hover:border-lab-cyan">
+              Вставить из буфера
+            </button>
+            {extractAction.isLoading ? (
+              <button type="button" onClick={cancelExtraction} className="rounded border border-lab-red/60 px-3 py-2 text-sm text-lab-red">
+                Отменить
+              </button>
+            ) : null}
             {sheets.length ? (
               <button
                 type="button"
@@ -392,7 +467,7 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
             ) : null}
           </div>
           {fileWarning ? <p className="text-sm text-lab-amber">{fileWarning}</p> : null}
-          {extractAction.isLoading ? <p className="text-sm text-lab-muted">Обычно локальная 3B модель отвечает за 5-20 секунд на CPU.</p> : null}
+          {extractAction.isLoading ? <p className="text-sm text-lab-muted">AI обрабатывает текст локально. Обычно 3B модель отвечает за 5-20 секунд на CPU, холодный старт может быть дольше.</p> : null}
           {countdown !== null ? (
             <div className="rounded border border-lab-amber/60 bg-lab-amber/10 p-3 text-sm text-lab-amber">
               Данные будут применены через {countdown} сек. Это обычный Apply через проверенный endpoint.
@@ -423,6 +498,7 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
           </div>
           <IssueList title="Errors" items={result.errors ?? hardErrors} tone="text-lab-red" />
           <IssueList title="Warnings" items={[...(result.warnings ?? []), ...(result.suggestedNextAction ? [result.suggestedNextAction] : [])]} tone="text-lab-amber" />
+          {result.diagnostics ? <DiagnosticsPanel diagnostics={result.diagnostics} confidence={result.confidence ?? 0} /> : null}
 
           {sheets.length ? (
             <div className="mt-4">
@@ -470,6 +546,15 @@ export function AiDataExtractor({ matchId, teamA, teamB, realForecastReady = fal
               {gapEvents.length ? (
                 <div className="mt-2 max-h-32 overflow-y-auto rounded border border-lab-border bg-lab-panel2 p-2 text-xs text-lab-muted">
                   {gapEvents.slice(-8).map((event, index) => <p key={`${event.step}-${index}`}>{event.step}: {event.message}</p>)}
+                </div>
+              ) : null}
+              {researchSheets.length ? (
+                <div className="mt-3 rounded border border-lab-border bg-black/20 p-3">
+                  <p className="text-sm text-lab-muted">Research preview: {researchSheets.map((sheet) => `${analystSheetLabel(sheet.sheetType)}=${sheet.validation.rowsParsed ?? 0}`).join(", ")}</p>
+                  <p className="mt-1 text-xs text-lab-muted">Merge default: AI rows win conflicts; research-only rows are appended.</p>
+                  <button type="button" disabled={mergedApplyAction.isLoading} onClick={() => void mergedApplyAction.execute()} className="mt-2 rounded border border-lab-green/60 px-3 py-2 text-sm text-lab-green disabled:opacity-50">
+                    {mergedApplyAction.isLoading ? "Объединяем..." : "Объединить и применить"}
+                  </button>
                 </div>
               ) : null}
             </div>
@@ -543,6 +628,25 @@ function IssueList({ title, items, tone }: { title: string; items: string[]; ton
   );
 }
 
+function DiagnosticsPanel({ diagnostics, confidence }: { diagnostics: NonNullable<ExtractResult["diagnostics"]>; confidence: number }) {
+  return (
+    <div className="mt-3 rounded border border-lab-border bg-black/20 p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-medium text-white">{diagnostics.headline}</p>
+        <span className={confidence < 50 ? "text-lab-red" : confidence < 70 ? "text-lab-amber" : "text-lab-green"}>{diagnostics.reasonCode}</span>
+      </div>
+      {diagnostics.ollamaHint ? <p className="mt-1 text-sm text-lab-muted">{diagnostics.ollamaHint}</p> : null}
+      {diagnostics.missingBlocks.length ? <p className="mt-2 text-sm text-lab-muted">Missing blocks: {diagnostics.missingBlocks.map((sheet) => analystSheetLabel(sheet)).join(", ")}</p> : null}
+      {diagnostics.tips.length ? (
+        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-lab-muted">
+          {diagnostics.tips.map((tip) => <li key={tip}>{tip}</li>)}
+        </ul>
+      ) : null}
+      {diagnostics.fieldIssues.length ? <p className="mt-2 text-xs text-lab-amber">Field issues: {diagnostics.fieldIssues.slice(0, 4).map((issue) => `${issue.sheetType}.${issue.field ?? "row"}: ${issue.message}`).join("; ")}</p> : null}
+    </div>
+  );
+}
+
 function parseSimpleCsv(content: string) {
   const lines = content.trim().split(/\r?\n/).filter(Boolean);
   const headers = splitCsvLine(lines[0] ?? "");
@@ -585,4 +689,24 @@ function toSimpleCsv(headers: string[], rows: string[][]) {
 
 function escapeCsv(value: string) {
   return value.includes(",") || value.includes("\"") || value.includes("\n") ? `"${value.replace(/"/g, "\"\"")}"` : value;
+}
+
+function mergeCsvContent(aiContent: string, researchContent: string) {
+  if (!aiContent.trim()) return researchContent;
+  if (!researchContent.trim()) return aiContent;
+  const aiLines = aiContent.trim().split(/\r?\n/).filter(Boolean);
+  const researchLines = researchContent.trim().split(/\r?\n/).filter(Boolean);
+  const header = aiLines[0] || researchLines[0] || "";
+  const seen = new Set(aiLines.slice(1).map(rowKey));
+  const additions = researchLines.slice(1).filter((line) => {
+    const key = rowKey(line);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  return `${[header, ...aiLines.slice(1), ...additions].join("\n")}\n`;
+}
+
+function rowKey(line: string) {
+  return line.toLowerCase().replace(/\s+/g, " ").trim();
 }

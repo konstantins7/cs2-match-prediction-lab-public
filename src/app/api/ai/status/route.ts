@@ -1,15 +1,18 @@
 import { NextResponse } from "next/server";
+import { readLocalAISettings } from "@/lib/ai/admin";
 import { isLocalAIEnabled, listLocalAIModels, localAIConfig } from "@/lib/ai/localAIClient";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
   const config = localAIConfig();
+  const settings = await readLocalAISettings();
   const models = await listLocalAIModels();
   return NextResponse.json({
     ok: true,
     enabled: isLocalAIEnabled(),
     model: config.model,
+    activeModel: settings.activeModel || config.model,
     fineTunedModel: config.fineTunedModel,
     fineTunedAvailable: models.fineTunedAvailable,
     autoApplyEnabled: process.env.AI_AUTO_APPLY_ENABLED === "true",

@@ -27,10 +27,14 @@ ENABLE_LOCAL_AI=true
 LOCAL_AI_MODEL="llama3.2:3b"
 LOCAL_AI_FINETUNED_MODEL="cs2-prediction-finetuned"
 LOCAL_AI_BASE_URL="http://127.0.0.1:11434"
-LOCAL_AI_TIMEOUT_MS=30000
+LOCAL_AI_TIMEOUT_MS=60000
 AI_AUTO_APPLY_ENABLED=false
 AI_AUTO_APPLY_MIN_CONFIDENCE=85
 AI_AUTO_APPLY_DELAY_MS=5000
+AI_HISTORY_RETAIN_DAYS=30
+AI_HISTORY_INPUT_CHARS=500
+AI_HISTORY_FULL_INPUT=false
+AI_FINETUNE_ALLOW_RUN=false
 ```
 
 4. Check readiness:
@@ -51,6 +55,34 @@ Pass `--pull` if you want the setup helper to run `ollama pull` for the configur
 6. Click **Применить распознанные данные**.
 
 Apply uses the existing analyst-sheet path and calls the same server-side validation as `/admin/imports`. There is no hidden Apply and no Real Forecast Ready gate change.
+
+## AI dashboard and history
+
+Open `/admin/ai-dashboard` to inspect the local AI subsystem:
+
+- Ollama enabled/base URL/model status and visible model list.
+- Test connection latency for a short local prompt.
+- Queue/runtime counters, recent errors, cache count/size and clear-cache action.
+- Usage from `data/logs/ai-local.log` over the last 24 hours.
+- Accepted example count and guided fine-tuning actions.
+
+Open `/admin/ai-history` to inspect extraction runs:
+
+- Server-paginated history, 50 rows per page.
+- Filters for match ID, source and status.
+- Redacted/truncated input preview and raw output JSON for debugging.
+- Mark bad examples to exclude them from future fine-tuning exports.
+- Export CSV warns that match data may be included.
+
+By default, history stores only metadata and a redacted input preview. Full input storage requires `AI_HISTORY_FULL_INPUT=true`.
+
+## Improving input quality
+
+- Prefer copied table text over screenshots when possible.
+- Remove navigation, ads, unrelated comments and long article text before extraction.
+- Include both team names and the match ID context if the copied page is ambiguous.
+- For HLTV-like pages, copy roster, player stats, map stats and veto blocks together.
+- If confidence is below 60%, review manually or run focused research gap-fill for missing blocks.
 
 ## Screenshots and OCR
 
@@ -114,6 +146,13 @@ pnpm ai:finetune
 ```
 
 `ai:finetune` requires at least 50 accepted examples. It checks Python/tooling and prints setup guidance if dependencies are missing. It never installs Python, PyTorch, Unsloth, or Axolotl automatically.
+
+In v1.5.0, `/admin/ai-dashboard` can run the same steps from the UI:
+
+- **Prepare dataset** writes ShareGPT-style JSONL.
+- **Run guided fine-tune** only works when `AI_FINETUNE_ALLOW_RUN=true` and `AI_FINETUNE_COMMAND` is configured.
+- **Activate fine-tuned model** runs `ollama create` only when local artifacts and a Modelfile exist.
+- **Reset** returns the app to the base model. The active preference is stored under ignored `data/model/`.
 
 ## Privacy
 

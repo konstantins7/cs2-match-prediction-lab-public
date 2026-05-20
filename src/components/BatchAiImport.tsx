@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAsyncAction } from "@/hooks/useAsyncAction";
 
 type BatchJob = {
@@ -31,6 +31,22 @@ export function BatchAiImport() {
   const [message, setMessage] = useState("");
   const cancelledRef = useRef(false);
   const selectedJobs = useMemo(() => jobs.filter((job) => job.selected && job.status === "success" && job.sheetPayload?.length), [jobs]);
+
+  useEffect(() => {
+    const saved = window.localStorage.getItem("cs2-ai-batch-jobs");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved) as BatchJob[];
+        setJobs(parsed.map((job) => job.status === "running" ? { ...job, status: "queued" } : job));
+      } catch {
+        window.localStorage.removeItem("cs2-ai-batch-jobs");
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem("cs2-ai-batch-jobs", JSON.stringify(jobs));
+  }, [jobs]);
 
   const runAction = useAsyncAction(async () => {
     cancelledRef.current = false;
@@ -181,6 +197,17 @@ export function BatchAiImport() {
     setMessage("Batch processing cancelled. Running request may finish, queued work will stop.");
   }
 
+  function exportReport() {
+    const headers = ["fileName", "matchId", "teamA", "teamB", "status", "confidence", "sheets", "warningOrError"];
+    const rows = jobs.map((job) => [job.fileName, job.matchId, job.teamA, job.teamB, job.status, String(job.confidence ?? ""), String(job.sheets ?? ""), job.error || job.warnings.join("; ")]);
+    const csv = `${headers.join(",")}\n${rows.map((row) => row.map((cell) => `"${cell.replace(/"/g, '""')}"`).join(",")).join("\n")}\n`;
+    const href = `data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`;
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = "ai-batch-report.csv";
+    link.click();
+  }
+
   return (
     <section className="rounded border border-lab-border bg-lab-panel p-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
@@ -205,6 +232,8 @@ export function BatchAiImport() {
           {applyAction.isLoading ? "Применяем..." : `Apply selected (${selectedJobs.length})`}
         </button>
         <button type="button" onClick={cancel} className="rounded border border-lab-border px-3 py-2 text-sm text-lab-muted">Отмена</button>
+        <button type="button" onClick={exportReport} disabled={!jobs.length} className="rounded border border-lab-border px-3 py-2 text-sm text-lab-cyan disabled:opacity-50">Export report CSV</button>
+        <button type="button" onClick={() => { setJobs([]); window.localStorage.removeItem("cs2-ai-batch-jobs"); }} disabled={!jobs.length} className="rounded border border-lab-border px-3 py-2 text-sm text-lab-muted disabled:opacity-50">Clear saved progress</button>
       </div>
       <div className="mt-4 overflow-x-auto rounded border border-lab-border">
         <table className="min-w-full text-left text-xs">

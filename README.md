@@ -50,6 +50,28 @@ RESEARCH_DEMO_PARSER_CMD="demoinfocs"
 
 HLTV direct requests fail closed on the first `403`, cache that block for 6 hours and suggest Jina/Apify/manual CSV instead of retrying with browser-like headers. Community datasets are rejected for pre-match evidence unless their `sourceDate` or `collectedAt` is before the target match start.
 
+## MVP 1.5.0: AI dashboard, history, diagnostics, and guided fine-tuning
+
+v1.5.0 turns local AI import into an inspectable admin workflow. It does not add cloud AI and does not change Apply, forecast math, or Real Forecast Ready gates.
+
+```env
+ENABLE_LOCAL_AI=true
+LOCAL_AI_MODEL="llama3.2:3b"
+LOCAL_AI_FINETUNED_MODEL="cs2-prediction-finetuned"
+LOCAL_AI_BASE_URL="http://127.0.0.1:11434"
+LOCAL_AI_TIMEOUT_MS=60000
+AI_HISTORY_RETAIN_DAYS=30
+AI_HISTORY_INPUT_CHARS=500
+AI_HISTORY_FULL_INPUT=false
+AI_FINETUNE_ALLOW_RUN=false
+```
+
+- `/admin/ai-dashboard`: Ollama status, model list, local cache stats, usage counters, test connection, and guided fine-tuning actions.
+- `/admin/ai-history`: paginated extraction history with redacted/truncated input preview, raw output inspection, CSV export, and bad-example marking.
+- Match AI import now returns actionable diagnostics for disabled Ollama, timeouts, invalid JSON, low confidence, empty sheets, and CSV validation errors.
+- “Дополнить AI данными” runs focused extended research only for missing blocks, then offers a merge/apply preview through the existing Apply path.
+- Scientific analysis shows AI provenance for blocks sourced from Local AI extraction.
+
 ## MVP 1.4.0: OCR, batch AI import, timed Apply, and fine-tuning prep
 
 v1.4.0 extends local AI import with browser OCR, source-aware prompts, client-side ZIP batch import, optional timed-confirm Apply, and local fine-tuning preparation. The model still runs locally through Ollama, and Apply still goes through the existing analyst-sheet validation path.
@@ -59,7 +81,7 @@ ENABLE_LOCAL_AI=true
 LOCAL_AI_MODEL="llama3.2:3b"
 LOCAL_AI_FINETUNED_MODEL="cs2-prediction-finetuned"
 LOCAL_AI_BASE_URL="http://127.0.0.1:11434"
-LOCAL_AI_TIMEOUT_MS=30000
+LOCAL_AI_TIMEOUT_MS=60000
 AI_AUTO_APPLY_ENABLED=false
 AI_AUTO_APPLY_MIN_CONFIDENCE=85
 AI_AUTO_APPLY_DELAY_MS=5000

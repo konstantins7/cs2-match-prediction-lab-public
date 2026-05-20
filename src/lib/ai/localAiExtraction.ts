@@ -40,6 +40,7 @@ export type LocalAiExtractionInput = {
   selfCheck?: boolean;
   env?: LocalAIEnv;
   fetchImpl?: typeof fetch;
+  signal?: AbortSignal;
 };
 
 type AiPayload = {
@@ -71,6 +72,7 @@ export async function extractWithLocalAI(input: LocalAiExtractionInput): Promise
     model: input.modelOverride,
     env: input.env,
     fetchImpl: input.fetchImpl,
+    signal: input.signal,
     cacheKeyParts: [input.matchId, input.teamA, input.teamB, input.sourceHint || "", detectedSource, promptVariant, promptVersion]
   });
   const responseText = input.selfCheck
@@ -80,6 +82,7 @@ export async function extractWithLocalAI(input: LocalAiExtractionInput): Promise
         model: input.modelOverride,
         env: input.env,
         fetchImpl: input.fetchImpl,
+        signal: input.signal,
         cacheKeyParts: [input.matchId, first.cacheKey, "self-check", detectedSource, promptVariant, promptVersion]
       })).text
     : first.text;
