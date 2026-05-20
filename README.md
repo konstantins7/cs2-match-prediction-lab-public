@@ -24,6 +24,27 @@ pnpm test
 pnpm build
 ```
 
+## MVP 1.7.0: full local automation
+
+v1.7.0 adds safe local automation around setup, updates, diagnostics, scheduled data preparation, cleanup and release preparation. It still does not auto-Apply analyst sheets, weaken Real Forecast Ready gates, change forecast math, or run data collection from page load.
+
+```bash
+pnpm setup:all -- --skip-server
+pnpm doctor
+pnpm automation:start
+```
+
+Useful commands:
+
+- `pnpm setup:all` creates/merges `.env.local`, runs Prisma setup and checks Ollama in guided-safe mode.
+- `pnpm update:all` pulls, installs, migrates and builds.
+- `pnpm automation:run-once -- --dry-run` runs the scheduler pipeline once without writes beyond logs/state.
+- `pnpm cleanup -- --dry-run` previews old logs/cache files; add `--write` to remove them.
+- `pnpm release:prepare -- --dry-run --minor` drafts a local release without tagging or pushing.
+- `/admin/health` shows DB, storage, Ollama, AI queue, scheduler and cleanup status.
+
+Automation can prepare files in `data/private-inbox/` and refresh explicit caches. Apply remains a manual `/admin/imports` or AI UI confirmation step.
+
 ## MVP 1.2.0: coverage push and model calibration
 
 v1.2.0 keeps the production-safe path unchanged: `data:auto-all`, `data:pipeline`, Apply, Real Forecast Ready gates, seed data and page-load behavior are not loosened. New capabilities are opt-in:

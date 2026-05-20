@@ -1,5 +1,12 @@
 # Changelog
 
+## v1.7.0 - Full Local Automation
+
+- Added safe zero-touch setup, update, doctor, cleanup, scheduler, dependency, and local release helper scripts.
+- Added `/admin/health` plus admin APIs for health, automation status, run-once automation, and cleanup.
+- Added a local automation runner for extended Auto-All preparation, forecastability cache refresh, match-feature sync, dataset prep, and cleanup without hidden Apply.
+- Added guided-safe Ollama setup posture and automation documentation.
+
 ## v1.6.0 - Smart Match Analytics
 
 - Added advisory smart analysis fields for similar matches, anomaly detection, model comparison, and data-quality recommendations.
